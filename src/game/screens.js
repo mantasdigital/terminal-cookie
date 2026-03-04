@@ -9,10 +9,36 @@ import { renderHelp } from '../ui/help.js';
 import { buildPortrait } from './team.js';
 import { resolveRoll } from './combat.js';
 import { loadLeaderboard, formatLeaderboardCompact, formatLeaderboardFull } from '../leaderboard/leaderboard.js';
+import { readFileSync, existsSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __screens_dirname = dirname(fileURLToPath(import.meta.url));
+const SESSIONS_PATH = join(__screens_dirname, '..', '..', 'data', 'sessions.json');
+const SESSION_TTL_MS = 60_000;
 
 // Cache leaderboard data once at import time
 let _leaderboardCache = null;
 try { _leaderboardCache = loadLeaderboard(); } catch { _leaderboardCache = { entries: [] }; }
+
+/**
+ * Check if any MCP/Claude AI sessions are currently active.
+ * Returns { connected: boolean, count: number }
+ */
+function checkAIConnection() {
+  try {
+    if (!existsSync(SESSIONS_PATH)) return { connected: false, count: 0 };
+    const data = JSON.parse(readFileSync(SESSIONS_PATH, 'utf-8'));
+    const now = Date.now();
+    let count = 0;
+    for (const session of Object.values(data.sessions || {})) {
+      if (now - session.lastSeen <= SESSION_TTL_MS) count++;
+    }
+    return { connected: count > 0, count };
+  } catch {
+    return { connected: false, count: 0 };
+  }
+}
 
 // ── Shared helpers ──────────────────────────────────────────────────
 
@@ -76,6 +102,20 @@ const menuScreen = {
       const label = prefix + menuOptions[i];
       const styled = i === ui.menuIndex ? renderer.bold(label) : label;
       renderer.bufferWrite(menuTop + i, 0, renderer.centerText(styled, cols));
+    }
+
+    // AI connection status
+    const ai = checkAIConnection();
+    const aiRow = menuTop + menuOptions.length + 2;
+    if (ai.connected) {
+      const aiLabel = ai.count > 1
+        ? `Claude AI connected (${ai.count} sessions)`
+        : 'Claude AI connected';
+      renderer.bufferWrite(aiRow, 0, renderer.centerText(renderer.color(aiLabel, 'green'), cols));
+    } else {
+      renderer.bufferWrite(aiRow, 0, renderer.centerText(renderer.dim('Claude AI: not connected'), cols));
+      renderer.bufferWrite(aiRow + 1, 0, renderer.centerText(renderer.dim('Connect: claude mcp add terminal-cookie -- node bin/cookie.js --mcp'), cols));
+      renderer.bufferWrite(aiRow + 2, 0, renderer.centerText(renderer.dim('Then tell Claude: "Click the cookie"'), cols));
     }
 
     renderer.showStatus('Arrow keys to navigate | Enter to select | L=leaderboard | ?=help');
