@@ -67,7 +67,7 @@ export function generateMember(rng) {
   };
 
   const totalStats = stats.hp + stats.atk + stats.def + stats.spd + stats.lck;
-  const cost = totalStats * 10;
+  const cost = totalStats * 2;
 
   return {
     id: rng.int(10000, 99999),

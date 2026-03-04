@@ -46,7 +46,7 @@ function defaultGameState(seed) {
     currentState: GameState.MENU,
     team: [],
     inventory: [],
-    crumbs: 0,
+    crumbs: 50,
     dungeonProgress: null,
     settings: {
       soundEnabled: true,

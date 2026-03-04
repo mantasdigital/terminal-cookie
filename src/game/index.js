@@ -169,10 +169,14 @@ export async function runGame(options = {}) {
       const roster = state.tavernRoster ?? [];
       const member = roster[ui.menuIndex];
       if (member) {
-        if (economy.tryRecruit(member)) {
+        const cost = economy.recruitCost(member);
+        if (state.crumbs < cost) {
+          renderer.showNotification(`Not enough crumbs! Need ${cost}, have ${state.crumbs}. Press C to click cookies.`, 'warn');
+        } else if (economy.tryRecruit(member)) {
           state.team = state.team ?? [];
           state.team.push(member);
           roster.splice(ui.menuIndex, 1);
+          renderer.showNotification(`${member.name} the ${member.race} ${member.class} joins your team!`, 'info');
           tutorial.advance('recruit');
         }
       }

@@ -157,14 +157,18 @@ const tavernScreen = {
       if (roster.length === 0) {
         renderer.bufferWrite(contentTop, 4, 'No recruits available. Clear a dungeon to refresh.');
       } else {
+        const crumbs = state.crumbs ?? 0;
         for (let i = 0; i < roster.length; i++) {
           const m = roster[i];
           const prefix = i === ui.menuIndex ? '> ' : '  ';
-          const info = `${prefix}${m.name} ${m.race} ${m.class} (${m.personality}) - ${m.cost} crumbs`;
+          const affordable = crumbs >= m.cost;
+          const costLabel = affordable ? `${m.cost} crumbs` : renderer.color(`${m.cost} crumbs (need ${m.cost - crumbs} more)`, 'red');
+          const info = `${prefix}${m.name} ${m.race} ${m.class} (${m.personality}) - ${costLabel}`;
           renderer.bufferWrite(contentTop + i * 2, 4, truncate(info, cols - 8));
           const stats = `    HP:${m.stats.hp} ATK:${m.stats.atk} DEF:${m.stats.def} SPD:${m.stats.spd} LCK:${m.stats.lck}`;
           renderer.bufferWrite(contentTop + i * 2 + 1, 4, stats);
         }
+        renderer.bufferWrite(contentTop + roster.length * 2 + 1, 4, renderer.dim('Use Up/Down to browse, Enter to recruit'));
       }
     } else if (ui.tavernTab === 'inventory') {
       const inv = state.inventory ?? [];

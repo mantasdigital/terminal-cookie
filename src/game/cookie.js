@@ -2,7 +2,7 @@
  * Cookie click handler — tracks crumbs and applies rate modifiers.
  */
 
-const BASE_RATE = 1;
+const BASE_RATE = 3;
 const INFLATION_PER_DUNGEON = 0.1;
 const DIMINISHING_THRESHOLD = 1000;
 

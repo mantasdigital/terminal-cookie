@@ -183,11 +183,33 @@ function buildRoomTree(rng, roomCount, level) {
   return rooms;
 }
 
+const ROOM_NAMES = {
+  empty:   ['Empty Chamber', 'Dusty Corridor', 'Quiet Passage', 'Crumbling Hall', 'Dim Alcove'],
+  monster: ['Monster Den', 'Growling Cavern', 'Infested Room', 'Dark Lair', 'Hostile Chamber'],
+  trap:    ['Trapped Hallway', 'Suspicious Room', 'Rigged Passage', 'Danger Zone', 'Booby-Trapped Hall'],
+  loot:    ['Treasure Room', 'Glinting Vault', 'Hidden Cache', 'Stash Room', 'Loot Chamber'],
+  shrine:  ['Ancient Shrine', 'Healing Font', 'Sacred Altar', 'Blessed Spring', 'Mystic Shrine'],
+  boss:    ['Boss Arena', 'Grand Chamber', 'Throne Room', 'Final Stand', 'The Gauntlet'],
+};
+
+const ROOM_DESCRIPTIONS = {
+  empty:   'An unremarkable room. Nothing of interest here.',
+  monster: 'Something lurks in the shadows...',
+  trap:    'The air feels wrong. Watch your step!',
+  loot:    'Something glitters in the corner.',
+  shrine:  'A warm light radiates from an ancient altar.',
+  boss:    'A massive chamber. The ground trembles beneath you.',
+};
+
 function createRoom(id, type, depth) {
+  const names = ROOM_NAMES[type] || ROOM_NAMES.empty;
+  const name = names[id % names.length];
   return {
     id,
     type,
     depth,
+    name,
+    description: ROOM_DESCRIPTIONS[type] || ROOM_DESCRIPTIONS.empty,
     connections: [],
     visited: false,
     cleared: false,
@@ -248,12 +270,19 @@ export function moveToRoom(dungeon, roomId) {
 }
 
 /**
- * Mark the current room as cleared.
+ * Mark the current room as cleared and remove its content so the player can move on.
  * @param {object} dungeon
  */
 export function clearRoom(dungeon) {
   const room = dungeon.rooms[dungeon.currentRoom];
-  if (room) room.cleared = true;
+  if (room) {
+    room.cleared = true;
+    room.content = null;
+    room.enemy = null;
+    room.enemies = [];
+    room.loot = [];
+    room.event = null;
+  }
 }
 
 /**

@@ -135,60 +135,67 @@ When the game starts, you see the main menu. Use these keys:
 
 ---
 
-## Using Terminal Cookie with Claude AI (MCP Server)
+## Playing with Claude AI
 
-Terminal Cookie can also run as a background game inside Claude. While you chat with Claude, dungeons auto-progress, monsters get fought, and loot piles up -- all without interrupting your work.
+Terminal Cookie can also run as a background game inside Claude Code or Claude Desktop. Claude plays the game for you -- dungeons auto-progress, monsters get fought, and loot piles up while you work.
 
-**Important:** The terminal game (`npm start`) and the Claude AI mode are **separate**. They cannot run in the same terminal window at the same time. Use one or the other, or run them in different terminal windows.
+**The terminal game (`npm start`) and Claude mode are separate.** You can use one or both, but not in the same terminal window.
 
-### Option A: Add to Claude Code (Quickest Way)
+### Quick Setup (2 steps)
 
-If you already have Claude Code open, run this command **in a separate terminal window** (not inside Claude Code):
+**Step 1:** Open a regular terminal, go to the game folder, and find your full path:
 
 ```bash
-claude mcp add terminal-cookie -- node /FULL/PATH/TO/terminal-cookie/bin/cookie.js --mcp
+cd terminal-cookie
+pwd
 ```
 
-**Replace `/FULL/PATH/TO/` with the actual path to where you downloaded the game.** For example, if you downloaded it to your Downloads folder on macOS:
+This prints something like `/Users/yourname/Downloads/terminal-cookie`. Copy it.
+
+**Step 2:** In that same terminal, run this command (paste your path from step 1):
+
+```bash
+claude mcp add terminal-cookie -- node /YOUR/PATH/HERE/bin/cookie.js --mcp
+```
+
+**Real example** (if the game is in your Downloads folder):
 
 ```bash
 claude mcp add terminal-cookie -- node /Users/yourname/Downloads/terminal-cookie/bin/cookie.js --mcp
 ```
 
-To find your full path, go to the terminal-cookie folder and run:
+That's it! Next time you open Claude Code, the game will be available.
 
-```bash
-pwd
+### Verify It Works
+
+Open Claude Code and type:
+
+```
+/mcp
 ```
 
-Copy the output and use it in the command above.
+You should see `terminal-cookie` listed. Then just ask Claude:
 
-### Option B: Add from Inside Claude Code
+```
+"Start a Terminal Cookie game -- recruit a hero and explore a dungeon"
+```
+
+### Alternative Setup Methods
+
+<details>
+<summary>Add from inside Claude Code (without a separate terminal)</summary>
 
 While in a Claude Code session, type:
 
 ```
 /mcp add terminal-cookie -- node /FULL/PATH/TO/terminal-cookie/bin/cookie.js --mcp
 ```
+</details>
 
-### Option C: Make It Permanent (Always Available)
+<details>
+<summary>Make it permanent (always available in every project)</summary>
 
-Add this to your Claude settings file so Terminal Cookie is available every time you open Claude Code.
-
-**For one project only** -- create or edit `.claude/settings.json` in your project folder:
-
-```json
-{
-  "mcpServers": {
-    "terminal-cookie": {
-      "command": "node",
-      "args": ["/FULL/PATH/TO/terminal-cookie/bin/cookie.js", "--mcp"]
-    }
-  }
-}
-```
-
-**For all projects** -- edit `~/.claude/settings.json` (in your home folder):
+Edit `~/.claude/settings.json` (in your home folder):
 
 ```json
 {
@@ -200,8 +207,10 @@ Add this to your Claude settings file so Terminal Cookie is available every time
   }
 }
 ```
+</details>
 
-### Option D: Claude Desktop App
+<details>
+<summary>Claude Desktop App</summary>
 
 Edit your Claude Desktop config file (`claude_desktop_config.json`):
 
@@ -215,16 +224,7 @@ Edit your Claude Desktop config file (`claude_desktop_config.json`):
   }
 }
 ```
-
-### Verify It Works
-
-Inside Claude Code, type:
-
-```
-/mcp
-```
-
-You should see `terminal-cookie` listed with 19 tools. If it shows up, you're connected!
+</details>
 
 ### Playing Through Claude
 
