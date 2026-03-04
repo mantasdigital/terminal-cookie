@@ -128,12 +128,11 @@ if (flags.reset) {
 
 if (flags.mcp) {
   log.debug('Starting MCP server on stdio');
-  process.stdout.write('MCP server starting on stdio...\n');
+  // NOTE: Do NOT write to stdout here — MCP uses stdio for JSON-RPC.
+  // Any non-protocol text on stdout corrupts the handshake.
+  process.stderr.write('Terminal Cookie MCP server starting...\n');
   try {
-    const { startServer } = await import(join(PROJECT_ROOT, 'src', 'mcp', 'server.js'));
-    if (typeof startServer === 'function') {
-      await startServer();
-    }
+    await import(join(PROJECT_ROOT, 'src', 'mcp', 'server.js'));
   } catch (err) {
     log.error(`MCP server failed: ${err.message}`);
     process.stderr.write(`MCP server failed to start: ${err.message}\n`);
