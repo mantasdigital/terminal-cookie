@@ -6,7 +6,7 @@ import { dirname } from 'node:path';
 const DEFAULT_SETTINGS = {
   focus: { autoFocus: false, bell: false, stickyTop: false },
   security: { vaultEnabled: false, autoRedact: false, encryptedClipboard: false },
-  game: { colorBlindMode: false, compactMode: false, debugLogging: false },
+  game: { colorBlindMode: false, compactMode: false, debugLogging: false, showAIStatus: true },
   voice: {
     enabled: false,
     triggerWord: 'cookie',

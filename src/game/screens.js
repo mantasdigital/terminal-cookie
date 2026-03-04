@@ -40,6 +40,28 @@ function checkAIConnection() {
   }
 }
 
+/**
+ * Render AI connection badge in top-right corner.
+ * Only renders if settings.game.showAIStatus is true (or settings not available).
+ */
+function renderAIBadge(state, renderer) {
+  const showAI = state.settings?.game?.showAIStatus ?? true;
+  if (!showAI) return;
+
+  const cols = renderer.capabilities.cols;
+  const ai = checkAIConnection();
+  let badge;
+  if (ai.connected) {
+    badge = ai.count > 1 ? `AI: ${ai.count} connected` : 'AI: connected';
+    badge = renderer.color(badge, 'green');
+  } else {
+    badge = renderer.dim('AI: --');
+  }
+  // Right-align at row 0
+  const badgeLen = ai.connected ? (ai.count > 1 ? 16 : 13) : 6;
+  renderer.bufferWrite(0, Math.max(0, cols - badgeLen - 1), badge);
+}
+
 // ── Shared helpers ──────────────────────────────────────────────────
 
 function hpBar(current, max, width = 20) {
@@ -104,7 +126,7 @@ const menuScreen = {
       renderer.bufferWrite(menuTop + i, 0, renderer.centerText(styled, cols));
     }
 
-    // AI connection status
+    // AI connection status (in menu body — shown regardless of badge setting)
     const ai = checkAIConnection();
     const aiRow = menuTop + menuOptions.length + 2;
     if (ai.connected) {
@@ -119,6 +141,7 @@ const menuScreen = {
     }
 
     renderer.showStatus('Arrow keys to navigate | Enter to select | L=leaderboard | ?=help');
+    renderAIBadge(state, renderer);
 
     // Full leaderboard overlay
     if (ui.leaderboardVisible) {
@@ -261,6 +284,7 @@ const tavernScreen = {
     }
 
     renderer.showStatus('C=cookie R=recruit I=inventory E=dungeon S=settings ?=help');
+    renderAIBadge(state, renderer);
     if (ui.helpVisible) {
       const help = renderHelp('TAVERN');
       const helpLines = help.split('\n');
@@ -396,6 +420,7 @@ const dungeonScreen = {
     }
 
     renderer.showStatus('Arrows=navigate Enter=interact M=map I=inventory Esc=retreat ?=help');
+    renderAIBadge(state, renderer);
     if (ui.helpVisible) {
       const help = renderHelp('DUNGEON');
       const helpLines = help.split('\n');
@@ -501,6 +526,7 @@ const combatScreen = {
     }
 
     renderer.showStatus('Space/Enter=roll | A=attack S=special U=item F=flee | ?=help');
+    renderAIBadge(state, renderer);
     if (ui.helpVisible) {
       const help = renderHelp('COMBAT');
       const helpLines = help.split('\n');
@@ -571,6 +597,7 @@ const lootScreen = {
     renderer.bufferWrite(actionsRow + 1, 6, '[E] Equip   [S] Sell   [D] Discard   [Enter] Next');
 
     renderer.showStatus('Up/Down=select E=equip S=sell D=discard Enter=continue');
+    renderAIBadge(state, renderer);
     renderer.render();
   },
 
@@ -657,6 +684,7 @@ const deathScreen = {
     renderer.bufferWrite(bottomRow, 0, renderer.centerText('[Enter] Return to Tavern   [M] Return to Menu', cols));
 
     renderer.showStatus('Press Enter to continue');
+    renderAIBadge(state, renderer);
     renderer.render();
   },
 
@@ -685,6 +713,7 @@ const SETTINGS_LAYOUT = [
   { section: 'Voice', key: 'voice.feedbackSound', label: 'Voice Feedback Sound', bonus: '' },
   { section: 'Game', key: 'game.colorBlindMode', label: 'Color-Blind Mode', bonus: '+2% loot find' },
   { section: 'Game', key: 'game.compactMode', label: 'Compact Mode', bonus: '' },
+  { section: 'Game', key: 'game.showAIStatus', label: 'Show AI Status', bonus: '' },
   { section: 'Game', key: 'game.debugLogging', label: 'Debug Logging', bonus: '' },
 ];
 
@@ -737,6 +766,7 @@ const settingsScreen = {
     }
 
     renderer.showStatus('Up/Down=navigate Enter=toggle R=reset Esc=back ?=help');
+    renderAIBadge(state, renderer);
     renderer.render();
   },
 
@@ -798,6 +828,7 @@ const helpScreen = {
     }
 
     renderer.showStatus('Esc=back');
+    renderAIBadge(state, renderer);
     renderer.render();
   },
 
