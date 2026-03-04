@@ -20,7 +20,7 @@ A terminal-based cookie dungeon crawler that doubles as an AI security monitor a
 ## Quick Start
 
 ```bash
-git clone https://github.com/user/terminal-cookie && cd terminal-cookie && npm install && npm start
+git clone https://github.com/mantasdigital/terminal-cookie && cd terminal-cookie && npm install && npm start
 ```
 
 Or run directly:
