@@ -279,9 +279,9 @@ if (flags.mergeLeaderboard) {
 
   // Auto-commit if in git
   try {
-    const { execSync } = await import('node:child_process');
-    execSync('git add data/leaderboard.json', { cwd: PROJECT_ROOT, stdio: 'pipe' });
-    execSync(`git commit -m "leaderboard: merge ${result.merged} submission(s)"`, { cwd: PROJECT_ROOT, stdio: 'pipe' });
+    const { execFileSync } = await import('node:child_process');
+    execFileSync('git', ['add', 'data/leaderboard.json'], { cwd: PROJECT_ROOT, stdio: 'pipe' });
+    execFileSync('git', ['commit', '-m', `leaderboard: merge ${result.merged} submission(s)`], { cwd: PROJECT_ROOT, stdio: 'pipe' });
     process.stdout.write('Changes committed to git.\n');
   } catch {
     process.stdout.write('Remember to commit data/leaderboard.json.\n');
@@ -295,6 +295,12 @@ if (flags.updateReadme) {
   const lb = loadLeaderboard();
   const ranked = rankEntries(lb.entries);
 
+  // Sanitize strings for safe Markdown table insertion
+  function sanitizeMd(str) {
+    if (!str) return '-';
+    return str.replace(/[|[\]()<>\\`*_{}#!~\n\r]/g, '').trim().substring(0, 40) || '-';
+  }
+
   // Build markdown table
   const tableLines = [
     '| # | Player | Org | Dungeons | Level | Clicks | Crumbs |',
@@ -305,7 +311,7 @@ if (flags.updateReadme) {
   } else {
     for (let i = 0; i < ranked.length; i++) {
       const e = ranked[i];
-      tableLines.push(`| ${i + 1} | ${e.name} | ${e.org || '-'} | ${e.dungeons_cleared ?? 0} | ${e.highest_level ?? 0} | ${e.total_clicks ?? 0} | ${e.total_crumbs_earned ?? 0} |`);
+      tableLines.push(`| ${i + 1} | ${sanitizeMd(e.name)} | ${sanitizeMd(e.org)} | ${e.dungeons_cleared ?? 0} | ${e.highest_level ?? 0} | ${e.total_clicks ?? 0} | ${e.total_crumbs_earned ?? 0} |`);
     }
   }
   const newTable = tableLines.join('\n');

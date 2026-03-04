@@ -2,7 +2,7 @@
 
 import { writeFileSync, existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { execSync } from 'node:child_process';
+import { execSync, execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
 import { createSubmission } from './leaderboard.js';
@@ -65,25 +65,31 @@ export function isGhAvailable() {
  * Returns { branch, committed } or throws.
  */
 export function createSubmitBranch(id, filePath) {
+  // Validate ID is safe (alphanumeric, hyphens, dots only)
+  if (!/^[\w.-]+$/.test(id)) {
+    throw new Error('Invalid submission ID format');
+  }
+
   const branch = `leaderboard/submit-${id}`;
   const relativePath = filePath.replace(PROJECT_ROOT + '/', '');
+  const gitOpts = { cwd: PROJECT_ROOT, stdio: 'pipe' };
 
   try {
     // Stash any existing changes
-    execSync('git stash --include-untracked', { cwd: PROJECT_ROOT, stdio: 'pipe' });
+    execFileSync('git', ['stash', '--include-untracked'], gitOpts);
   } catch {
     // No changes to stash, that's fine
   }
 
   try {
-    execSync(`git checkout -b ${branch}`, { cwd: PROJECT_ROOT, stdio: 'pipe' });
-    execSync(`git add "${relativePath}"`, { cwd: PROJECT_ROOT, stdio: 'pipe' });
-    execSync(`git commit -m "leaderboard: submit score ${id}"`, { cwd: PROJECT_ROOT, stdio: 'pipe' });
+    execFileSync('git', ['checkout', '-b', branch], gitOpts);
+    execFileSync('git', ['add', relativePath], gitOpts);
+    execFileSync('git', ['commit', '-m', `leaderboard: submit score ${id}`], gitOpts);
     return { branch, committed: true };
   } catch (err) {
     // Try to go back to previous branch
-    try { execSync('git checkout -', { cwd: PROJECT_ROOT, stdio: 'pipe' }); } catch { /* best effort */ }
-    try { execSync('git stash pop', { cwd: PROJECT_ROOT, stdio: 'pipe' }); } catch { /* best effort */ }
+    try { execFileSync('git', ['checkout', '-'], gitOpts); } catch { /* best effort */ }
+    try { execFileSync('git', ['stash', 'pop'], gitOpts); } catch { /* best effort */ }
     throw new Error(`Git branch creation failed: ${err.message}`);
   }
 }

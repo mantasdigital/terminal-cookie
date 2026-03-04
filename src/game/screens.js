@@ -25,21 +25,34 @@ try { _leaderboardCache = loadLeaderboard(); } catch { _leaderboardCache = { ent
 
 /**
  * Check if any MCP/Claude AI sessions are currently active.
+ * Results are cached for 5 seconds to avoid 30+ fs reads/sec.
  * Returns { connected: boolean, count: number }
  */
+let _aiCache = { connected: false, count: 0 };
+let _aiCacheTime = 0;
+const AI_CACHE_TTL = 5000;
+
 function checkAIConnection() {
+  const now = Date.now();
+  if (now - _aiCacheTime < AI_CACHE_TTL) return _aiCache;
+
   try {
-    if (!existsSync(SESSIONS_PATH)) return { connected: false, count: 0 };
-    const data = JSON.parse(readFileSync(SESSIONS_PATH, 'utf-8'));
-    const now = Date.now();
-    let count = 0;
-    for (const session of Object.values(data.sessions || {})) {
-      if (now - session.lastSeen <= SESSION_TTL_MS) count++;
+    if (!existsSync(SESSIONS_PATH)) {
+      _aiCache = { connected: false, count: 0 };
+    } else {
+      const data = JSON.parse(readFileSync(SESSIONS_PATH, 'utf-8'));
+      let count = 0;
+      for (const session of Object.values(data.sessions || {})) {
+        if (now - session.lastSeen <= SESSION_TTL_MS) count++;
+      }
+      _aiCache = { connected: count > 0, count };
     }
-    return { connected: count > 0, count };
   } catch {
-    return { connected: false, count: 0 };
+    _aiCache = { connected: false, count: 0 };
   }
+
+  _aiCacheTime = now;
+  return _aiCache;
 }
 
 /**

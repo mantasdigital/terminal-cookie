@@ -223,7 +223,25 @@ export function mergeSubmissions(leaderboard) {
       if (existingIds.has(entry.id)) {
         skipped++;
       } else {
-        leaderboard.entries.push(entry);
+        // Only keep known fields to prevent property injection
+        const sanitized = {
+          id: entry.id,
+          name: entry.name,
+          org: entry.org || null,
+          submitted_at: entry.submitted_at,
+          total_clicks: entry.total_clicks ?? 0,
+          total_crumbs_earned: entry.total_crumbs_earned ?? 0,
+          highest_crumbs: entry.highest_crumbs ?? 0,
+          dungeons_cleared: entry.dungeons_cleared ?? 0,
+          highest_level: entry.highest_level ?? 0,
+          monsters_killed: entry.monsters_killed ?? 0,
+          total_deaths: entry.total_deaths ?? 0,
+          total_loot: entry.total_loot ?? 0,
+          total_recruits_hired: entry.total_recruits_hired ?? 0,
+          runs_completed: entry.runs_completed ?? 0,
+          checksum: entry.checksum,
+        };
+        leaderboard.entries.push(sanitized);
         existingIds.add(entry.id);
         merged++;
       }
