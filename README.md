@@ -319,23 +319,24 @@ Edit `~/.claude/settings.json` (create it if it doesn't exist):
 
 Once connected, talk to Claude naturally. Claude calls the game tools behind the scenes.
 
+**Every interaction earns crumbs automatically.** You don't need to tell Claude to "click the cookie" -- every tool call, every accepted choice, every response already mines crumbs in the background. Each interaction gives you a cookie reaction and crumb reward. Just use Claude normally and watch your crumbs grow.
+
 **Things you can say:**
 
-- "Click the cookie" -- earns crumbs with a unique Claude reaction each time
-- "Show me the tavern" -- browse available recruits
-- "Recruit the first hero" -- hire a team member
-- "Explore dungeon level 1" -- send your team into a dungeon
-- "What's my status?" -- see team, crumbs, progress
-- "Check for pending actions" -- handle boss fights and loot
-- "Roll a d20" -- roll the dice
-- "Save my game to slot 1" -- save progress
-- "Scan this code for security issues: ..." -- use the security scanner
+- "Show me the tavern" -- browse available recruits (and earn crumbs)
+- "Recruit the first hero" -- hire a team member (and earn crumbs)
+- "Explore dungeon level 1" -- send your team into a dungeon (and earn crumbs)
+- "What's my status?" -- see team, crumbs, progress (and earn crumbs)
+- "Check for pending actions" -- handle boss fights and loot (and earn crumbs)
+- "Roll a d20" -- roll the dice (and earn crumbs)
+- "Scan this code for security issues: ..." -- use the security scanner (and earn crumbs)
+- "Click the cookie" -- deliberate power-click for 3x crumbs
 
 #### All Available Tools
 
 | Tool | What it does |
 |------|-------------|
-| `cookie_click` | Click the cookie -- Claude responds with a unique reaction and awards crumbs. Multi-terminal bonus applies! |
+| `cookie_click` | **Power-click** the cookie for 3x bonus crumbs (on top of the auto-click you get from every interaction) |
 | `cookie_status` | See your team, crumbs, and dungeon progress |
 | `cookie_explore` | Enter a dungeon (auto-advances every 15 seconds) |
 | `cookie_tavern` | View and recruit team members |

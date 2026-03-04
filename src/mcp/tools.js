@@ -7,6 +7,7 @@ import { classifyPrompt } from '../prompts/classifier.js';
 import { generateTavernRoster } from '../game/team.js';
 import { equipItem, canEquip } from '../game/loot.js';
 import { generateDungeon } from '../game/dungeon.js';
+import { COOKIE_REACTIONS } from './reactions.js';
 
 const scanner = createScanner();
 const redactor = createRedactor();
@@ -19,7 +20,7 @@ export function defineTools() {
   return [
     {
       name: 'cookie_click',
-      description: 'Click the cookie to earn crumbs. Claude responds with a unique cookie-themed reaction each time. Connecting multiple terminals increases mining speed.',
+      description: 'Power-click the cookie for bonus crumbs. Note: crumbs are already earned automatically on every interaction — this is an extra deliberate click for a bigger reward.',
       inputSchema: {
         type: 'object',
         properties: {},
@@ -28,54 +29,39 @@ export function defineTools() {
       handler(params, ctx) {
         const { engine, cookie, scores, settings, sessions } = ctx;
         const state = engine.getStateRef();
-        const earned = cookie.click();
+
+        // Power click gives 3x the normal click rate
+        const baseEarned = cookie.click();
+        const powerBonus = baseEarned * 2; // 2x extra on top of the 1x from click()
+        state.crumbs += powerBonus;
+
         const bonuses = settings.getBonuses();
-        const bonus = Math.floor(earned * (bonuses.crumbMultiplier - 1));
-
-        // Multi-terminal mining bonus
+        const settingsBonus = Math.floor(baseEarned * 3 * (bonuses.crumbMultiplier - 1));
         const sessionMultiplier = sessions ? sessions.multiplier() : 1.0;
-        const sessionBonus = Math.floor(earned * (sessionMultiplier - 1));
-        const total = earned + bonus + sessionBonus;
+        const sessionBonus = Math.floor(baseEarned * 3 * (sessionMultiplier - 1));
+        const total = baseEarned * 3 + settingsBonus + sessionBonus;
 
-        if (bonus + sessionBonus > 0) {
-          state.crumbs += bonus + sessionBonus;
-        }
+        state.crumbs += settingsBonus + sessionBonus;
         scores.recordClick(total);
         scores.setMax('highest_crumbs', state.crumbs);
 
-        // Pick a cookie reaction — Claude delivers these as flavorful responses
-        const reactions = [
-          { msg: 'The cookie crumbles perfectly under your click. Delicious efficiency.', flavor: 'satisfied' },
-          { msg: 'A golden crumb flies off the cookie and lands in your inventory. Nice catch!', flavor: 'lucky' },
-          { msg: 'The cookie vibrates with arcane energy. Your clicking hand tingles.', flavor: 'magical' },
-          { msg: 'CRUNCH. That was a particularly satisfying click. The cookie gods approve.', flavor: 'powerful' },
-          { msg: 'You click with the precision of a thousand bakers. Crumbs rain down.', flavor: 'epic' },
-          { msg: 'The cookie whispers secrets of the dungeon between bites...', flavor: 'mysterious' },
-          { msg: 'A tiny cookie golem forms from the crumbs and salutes you before dissolving.', flavor: 'whimsical' },
-          { msg: 'Click! The sound echoes through the terminal. Somewhere, a cookie smiles.', flavor: 'zen' },
-          { msg: 'Your click resonates across all connected terminals. The cookie network grows stronger.', flavor: 'networked' },
-          { msg: 'The cookie offers no resistance. Pure, buttery submission.', flavor: 'smooth' },
-          { msg: 'A critical click! The cookie shatters into premium crumbs.', flavor: 'critical' },
-          { msg: 'The dough yields. Another click, another crumb closer to greatness.', flavor: 'determined' },
+        const pick = COOKIE_REACTIONS[
+          Math.abs(Date.now() + cookie.sessionClicks) % COOKIE_REACTIONS.length
         ];
-
-        const pick = reactions[Math.abs(Date.now() + cookie.sessionClicks) % reactions.length];
         const art = miniCookie();
-
         const activeTerminals = sessions ? sessions.activeSessions() : 1;
 
         const lines = [
           art,
           '',
-          `  ${pick.msg}`,
+          `  POWER CLICK! ${pick}`,
           '',
-          `  +${total} crumbs!`,
+          `  +${total} crumbs! (3x power click)`,
         ];
 
-        // Show breakdown if there are bonuses
-        const parts = [`${earned} base`];
-        if (bonus > 0) parts.push(`+${bonus} settings bonus`);
-        if (sessionBonus > 0) parts.push(`+${sessionBonus} multi-terminal bonus`);
+        const parts = [`${baseEarned * 3} base`];
+        if (settingsBonus > 0) parts.push(`+${settingsBonus} settings`);
+        if (sessionBonus > 0) parts.push(`+${sessionBonus} multi-terminal`);
         if (parts.length > 1) lines.push(`  (${parts.join(', ')})`);
 
         lines.push(`  Total: ${cookie.crumbs} crumbs`);
@@ -946,8 +932,10 @@ export function defineTools() {
         const lines = [
           '  === TERMINAL COOKIE HELP ===',
           '',
+          '  Every interaction auto-clicks the cookie and earns crumbs!',
+          '',
           '  Game Commands:',
-          '    cookie_click     - Click the cookie for crumbs',
+          '    cookie_click     - Power-click for 3x bonus crumbs',
           '    cookie_trash     - Destroy a cookie (no reward)',
           '    cookie_status    - View team, crumbs, state',
           '    cookie_explore   - Enter a dungeon (level required)',
