@@ -397,12 +397,30 @@ This works across Claude Code sessions, Claude Desktop, or any mix of both.
 
 ---
 
+### Playing Both at Once (Same Terminal Game + Claude)
+
+You can run the terminal game (`npm start`) and have Claude connected via MCP **at the same time**. They share a live state file and sync automatically:
+
+- **Crumbs earned through Claude** show up in your terminal game within 1 second
+- **Heroes recruited in-game** are available to Claude immediately
+- **Dungeon progress** syncs both ways -- start a dungeon in-game, check it via Claude, or vice versa
+
+**How to do it:**
+
+1. Open a terminal and run `npm start` to play the game
+2. In a separate terminal (or Claude Desktop), connect Claude to the MCP server as usual
+3. Play in both places -- state syncs automatically via `saves/live.json`
+
+No extra setup needed. The live sync starts automatically when either the game or MCP server runs.
+
+---
+
 ### How Passive Mode Works
 
 - Every **15 seconds**, your dungeon auto-advances one room
 - Regular monsters are **fought automatically** by your team
 - **Boss fights pause** the dungeon and wait for your decision
-- **Every tool call** you make earns +1 bonus crumb
+- **Every interaction** earns crumbs automatically (auto cookie click)
 - Use `cookie_dungeon_config tick_interval=5` to speed it up (5 seconds per room)
 - Use `cookie_dungeon_config tick_interval=60` to slow it down (60 seconds per room)
 
@@ -490,12 +508,12 @@ This deletes all save data. Press Enter to confirm.
 
 ### Can I play the terminal game and use Claude mode at the same time?
 
-Yes, but in **separate terminal windows**:
+Yes! They share a live state file and sync automatically:
 
 - **Window 1:** Run `npm start` to play the game
-- **Window 2:** The MCP server runs as a separate process through Claude
+- **Window 2:** Use Claude (Code or Desktop) with the MCP server
 
-They use separate save files so they don't interfere with each other.
+Crumbs, team, inventory, and dungeon progress sync between both within 1 second. Recruit a hero in-game and Claude sees it. Claude clicks cookies and your terminal game crumb counter goes up.
 
 ### My team died. What do I do?
 

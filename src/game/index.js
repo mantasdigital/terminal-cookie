@@ -24,6 +24,7 @@ import { createEventManager } from './events.js';
 import { getScreen, getUIState, resetUIState } from './screens.js';
 import { classifyPrompt } from '../prompts/classifier.js';
 import { getWidget } from '../prompts/widgets.js';
+import { createLiveState } from '../save/live-state.js';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -73,6 +74,30 @@ export async function runGame(options = {}) {
     onSave: (state) => saveGame(slot, state),
     onRender: () => { /* Rendering driven by game loop, not engine events */ },
   });
+
+  // ── Live state bridge (syncs with MCP server) ─────────────────
+  const liveState = createLiveState({
+    getState: () => engine.getState(),
+    setState: (external) => {
+      // Merge MCP server changes into local state
+      const local = engine.getStateRef();
+      // Sync crumbs, team, inventory, stats, dungeon from external source
+      if (external.crumbs != null) local.crumbs = external.crumbs;
+      if (external.team) local.team = external.team;
+      if (external.inventory) local.inventory = external.inventory;
+      if (external.stats) Object.assign(local.stats, external.stats);
+      if (external.dungeonProgress !== undefined) local.dungeonProgress = external.dungeonProgress;
+      if (external.pendingActions) local.pendingActions = external.pendingActions;
+      if (external.passiveLog) local.passiveLog = external.passiveLog;
+      if (external.totalToolCalls != null) local.totalToolCalls = external.totalToolCalls;
+      // Re-sync the subsystem state reference
+      state.crumbs = local.crumbs;
+      state.team = local.team;
+      state.inventory = local.inventory;
+    },
+    label: 'game',
+  });
+  liveState.start();
 
   // ── Terminal setup ──────────────────────────────────────────────
   const caps = detectCapabilities();
@@ -424,6 +449,7 @@ export async function runGame(options = {}) {
 
   function cleanup() {
     if (loopTimer) clearTimeout(loopTimer);
+    liveState.stop();
     if (voiceController) voiceController.stop();
     input.stop();
     resize.destroy();

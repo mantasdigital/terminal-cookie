@@ -18,6 +18,7 @@ import { fileURLToPath } from 'url';
 import { writeFileSync, readFileSync, mkdirSync, existsSync } from 'fs';
 import { createSessionTracker } from './sessions.js';
 import { COOKIE_REACTIONS } from './reactions.js';
+import { createLiveState } from '../save/live-state.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__dirname, '..', '..');
@@ -33,6 +34,21 @@ const settings = createSettings(SETTINGS_PATH);
 settings.load();
 const scores = createScores();
 scores.load();
+
+// Live state bridge — syncs with terminal game if running
+const liveState = createLiveState({
+  getState: () => ({ ...engine.getStateRef() }),
+  setState: (external) => {
+    // Merge terminal game changes into MCP state
+    const local = engine.getStateRef();
+    if (external.crumbs != null) local.crumbs = external.crumbs;
+    if (external.team) local.team = external.team;
+    if (external.inventory) local.inventory = external.inventory;
+    if (external.stats) Object.assign(local.stats, external.stats);
+    if (external.dungeonProgress !== undefined) local.dungeonProgress = external.dungeonProgress;
+  },
+  label: 'mcp',
+});
 
 // Vault is optional — loaded if available
 let vault = null;
@@ -122,6 +138,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       // Register this session heartbeat
       sessions.heartbeat();
 
+      // Pull any state changes from terminal game
+      liveState.poll();
+
       // Drain background events that happened since last tool call
       const backgroundEvents = passiveRunner.drain();
 
@@ -154,6 +173,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       // Autosave scores after every action
       try { scores.save(); } catch { /* best effort */ }
+
+      // Sync state to live file so terminal game sees changes immediately
+      liveState.write();
 
       // Build the response — always append cookie click info
       const statusText = passiveRunner.statusLine();
@@ -217,6 +239,9 @@ async function main() {
 
   // Start passive background runner
   passiveRunner.start();
+
+  // Start live state sync with terminal game
+  liveState.start();
 
   // Autosave every 60s to a dedicated auto-save file (doesn't overwrite manual saves)
   const AUTOSAVE_DIR = join(PROJECT_ROOT, 'saves');
