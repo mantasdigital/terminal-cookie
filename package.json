@@ -18,6 +18,19 @@
     "node": ">=18.0.0"
   },
   "keywords": ["terminal", "game", "cookie", "dungeon", "mcp", "security"],
+  "author": "Mantas Digital <https://www.mantasdigital.com>",
+  "contributors": [
+    "Mantas Karmaza",
+    "Martyna Kapočiūtė"
+  ],
+  "homepage": "https://github.com/mantasdigital/terminal-cookie#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mantasdigital/terminal-cookie.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mantasdigital/terminal-cookie/issues"
+  },
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1"
