@@ -1,0 +1,25 @@
+{
+  "name": "terminal-cookie",
+  "version": "0.1.0",
+  "description": "Cookie dungeon game + AI security monitor + MCP server",
+  "type": "module",
+  "main": "src/core/engine.js",
+  "bin": {
+    "terminal-cookie": "./bin/cookie.js",
+    "tcookie": "./bin/cookie.js"
+  },
+  "scripts": {
+    "start": "node bin/cookie.js",
+    "dev": "node bin/cookie.js --debug",
+    "mcp": "node src/mcp/server.js",
+    "test": "node --test src/**/*.test.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": ["terminal", "game", "cookie", "dungeon", "mcp", "security"],
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1"
+  }
+}

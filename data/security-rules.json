@@ -1,0 +1,272 @@
+[
+  {
+    "id": "aws-access-key",
+    "name": "AWS Access Key",
+    "pattern": "AKIA[0-9A-Z]{16}",
+    "type": "secret",
+    "riskLevel": "CRITICAL",
+    "description": "AWS access key ID detected. These keys grant programmatic access to AWS services.",
+    "recommendation": "Remove the key from source code immediately. Rotate the key in AWS IAM console. Use environment variables or AWS credential files instead."
+  },
+  {
+    "id": "aws-secret-key",
+    "name": "AWS Secret Key",
+    "pattern": "(?:aws_secret_access_key|AWS_SECRET_ACCESS_KEY)\\s*[=:]\\s*['\"]?[A-Za-z0-9/+=]{40}['\"]?",
+    "type": "secret",
+    "riskLevel": "CRITICAL",
+    "description": "AWS secret access key detected in code.",
+    "recommendation": "Remove immediately. Rotate in AWS IAM. Use environment variables or IAM roles."
+  },
+  {
+    "id": "openai-api-key",
+    "name": "OpenAI API Key",
+    "pattern": "sk-[A-Za-z0-9]{20,}T3BlbkFJ[A-Za-z0-9]{20,}",
+    "type": "secret",
+    "riskLevel": "CRITICAL",
+    "description": "OpenAI API key detected. This key provides access to OpenAI services and may incur costs.",
+    "recommendation": "Remove the key from source code. Rotate it in the OpenAI dashboard. Use environment variables."
+  },
+  {
+    "id": "openai-project-key",
+    "name": "OpenAI Project Key",
+    "pattern": "sk-proj-[A-Za-z0-9_-]{40,}",
+    "type": "secret",
+    "riskLevel": "CRITICAL",
+    "description": "OpenAI project-scoped API key detected.",
+    "recommendation": "Remove from source code and use environment variables. Rotate the key in OpenAI settings."
+  },
+  {
+    "id": "anthropic-api-key",
+    "name": "Anthropic API Key",
+    "pattern": "sk-ant-[A-Za-z0-9_-]{40,}",
+    "type": "secret",
+    "riskLevel": "CRITICAL",
+    "description": "Anthropic API key detected. This key provides access to Claude and other Anthropic services.",
+    "recommendation": "Remove from source code. Rotate in Anthropic console. Use environment variables."
+  },
+  {
+    "id": "github-pat",
+    "name": "GitHub Personal Access Token",
+    "pattern": "ghp_[A-Za-z0-9]{36}",
+    "type": "secret",
+    "riskLevel": "HIGH",
+    "description": "GitHub personal access token detected. Can grant access to repositories and GitHub APIs.",
+    "recommendation": "Remove from source code. Revoke and regenerate in GitHub Settings > Developer settings."
+  },
+  {
+    "id": "github-oauth",
+    "name": "GitHub OAuth Token",
+    "pattern": "gho_[A-Za-z0-9]{36}",
+    "type": "secret",
+    "riskLevel": "HIGH",
+    "description": "GitHub OAuth access token detected.",
+    "recommendation": "Remove from source code. Revoke the OAuth app token in GitHub settings."
+  },
+  {
+    "id": "github-user-token",
+    "name": "GitHub User-to-Server Token",
+    "pattern": "ghu_[A-Za-z0-9]{36}",
+    "type": "secret",
+    "riskLevel": "HIGH",
+    "description": "GitHub user-to-server installation token detected.",
+    "recommendation": "Remove from source code. These tokens should only be generated at runtime."
+  },
+  {
+    "id": "github-server-token",
+    "name": "GitHub Server-to-Server Token",
+    "pattern": "ghs_[A-Za-z0-9]{36}",
+    "type": "secret",
+    "riskLevel": "HIGH",
+    "description": "GitHub server-to-server installation token detected.",
+    "recommendation": "Remove from source code. Generate these tokens dynamically via the GitHub App API."
+  },
+  {
+    "id": "github-refresh-token",
+    "name": "GitHub Refresh Token",
+    "pattern": "ghr_[A-Za-z0-9]{36}",
+    "type": "secret",
+    "riskLevel": "HIGH",
+    "description": "GitHub refresh token detected.",
+    "recommendation": "Remove from source code. Store securely and refresh tokens at runtime."
+  },
+  {
+    "id": "stripe-secret-key",
+    "name": "Stripe Secret Key",
+    "pattern": "sk_live_[A-Za-z0-9]{24,}",
+    "type": "secret",
+    "riskLevel": "CRITICAL",
+    "description": "Stripe live secret key detected. This key can process real payments and access customer data.",
+    "recommendation": "Remove immediately. Rotate in Stripe Dashboard > API keys. Use environment variables."
+  },
+  {
+    "id": "stripe-publishable-key",
+    "name": "Stripe Publishable Key (Live)",
+    "pattern": "pk_live_[A-Za-z0-9]{24,}",
+    "type": "secret",
+    "riskLevel": "MEDIUM",
+    "description": "Stripe live publishable key in source code. While less sensitive than secret keys, it should still be managed carefully.",
+    "recommendation": "Use environment variables to manage keys. Avoid committing to version control."
+  },
+  {
+    "id": "generic-api-key",
+    "name": "Generic API Key Assignment",
+    "pattern": "(?:api[_-]?key|apiKey|API_KEY)\\s*[=:]\\s*['\"][A-Za-z0-9_\\-]{16,}['\"]",
+    "type": "secret",
+    "riskLevel": "HIGH",
+    "description": "Hardcoded API key assignment detected.",
+    "recommendation": "Move API keys to environment variables or a secure vault. Never hardcode secrets."
+  },
+  {
+    "id": "hardcoded-password",
+    "name": "Hardcoded Password",
+    "pattern": "(?:password|passwd|pwd|secret)\\s*[=:]\\s*['\"][^'\"]{4,}['\"]",
+    "type": "secret",
+    "riskLevel": "HIGH",
+    "description": "Hardcoded password or secret value detected in source code.",
+    "recommendation": "Remove hardcoded passwords. Use environment variables, a secrets manager, or the vault."
+  },
+  {
+    "id": "private-key-block",
+    "name": "Private Key",
+    "pattern": "-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----",
+    "type": "secret",
+    "riskLevel": "CRITICAL",
+    "description": "Private key detected in source code. Private keys must never be stored in code.",
+    "recommendation": "Remove the private key immediately. Store it in a secure location. Generate new keys if compromised."
+  },
+  {
+    "id": "jwt-token",
+    "name": "JWT Token",
+    "pattern": "eyJ[A-Za-z0-9_-]{10,}\\.eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}",
+    "type": "secret",
+    "riskLevel": "MEDIUM",
+    "description": "JSON Web Token detected. JWTs may contain sensitive claims and session data.",
+    "recommendation": "Do not hardcode JWT tokens. Generate them at runtime and store securely."
+  },
+  {
+    "id": "eval-dynamic",
+    "name": "Dynamic eval()",
+    "pattern": "eval\\s*\\([^)]*(?:[+`$]|\\bvar\\b|\\blet\\b|\\bconst\\b|\\bfunction\\b|\\barguments\\b)[^)]*\\)",
+    "type": "code_injection",
+    "riskLevel": "CRITICAL",
+    "description": "eval() called with dynamic input. This is a code injection vulnerability.",
+    "recommendation": "Avoid eval() entirely. Use JSON.parse() for data, or Function constructor with strict validation if absolutely necessary."
+  },
+  {
+    "id": "function-constructor",
+    "name": "Function Constructor with String",
+    "pattern": "new\\s+Function\\s*\\([^)]*['\"`]",
+    "type": "code_injection",
+    "riskLevel": "HIGH",
+    "description": "Function constructor used with string argument. This is equivalent to eval() and can execute arbitrary code.",
+    "recommendation": "Avoid the Function constructor. Refactor to use direct function definitions or safe alternatives."
+  },
+  {
+    "id": "exec-user-input",
+    "name": "Command Injection Risk",
+    "pattern": "(?:exec|execSync|spawn|spawnSync)\\s*\\([^)]*(?:\\$\\{|\\+\\s*(?:req|input|user|param|query|args|data))",
+    "type": "code_injection",
+    "riskLevel": "CRITICAL",
+    "description": "Shell command execution with potentially user-controlled input. Command injection vulnerability.",
+    "recommendation": "Use parameterized commands. Pass arguments as arrays to spawn(). Never interpolate user input into shell commands."
+  },
+  {
+    "id": "fetch-sensitive-data",
+    "name": "Data Exfiltration via Fetch",
+    "pattern": "fetch\\s*\\([^)]+\\)\\s*\\.?[\\s\\S]{0,50}(?:password|secret|token|key|credential|cookie)",
+    "type": "exfiltration",
+    "riskLevel": "HIGH",
+    "description": "Network request near sensitive data access. Potential data exfiltration attempt.",
+    "recommendation": "Review this code carefully. Ensure sensitive data is not being sent to external services."
+  },
+  {
+    "id": "env-plus-network",
+    "name": "Env Variable + Network Access",
+    "pattern": "process\\.env\\b[\\s\\S]{0,200}(?:fetch|axios|http\\.request|https\\.request|XMLHttpRequest)",
+    "type": "exfiltration",
+    "riskLevel": "MEDIUM",
+    "description": "Environment variable access near outbound network call. Could indicate secret exfiltration.",
+    "recommendation": "Verify that environment variables are not being sent to unauthorized endpoints."
+  },
+  {
+    "id": "base64-long-string",
+    "name": "Suspicious Base64 String",
+    "pattern": "['\"][A-Za-z0-9+/]{50,}={0,2}['\"]",
+    "type": "obfuscation",
+    "riskLevel": "MEDIUM",
+    "description": "Long base64-encoded string detected. May contain obfuscated code or hidden data.",
+    "recommendation": "Decode the string and inspect its contents. If it is code, refactor to use plain text."
+  },
+  {
+    "id": "hex-encoded-string",
+    "name": "Suspicious Hex-Encoded String",
+    "pattern": "['\"](?:\\\\x[0-9a-fA-F]{2}){20,}['\"]",
+    "type": "obfuscation",
+    "riskLevel": "MEDIUM",
+    "description": "Long hex-encoded string detected. May be obfuscating malicious code.",
+    "recommendation": "Decode and inspect the hex string. Replace with readable code if it is legitimate."
+  },
+  {
+    "id": "char-code-array",
+    "name": "Character Code Obfuscation",
+    "pattern": "String\\.fromCharCode\\s*\\([^)]{10,}\\)",
+    "type": "obfuscation",
+    "riskLevel": "HIGH",
+    "description": "String constructed from character codes. Common obfuscation technique in malicious code.",
+    "recommendation": "Decode the character codes and inspect the resulting string. Replace with plain text."
+  },
+  {
+    "id": "buffer-encoding",
+    "name": "Buffer with Encoding",
+    "pattern": "Buffer\\.from\\s*\\([^,]+,\\s*['\"](?:base64|hex)['\"]\\)",
+    "type": "obfuscation",
+    "riskLevel": "LOW",
+    "description": "Buffer.from() with explicit encoding. Legitimate in many cases but can be used for obfuscation.",
+    "recommendation": "Verify the encoded data is legitimate and document its purpose."
+  },
+  {
+    "id": "sensitive-file-read",
+    "name": "Sensitive File Access",
+    "pattern": "(?:readFile|readFileSync|createReadStream)\\s*\\([^)]*(?:\\.ssh|\\.aws|\\.gnupg|id_rsa|\\.env|shadow|passwd)",
+    "type": "file_access",
+    "riskLevel": "HIGH",
+    "description": "Reading from a sensitive system file or directory. May indicate credential theft.",
+    "recommendation": "Verify this file access is necessary and authorized. Use the vault for credential storage instead."
+  },
+  {
+    "id": "document-cookie",
+    "name": "Document Cookie Access",
+    "pattern": "document\\.cookie",
+    "type": "data_access",
+    "riskLevel": "MEDIUM",
+    "description": "Accessing browser cookies. Ensure cookies are not being exfiltrated.",
+    "recommendation": "Use HttpOnly cookies where possible. Avoid reading cookies in client-side JavaScript unless necessary."
+  },
+  {
+    "id": "localstorage-sensitive",
+    "name": "localStorage with Sensitive Keys",
+    "pattern": "localStorage\\.(?:get|set)Item\\s*\\([^)]*(?:token|secret|password|key|auth|session|credential)[^)]*\\)",
+    "type": "data_access",
+    "riskLevel": "MEDIUM",
+    "description": "Storing or reading sensitive data in localStorage. localStorage is not encrypted and accessible to any script.",
+    "recommendation": "Use secure, HttpOnly cookies for session tokens. Use the vault for sensitive data storage."
+  },
+  {
+    "id": "websocket-nonstandard-port",
+    "name": "WebSocket to Non-Standard Port",
+    "pattern": "new\\s+WebSocket\\s*\\([^)]*:\\d{4,5}[^)]*\\)",
+    "type": "network",
+    "riskLevel": "LOW",
+    "description": "WebSocket connection to a non-standard port. May indicate a covert communication channel.",
+    "recommendation": "Verify the WebSocket endpoint is legitimate and necessary."
+  },
+  {
+    "id": "slack-webhook",
+    "name": "Slack Webhook URL",
+    "pattern": "https://hooks\\.slack\\.com/services/T[A-Z0-9]+/B[A-Z0-9]+/[A-Za-z0-9]+",
+    "type": "secret",
+    "riskLevel": "MEDIUM",
+    "description": "Slack webhook URL detected. Can be used to post messages to Slack channels.",
+    "recommendation": "Remove from source code. Store in environment variables or secrets manager."
+  }
+]

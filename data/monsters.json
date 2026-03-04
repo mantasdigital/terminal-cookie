@@ -1,0 +1,287 @@
+{
+  "cave": [
+    {
+      "name": "Cave Bat",
+      "base_hp": 12,
+      "base_atk": 6,
+      "base_def": 3,
+      "ascii_parts": {
+        "head": [" /\\_/\\ "],
+        "body": ["( o.o )"],
+        "legs": [" > ^ < "]
+      }
+    },
+    {
+      "name": "Tunnel Spider",
+      "base_hp": 15,
+      "base_atk": 7,
+      "base_def": 4,
+      "ascii_parts": {
+        "head": ["/\\(oo)/\\"],
+        "body": ["  /||\\\\ "],
+        "legs": [" / || \\\\"]
+      }
+    },
+    {
+      "name": "Rock Slime",
+      "base_hp": 20,
+      "base_atk": 4,
+      "base_def": 6,
+      "ascii_parts": {
+        "head": ["  .--.  "],
+        "body": [" /~~~~\\ "],
+        "legs": [" '----' "]
+      }
+    },
+    {
+      "name": "Stone Troll",
+      "base_hp": 30,
+      "base_atk": 9,
+      "base_def": 7,
+      "ascii_parts": {
+        "head": ["  ___  ", " /o_o\\ "],
+        "body": [" |===| "],
+        "legs": [" /   \\ "]
+      }
+    },
+    {
+      "name": "Crystal Wyrm",
+      "base_hp": 40,
+      "base_atk": 11,
+      "base_def": 8,
+      "ascii_parts": {
+        "head": ["   /\\_) ", "  / o o\\"],
+        "body": [" /  > ^)"],
+        "legs": ["/__/ ||"]
+      }
+    }
+  ],
+  "crypt": [
+    {
+      "name": "Bone Rattler",
+      "base_hp": 14,
+      "base_atk": 7,
+      "base_def": 3,
+      "ascii_parts": {
+        "head": ["  .-.  ", " (x.x) "],
+        "body": [" /)_(\\ "],
+        "legs": [" _| |_ "]
+      }
+    },
+    {
+      "name": "Wailing Ghost",
+      "base_hp": 16,
+      "base_atk": 8,
+      "base_def": 2,
+      "ascii_parts": {
+        "head": ["  .-.  ", " (O O) "],
+        "body": [" | ~ | "],
+        "legs": [" ^~^~^ "]
+      }
+    },
+    {
+      "name": "Crypt Crawler",
+      "base_hp": 18,
+      "base_atk": 6,
+      "base_def": 5,
+      "ascii_parts": {
+        "head": [" _/\\_  "],
+        "body": ["(o  o) "],
+        "legs": ["/|/\\|\\ "]
+      }
+    },
+    {
+      "name": "Tomb Guardian",
+      "base_hp": 28,
+      "base_atk": 8,
+      "base_def": 9,
+      "ascii_parts": {
+        "head": [" [===] "],
+        "body": [" |[+]| "],
+        "legs": [" |   | "]
+      }
+    },
+    {
+      "name": "Lich Remnant",
+      "base_hp": 35,
+      "base_atk": 12,
+      "base_def": 5,
+      "ascii_parts": {
+        "head": [" /^~^\\ ", " |o o| "],
+        "body": [" |~~~| "],
+        "legs": [" /   \\ "]
+      }
+    }
+  ],
+  "forest": [
+    {
+      "name": "Timber Wolf",
+      "base_hp": 16,
+      "base_atk": 8,
+      "base_def": 4,
+      "ascii_parts": {
+        "head": ["  /\\_/\\ ", " / o o \\"],
+        "body": ["(  V   )"],
+        "legs": [" '---' "]
+      }
+    },
+    {
+      "name": "Thorn Sprite",
+      "base_hp": 10,
+      "base_atk": 6,
+      "base_def": 3,
+      "ascii_parts": {
+        "head": [" *\\ /* "],
+        "body": [" (o.o) "],
+        "legs": ["  /|\\  "]
+      }
+    },
+    {
+      "name": "Moss Bear",
+      "base_hp": 32,
+      "base_atk": 10,
+      "base_def": 6,
+      "ascii_parts": {
+        "head": [" (o  o)"],
+        "body": ["/|~~~~|\\"],
+        "legs": [" |    | "]
+      }
+    },
+    {
+      "name": "Vine Strangler",
+      "base_hp": 22,
+      "base_atk": 7,
+      "base_def": 5,
+      "ascii_parts": {
+        "head": [" ~\\/~  "],
+        "body": [" }||{  "],
+        "legs": [" ~//~  "]
+      }
+    },
+    {
+      "name": "Elder Treant",
+      "base_hp": 45,
+      "base_atk": 9,
+      "base_def": 10,
+      "ascii_parts": {
+        "head": [" /==\\  ", " |oo|  "],
+        "body": ["/|--|\\"],
+        "legs": [" |  |  "]
+      }
+    }
+  ],
+  "volcano": [
+    {
+      "name": "Lava Imp",
+      "base_hp": 13,
+      "base_atk": 8,
+      "base_def": 3,
+      "ascii_parts": {
+        "head": [" >\\./<"],
+        "body": [" (o.o)"],
+        "legs": [" /| |\\"]
+      }
+    },
+    {
+      "name": "Magma Golem",
+      "base_hp": 35,
+      "base_atk": 10,
+      "base_def": 9,
+      "ascii_parts": {
+        "head": [" [###] "],
+        "body": [" |~#~| "],
+        "legs": [" [___] "]
+      }
+    },
+    {
+      "name": "Cinder Serpent",
+      "base_hp": 20,
+      "base_atk": 9,
+      "base_def": 4,
+      "ascii_parts": {
+        "head": ["  /~>  "],
+        "body": [" /~~~\\ "],
+        "legs": [" ~~~~~  "]
+      }
+    },
+    {
+      "name": "Ash Demon",
+      "base_hp": 30,
+      "base_atk": 11,
+      "base_def": 6,
+      "ascii_parts": {
+        "head": [" /^V^\\ "],
+        "body": [" |><|| "],
+        "legs": [" /  \\ "]
+      }
+    },
+    {
+      "name": "Ember Phoenix",
+      "base_hp": 38,
+      "base_atk": 12,
+      "base_def": 5,
+      "ascii_parts": {
+        "head": [" ~\\/~  ", " (O O) "],
+        "body": ["/|~~|\\"],
+        "legs": [" ^^^^  "]
+      }
+    }
+  ],
+  "abyss": [
+    {
+      "name": "Shadow Wisp",
+      "base_hp": 11,
+      "base_atk": 7,
+      "base_def": 2,
+      "ascii_parts": {
+        "head": ["  .:.  "],
+        "body": [" :...: "],
+        "legs": ["  .:.  "]
+      }
+    },
+    {
+      "name": "Void Tentacle",
+      "base_hp": 25,
+      "base_atk": 9,
+      "base_def": 4,
+      "ascii_parts": {
+        "head": [" /\\/\\  "],
+        "body": [" |  |  "],
+        "legs": [" ~~~~  "]
+      }
+    },
+    {
+      "name": "Abyss Walker",
+      "base_hp": 28,
+      "base_atk": 10,
+      "base_def": 6,
+      "ascii_parts": {
+        "head": ["  /?\\  "],
+        "body": [" /| |\\ "],
+        "legs": [" ^ ^ "]
+      }
+    },
+    {
+      "name": "Eldritch Eye",
+      "base_hp": 22,
+      "base_atk": 11,
+      "base_def": 3,
+      "ascii_parts": {
+        "head": [" /---\\ ", " |(O)| "],
+        "body": [" \\---/ "],
+        "legs": ["  |||  "]
+      }
+    },
+    {
+      "name": "Cookie Fiend",
+      "base_hp": 40,
+      "base_atk": 13,
+      "base_def": 7,
+      "ascii_parts": {
+        "head": [" (:::) ", "/(::::)\\"],
+        "body": ["|(::::)|"],
+        "legs": [" \\:::/ "]
+      }
+    }
+  ]
+}

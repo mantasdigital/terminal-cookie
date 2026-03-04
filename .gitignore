@@ -1,0 +1,8 @@
+node_modules/
+saves/
+.cookie-vault/
+*.log
+*.log.old
+.DS_Store
+*.tmp
+.env

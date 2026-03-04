@@ -1,0 +1,155 @@
+[
+  {
+    "id": "ambush",
+    "name": "Ambush!",
+    "type": "combat",
+    "dangerLevel": 2,
+    "description": "Enemies leap from the shadows! You must fight an extra battle before you can continue.",
+    "effect": { "action": "extra_combat", "enemyCount": 1 },
+    "biomes": "all"
+  },
+  {
+    "id": "reinforcements",
+    "name": "Enemy Reinforcements",
+    "type": "combat",
+    "dangerLevel": 2,
+    "description": "A horn blasts in the distance. Your current enemies call for backup mid-fight!",
+    "effect": { "action": "add_enemies", "extraEnemies": 1 },
+    "biomes": "all"
+  },
+  {
+    "id": "cave_in",
+    "name": "Cave-In!",
+    "type": "environmental",
+    "dangerLevel": 2,
+    "description": "The ceiling rumbles and begins to collapse! Make a dodge roll or take damage.",
+    "effect": { "action": "skill_check", "stat": "agility", "failDamage": 15, "successText": "You dive clear of the falling rocks!" },
+    "biomes": ["cave", "crypt"]
+  },
+  {
+    "id": "flood",
+    "name": "Flash Flood",
+    "type": "environmental",
+    "dangerLevel": 2,
+    "description": "Water surges through the corridor! Flee or be swept away.",
+    "effect": { "action": "skill_check", "stat": "speed", "failDamage": 20, "successText": "You scramble to high ground just in time!" },
+    "biomes": ["cave", "forest"]
+  },
+  {
+    "id": "earthquake",
+    "name": "Tectonic Shift",
+    "type": "environmental",
+    "dangerLevel": 1,
+    "description": "The ground shakes violently! The dungeon layout shifts around you.",
+    "effect": { "action": "shuffle_rooms" },
+    "biomes": ["volcano", "abyss", "cave"]
+  },
+  {
+    "id": "hidden_cache",
+    "name": "Hidden Cache",
+    "type": "beneficial",
+    "dangerLevel": 0,
+    "description": "You discover a hidden stash behind a loose stone! Free loot with no strings attached.",
+    "effect": { "action": "grant_loot", "rolls": 2 },
+    "biomes": "all"
+  },
+  {
+    "id": "wandering_healer",
+    "name": "Wandering Healer",
+    "type": "beneficial",
+    "dangerLevel": 0,
+    "description": "A cloaked figure offers to mend your wounds. Their hands glow with warm light.",
+    "effect": { "action": "heal", "amount": 30 },
+    "biomes": ["forest", "crypt", "cave"]
+  },
+  {
+    "id": "blessing_shrine",
+    "name": "Blessing Shrine",
+    "type": "beneficial",
+    "dangerLevel": 0,
+    "description": "An ancient shrine hums with power. Touch it to receive a temporary blessing.",
+    "effect": { "action": "buff", "stat": "all", "bonus": 5, "duration": 3 },
+    "biomes": ["crypt", "forest", "cave"]
+  },
+  {
+    "id": "merchant",
+    "name": "Traveling Merchant",
+    "type": "social",
+    "dangerLevel": 0,
+    "description": "A merchant appears, impossibly dragging a cart full of wares through the dungeon.",
+    "effect": { "action": "shop", "priceMultiplier": 1.5 },
+    "biomes": "all"
+  },
+  {
+    "id": "mysterious_stranger",
+    "name": "Mysterious Stranger",
+    "type": "social",
+    "dangerLevel": 1,
+    "description": "A hooded figure steps from the shadows. They offer you a gift... but can you trust them?",
+    "effect": { "action": "random_gift_or_curse", "giftChance": 0.6 },
+    "biomes": "all"
+  },
+  {
+    "id": "rival_adventurer",
+    "name": "Rival Adventurer",
+    "type": "social",
+    "dangerLevel": 2,
+    "description": "Another dungeon delver blocks your path and challenges you to a duel for bragging rights!",
+    "effect": { "action": "duel", "rewardCrumbs": 50 },
+    "biomes": "all"
+  },
+  {
+    "id": "golden_cookie",
+    "name": "Golden Cookie!",
+    "type": "cookie",
+    "dangerLevel": 0,
+    "description": "A radiant golden cookie materializes before you, pulsing with concentrated crumb energy!",
+    "effect": { "action": "grant_crumbs", "multiplier": 10 },
+    "biomes": "all"
+  },
+  {
+    "id": "cursed_cookie",
+    "name": "Cursed Cookie",
+    "type": "cookie",
+    "dangerLevel": 1,
+    "description": "A dark, pulsating cookie oozes malice. Eating it would be unwise... but it smells amazing.",
+    "effect": { "action": "debuff", "stat": "defense", "penalty": 5, "duration": 3 },
+    "biomes": ["crypt", "abyss"]
+  },
+  {
+    "id": "cookie_rain",
+    "name": "Cookie Rain",
+    "type": "cookie",
+    "dangerLevel": 0,
+    "description": "Cookies fall from above like confetti! Everyone grabs handfuls of crumbs.",
+    "effect": { "action": "grant_crumbs", "multiplier": 3 },
+    "biomes": "all"
+  },
+  {
+    "id": "lava_surge",
+    "name": "Lava Surge",
+    "type": "environmental",
+    "dangerLevel": 3,
+    "description": "Molten rock erupts through cracks in the floor! The room is flooding with lava!",
+    "effect": { "action": "skill_check", "stat": "speed", "failDamage": 30, "successText": "You leap across the rising lava just in time!" },
+    "biomes": ["volcano"]
+  },
+  {
+    "id": "void_rift",
+    "name": "Void Rift",
+    "type": "environmental",
+    "dangerLevel": 3,
+    "description": "Reality tears open, revealing a swirling portal to nothingness. It pulls at you with immense force.",
+    "effect": { "action": "skill_check", "stat": "strength", "failDamage": 25, "successText": "You anchor yourself and resist the pull of the void!" },
+    "biomes": ["abyss"]
+  },
+  {
+    "id": "fairy_circle",
+    "name": "Fairy Circle",
+    "type": "beneficial",
+    "dangerLevel": 0,
+    "description": "You stumble into a ring of glowing mushrooms. The fairies here offer a rare boon.",
+    "effect": { "action": "full_heal" },
+    "biomes": ["forest"]
+  }
+]

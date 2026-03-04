@@ -1,0 +1,63 @@
+{
+  "bases": {
+    "weapon": [
+      { "name": "Sword", "base_power": 5, "stat": "atk" },
+      { "name": "Axe", "base_power": 6, "stat": "atk" },
+      { "name": "Dagger", "base_power": 4, "stat": "spd" },
+      { "name": "Staff", "base_power": 5, "stat": "atk" },
+      { "name": "Bow", "base_power": 5, "stat": "spd" },
+      { "name": "Hammer", "base_power": 7, "stat": "atk" },
+      { "name": "Spear", "base_power": 5, "stat": "atk" },
+      { "name": "Wand", "base_power": 4, "stat": "lck" }
+    ],
+    "armor": [
+      { "name": "Leather Vest", "base_power": 4, "stat": "def" },
+      { "name": "Chain Mail", "base_power": 6, "stat": "def" },
+      { "name": "Plate Armor", "base_power": 8, "stat": "def" },
+      { "name": "Robe", "base_power": 3, "stat": "def" },
+      { "name": "Scale Mail", "base_power": 5, "stat": "def" },
+      { "name": "Cloak", "base_power": 3, "stat": "spd" }
+    ],
+    "accessory": [
+      { "name": "Ring", "base_power": 3, "stat": "lck" },
+      { "name": "Amulet", "base_power": 3, "stat": "hp" },
+      { "name": "Belt", "base_power": 3, "stat": "def" },
+      { "name": "Boots", "base_power": 3, "stat": "spd" },
+      { "name": "Gloves", "base_power": 3, "stat": "atk" },
+      { "name": "Charm", "base_power": 2, "stat": "lck" }
+    ],
+    "consumable": [
+      { "name": "Health Cookie", "base_power": 15, "stat": "hp", "effect": "heal" },
+      { "name": "Power Cookie", "base_power": 5, "stat": "atk", "effect": "buff_atk" },
+      { "name": "Shield Cookie", "base_power": 5, "stat": "def", "effect": "buff_def" },
+      { "name": "Swift Cookie", "base_power": 5, "stat": "spd", "effect": "buff_spd" },
+      { "name": "Lucky Cookie", "base_power": 5, "stat": "lck", "effect": "buff_lck" },
+      { "name": "Antidote Cookie", "base_power": 0, "stat": "hp", "effect": "cure_poison" }
+    ]
+  },
+  "prefixes": [
+    { "name": "Rusty", "min_level": 1, "power_bonus": 0, "tier": 0 },
+    { "name": "Worn", "min_level": 1, "power_bonus": 1, "tier": 1 },
+    { "name": "Sturdy", "min_level": 3, "power_bonus": 2, "tier": 2 },
+    { "name": "Fine", "min_level": 5, "power_bonus": 3, "tier": 3 },
+    { "name": "Superior", "min_level": 8, "power_bonus": 5, "tier": 4 },
+    { "name": "Masterwork", "min_level": 12, "power_bonus": 7, "tier": 5 },
+    { "name": "Enchanted", "min_level": 16, "power_bonus": 10, "tier": 6 },
+    { "name": "Legendary", "min_level": 20, "power_bonus": 14, "tier": 7 },
+    { "name": "Mythic", "min_level": 25, "power_bonus": 18, "tier": 8 }
+  ],
+  "suffixes": [
+    { "name": "of the Bear", "stat": "hp", "bonus": 3, "description": "+HP" },
+    { "name": "of Swiftness", "stat": "spd", "bonus": 3, "description": "+dodge" },
+    { "name": "of Fortune", "stat": "lck", "bonus": 3, "description": "+loot" },
+    { "name": "of Flames", "stat": "atk", "bonus": 3, "description": "+fire" },
+    { "name": "of the Cookie", "stat": "lck", "bonus": 2, "description": "+crumbs", "crumb_bonus": 0.1 }
+  ],
+  "rarities": [
+    { "name": "Common", "weight": 50, "multiplier": 1.0, "color": "white" },
+    { "name": "Uncommon", "weight": 30, "multiplier": 1.3, "color": "green" },
+    { "name": "Rare", "weight": 15, "multiplier": 1.6, "color": "blue" },
+    { "name": "Epic", "weight": 4, "multiplier": 2.0, "color": "magenta" },
+    { "name": "Legendary", "weight": 1, "multiplier": 3.0, "color": "yellow" }
+  ]
+}

@@ -1,0 +1,76 @@
+[
+  {
+    "id": "cave",
+    "name": "Darkstone Caverns",
+    "description": "A labyrinth of obsidian tunnels carved by ancient rivers. The air tastes of iron and forgotten time. Bioluminescent fungi cast an eerie teal glow across dripping walls.",
+    "flavorTexts": [
+      "Water drips from stalactites in a rhythm that almost sounds intentional.",
+      "Your torchlight catches something glinting in the rock face. Fool's gold... or is it?",
+      "A cave-in blocked the passage ahead. You'll need to find another way around.",
+      "The ground here is littered with cookie crumbs. Someone -- or something -- was here before you.",
+      "A bat swoops past your ear. In its talons, you spot a half-eaten chocolate chip cookie."
+    ],
+    "enemyPool": ["bat", "spider", "slime", "troll", "dragon"],
+    "curses": ["darkness", "poison_air"],
+    "colors": { "primary": "gray", "accent": "brown" }
+  },
+  {
+    "id": "crypt",
+    "name": "Forgotten Catacombs",
+    "description": "Endless corridors of carved stone coffins stretch into darkness. The walls are etched with warnings in dead languages. A cold wind blows from nowhere, carrying whispers of those interred within.",
+    "flavorTexts": [
+      "A coffin lid slides open with a groan. It's empty... but still warm.",
+      "Names are scratched into the walls by fingernails. You try not to read them.",
+      "You step on something that crunches. Just an old cookie, thankfully.",
+      "The candles along the wall flicker in unison, as if breathing.",
+      "A ghostly figure drifts past, mumbling about its lost recipe for snickerdoodles."
+    ],
+    "enemyPool": ["skeleton", "ghost", "zombie", "lich", "wraith"],
+    "curses": ["silence", "darkness"],
+    "colors": { "primary": "purple", "accent": "white" }
+  },
+  {
+    "id": "forest",
+    "name": "Whispering Wilds",
+    "description": "A dense primeval forest where the canopy blocks all but thin shafts of emerald light. The trees here are ancient and watchful, their roots hiding treasures and terrors in equal measure.",
+    "flavorTexts": [
+      "The trees groan and sway despite the absence of wind.",
+      "You find a trail of gingerbread crumbs leading deeper into the woods.",
+      "A bird calls out a melody that sounds suspiciously like a warning siren.",
+      "Mushrooms here grow in perfect circles. The fairies do not appreciate trespassers."
+    ],
+    "enemyPool": ["wolf", "bear", "treant", "bandit", "fairy"],
+    "curses": ["thorns", "fog"],
+    "colors": { "primary": "green", "accent": "brown" }
+  },
+  {
+    "id": "volcano",
+    "name": "Cinderforge Caldera",
+    "description": "A volcanic hellscape of cracked obsidian, rivers of molten sugar, and air that shimmers with heat. The ground itself pulses like a heartbeat, and everything smells of burnt caramel.",
+    "flavorTexts": [
+      "A geyser of molten chocolate erupts nearby. Delicious, but deadly.",
+      "The heat here could bake a thousand cookies in seconds. You press on.",
+      "Lava flows carve channels through the rock, forming glowing orange veins.",
+      "An imp sits on a rock, roasting marshmallows over a lava vent. It hisses at you.",
+      "The ground trembles. Something massive shifts beneath the caldera floor."
+    ],
+    "enemyPool": ["imp", "magma_golem", "fire_serpent", "demon", "phoenix"],
+    "curses": ["heat", "tremors"],
+    "colors": { "primary": "red", "accent": "orange" }
+  },
+  {
+    "id": "abyss",
+    "name": "The Crumbling Abyss",
+    "description": "A void between worlds where geometry bends and reality thins. Floating islands of stone drift through an endless purple darkness. The laws of physics are more like suggestions here.",
+    "flavorTexts": [
+      "You look down and see yourself looking up. Best not to think about it.",
+      "A door stands alone in empty space. It opens to another door. And another.",
+      "The darkness here has weight. It presses against you like deep water.",
+      "A cookie floats past, spinning slowly. It is perfectly baked. Suspiciously so.",
+      "Reality hiccups. For a moment, everything is made of cookie dough. Then it snaps back."
+    ],
+    "enemyPool": ["shadow", "tentacle", "void_walker", "eldritch", "cookie_monster"],
+    "curses": ["gravity", "madness"],
+    "colors": { "primary": "purple", "accent": "black" }
+  }
+]
