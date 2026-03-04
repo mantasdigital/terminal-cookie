@@ -58,9 +58,23 @@ npm start
 
 The game will take over your terminal screen. You should see the main menu.
 
-**That's it -- you're playing!**
+**That's it -- you're playing the terminal version!**
 
 > **Tip:** To quit the game at any time, press `Q` on the main menu or `Ctrl+C` anywhere.
+
+### Step 5: Connect to Claude (optional but recommended)
+
+Terminal Cookie can also be played through Claude AI. Claude clicks cookies, recruits heroes, and explores dungeons for you -- with unique reactions every time.
+
+Run this command to register the game as a Claude tool (paste your actual path from Step 2):
+
+```bash
+claude mcp add terminal-cookie -- node /YOUR/PATH/HERE/bin/cookie.js --mcp
+```
+
+Then open Claude Code and say `"Click the cookie"` to start playing through AI.
+
+> **Want the full setup guide?** See [Playing with Claude AI](#playing-with-claude-ai) below for detailed instructions, Claude Desktop setup, troubleshooting, and the multi-terminal mining bonus.
 
 ---
 
