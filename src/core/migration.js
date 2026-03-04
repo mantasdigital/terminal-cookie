@@ -4,7 +4,7 @@
  */
 
 /** Current save format version. */
-export const CURRENT_VERSION = 1;
+export const CURRENT_VERSION = 2;
 
 /** @type {Map<string, {toVersion: number, fn: function}>} */
 const migrations = new Map();
@@ -75,5 +75,21 @@ registerMigration(0, 1, (data) => {
       monstersSlain: 0,
       ...(data.stats ?? {}),
     },
+  };
+});
+
+/** v1 → v2: add passive mode fields for MCP background runner. */
+registerMigration(1, 2, (data) => {
+  return {
+    ...data,
+    version: 2,
+    passiveConfig: data.passiveConfig ?? {
+      tickIntervalMs: 15000,
+      autoLoot: true,
+      autoSell: false,
+    },
+    pendingActions: data.pendingActions ?? [],
+    passiveLog: data.passiveLog ?? [],
+    totalToolCalls: data.totalToolCalls ?? 0,
   };
 });

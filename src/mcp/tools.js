@@ -3,6 +3,10 @@
 import { masterCookie, miniCookie, trashCookie, explodeCookie, titleScreen, rollBar } from '../ui/ascii.js';
 import { createScanner } from '../security/scanner.js';
 import { createRedactor } from '../security/redactor.js';
+import { classifyPrompt } from '../prompts/classifier.js';
+import { generateTavernRoster } from '../game/team.js';
+import { equipItem, canEquip } from '../game/loot.js';
+import { generateDungeon } from '../game/dungeon.js';
 
 const scanner = createScanner();
 const redactor = createRedactor();
@@ -23,7 +27,7 @@ export function defineTools() {
       },
       handler(params, ctx) {
         const { engine, cookie, scores, settings } = ctx;
-        const state = engine.getState();
+        const state = engine.getStateRef();
         const earned = cookie.click();
         const bonuses = settings.getBonuses();
         const bonus = Math.floor(earned * (bonuses.crumbMultiplier - 1));
@@ -143,7 +147,7 @@ export function defineTools() {
       },
       handler(params, ctx) {
         const { engine } = ctx;
-        const state = engine.getState();
+        const state = engine.getStateRef();
 
         if (!state.team || state.team.length === 0) {
           return {
@@ -161,37 +165,38 @@ export function defineTools() {
         }
 
         const level = params.dungeon_level;
+        const seed = state.seed || Date.now();
 
-        // Initialize dungeon progress
-        const dungeonState = {
-          level,
-          currentRoom: 0,
-          roomsCleared: 0,
-          totalRooms: 3 + level,
-          started: new Date().toISOString(),
-        };
+        // Generate a full dungeon with rooms, biome, connections
+        const dungeon = generateDungeon({ level, seed: seed + (state.stats.runs || 0) });
+        dungeon.roomsCleared = 0;
+        dungeon.started = new Date().toISOString();
 
-        // Update state via engine context
-        if (ctx.setDungeon) ctx.setDungeon(dungeonState);
+        // Set as active dungeon
+        state.dungeonProgress = dungeon;
 
+        const totalRooms = dungeon.rooms.length;
         const lines = [
           `  ===== ENTERING DUNGEON =====`,
           `  Level: ${level}`,
-          `  Rooms: ${dungeonState.totalRooms}`,
+          `  Biome: ${dungeon.biomeName}`,
+          `  Rooms: ${totalRooms}`,
+          dungeon.curses.length > 0 ? `  Curses: ${dungeon.curses.join(', ')}` : '',
           '',
           `  Your team of ${aliveMembers.length} ventures into the depths...`,
           '',
           `  ${aliveMembers.map(m => m.name).join(', ')}`,
           '',
-          `  Room 1/${dungeonState.totalRooms}: The entrance looms before you.`,
-          `  Dark corridors stretch in every direction.`,
+          `  Room 1/${totalRooms}: The entrance looms before you.`,
+          `  ${dungeon.biomeDescription || 'Dark corridors stretch in every direction.'}`,
           '',
-          '  Use cookie_roll to interact with the dungeon.',
+          '  Dungeon will auto-advance in the background.',
+          '  Use cookie_status to check progress, cookie_pending for actions.',
           '  ============================',
         ];
 
         return {
-          content: [{ type: 'text', text: lines.join('\n') }],
+          content: [{ type: 'text', text: lines.filter(l => l !== '').join('\n') }],
         };
       },
     },
@@ -407,7 +412,7 @@ export function defineTools() {
       },
       handler(params, ctx) {
         const { engine, scores } = ctx;
-        const state = engine.getState();
+        const state = engine.getStateRef();
 
         // Award crumbs for responding to prompts
         const crumbReward = 5;
@@ -582,6 +587,314 @@ export function defineTools() {
     },
 
     {
+      name: 'cookie_intercept',
+      description: 'Send your prompt text through the cookie filter. Get a cookie-themed version back and earn crumbs based on prompt complexity.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          prompt_text: {
+            type: 'string',
+            description: 'The prompt text to cookie-ify',
+          },
+        },
+        required: ['prompt_text'],
+        additionalProperties: false,
+      },
+      handler(params, ctx) {
+        const { engine, scores } = ctx;
+        const state = engine.getStateRef();
+        const text = params.prompt_text || '';
+
+        const classification = classifyPrompt(text);
+        const wordCount = text.split(/\s+/).filter(w => w.length > 0).length;
+
+        // Crumbs based on complexity
+        let crumbReward = Math.max(1, Math.floor(wordCount / 5));
+        if (classification.confidence > 0.7) crumbReward += 3;
+        if (classification.type === 'code_review') crumbReward += 5;
+        if (classification.type === 'permission') crumbReward += 2;
+
+        state.crumbs += crumbReward;
+        state.stats.crumbsEarned = (state.stats.crumbsEarned || 0) + crumbReward;
+        scores.increment('total_crumbs_earned', crumbReward);
+
+        // Cookie-themed response
+        const cookieWords = ['crumbly', 'buttery', 'crispy', 'golden', 'freshly-baked', 'sugar-coated'];
+        const adj = cookieWords[Math.abs(text.length) % cookieWords.length];
+
+        const lines = [
+          `  === COOKIE INTERCEPT ===`,
+          `  Type: ${classification.type} (${(classification.confidence * 100).toFixed(0)}% confidence)`,
+          `  Words: ${wordCount}`,
+          `  +${crumbReward} crumbs earned!`,
+          '',
+          `  The Cookie Oracle says: "A ${adj} prompt indeed."`,
+          '',
+          miniCookie(),
+          '  ========================',
+        ];
+
+        return {
+          content: [{ type: 'text', text: lines.join('\n') }],
+        };
+      },
+    },
+
+    {
+      name: 'cookie_pending',
+      description: 'List and resolve pending actions from passive dungeon exploration. Without params: list all. With action_id + choice: resolve one.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          action_id: {
+            type: 'string',
+            description: 'ID of the pending action to resolve',
+          },
+          choice: {
+            type: 'string',
+            description: 'Your choice for the pending action',
+          },
+        },
+        additionalProperties: false,
+      },
+      handler(params, ctx) {
+        const { engine, passiveRunner } = ctx;
+        const state = engine.getStateRef();
+
+        // Resolve mode
+        if (params.action_id && params.choice) {
+          if (!passiveRunner) {
+            return { content: [{ type: 'text', text: 'Passive runner not available.' }], isError: true };
+          }
+          const result = passiveRunner.resolvePending(params.action_id, params.choice);
+          if (result.error) {
+            return { content: [{ type: 'text', text: `Error: ${result.error}` }], isError: true };
+          }
+          const lines = [`  Action resolved: ${result.result}`];
+          if (result.log) {
+            lines.push('', '  Combat log:', ...result.log.map(l => `    ${l}`));
+          }
+          return { content: [{ type: 'text', text: lines.join('\n') }] };
+        }
+
+        // List mode
+        const pending = state.pendingActions || [];
+        if (pending.length === 0) {
+          return { content: [{ type: 'text', text: '  No pending actions.' }] };
+        }
+
+        const lines = [
+          `  === PENDING ACTIONS (${pending.length}) ===`,
+          '',
+        ];
+        for (const action of pending) {
+          lines.push(`  [${action.id}] ${action.type}: ${action.description}`);
+          lines.push(`    Choices: ${action.choices.join(', ')}`);
+          lines.push('');
+        }
+        lines.push('  Use cookie_pending with action_id + choice to resolve.');
+        lines.push('  ==============================');
+
+        return { content: [{ type: 'text', text: lines.join('\n') }] };
+      },
+    },
+
+    {
+      name: 'cookie_dungeon_config',
+      description: 'Configure passive dungeon settings: tick interval, auto-loot, auto-sell.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          tick_interval: {
+            type: 'number',
+            description: 'Seconds between auto room advances (5-120)',
+            minimum: 5,
+            maximum: 120,
+          },
+          auto_loot: {
+            type: 'boolean',
+            description: 'Automatically pick up loot',
+          },
+          auto_sell: {
+            type: 'boolean',
+            description: 'Automatically sell loot for crumbs',
+          },
+        },
+        additionalProperties: false,
+      },
+      handler(params, ctx) {
+        const { engine, passiveRunner } = ctx;
+        const state = engine.getStateRef();
+
+        if (!state.passiveConfig) {
+          state.passiveConfig = { tickIntervalMs: 15000, autoLoot: true, autoSell: false };
+        }
+
+        if (params.tick_interval !== undefined) {
+          state.passiveConfig.tickIntervalMs = params.tick_interval * 1000;
+          if (passiveRunner) passiveRunner.restart();
+        }
+        if (params.auto_loot !== undefined) {
+          state.passiveConfig.autoLoot = params.auto_loot;
+        }
+        if (params.auto_sell !== undefined) {
+          state.passiveConfig.autoSell = params.auto_sell;
+        }
+
+        const lines = [
+          '  === DUNGEON CONFIG ===',
+          `  Tick interval: ${state.passiveConfig.tickIntervalMs / 1000}s`,
+          `  Auto-loot:     ${state.passiveConfig.autoLoot ? 'ON' : 'OFF'}`,
+          `  Auto-sell:     ${state.passiveConfig.autoSell ? 'ON' : 'OFF'}`,
+          '  ======================',
+        ];
+
+        return { content: [{ type: 'text', text: lines.join('\n') }] };
+      },
+    },
+
+    {
+      name: 'cookie_tavern',
+      description: 'Visit the tavern to view recruits, recruit a member, or refresh the roster.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          action: {
+            type: 'string',
+            description: 'Action: "view" (default), "recruit", or "refresh"',
+            enum: ['view', 'recruit', 'refresh'],
+          },
+          index: {
+            type: 'number',
+            description: 'Index of the recruit to hire (1-based, for recruit action)',
+            minimum: 1,
+          },
+        },
+        additionalProperties: false,
+      },
+      handler(params, ctx) {
+        const { engine } = ctx;
+        const state = engine.getStateRef();
+        const rng = engine.rng;
+        const action = params.action || 'view';
+
+        // Initialize roster if needed
+        if (!state._tavernRoster || state._tavernRoster.length === 0) {
+          state._tavernRoster = generateTavernRoster(rng);
+        }
+
+        if (action === 'refresh') {
+          state._tavernRoster = generateTavernRoster(rng);
+          return { content: [{ type: 'text', text: '  Tavern roster refreshed! Use cookie_tavern to view.' }] };
+        }
+
+        if (action === 'recruit') {
+          const idx = (params.index || 1) - 1;
+          const roster = state._tavernRoster;
+          if (idx < 0 || idx >= roster.length) {
+            return { content: [{ type: 'text', text: `  Invalid index. Roster has ${roster.length} recruits.` }], isError: true };
+          }
+          const recruit = roster[idx];
+          if (state.crumbs < recruit.cost) {
+            return { content: [{ type: 'text', text: `  Not enough crumbs! Need ${recruit.cost}, have ${state.crumbs}.` }], isError: true };
+          }
+          state.crumbs -= recruit.cost;
+          state.team.push(recruit);
+          roster.splice(idx, 1);
+
+          const lines = [
+            `  Recruited ${recruit.name}!`,
+            `  ${recruit.race} ${recruit.class} | HP: ${recruit.maxHp} | ATK: ${recruit.stats.atk} | DEF: ${recruit.stats.def}`,
+            `  Cost: ${recruit.cost} crumbs | Remaining: ${state.crumbs}`,
+          ];
+          return { content: [{ type: 'text', text: lines.join('\n') }] };
+        }
+
+        // View
+        const roster = state._tavernRoster;
+        const lines = [
+          '  === THE CRUMBY TAVERN ===',
+          `  Your crumbs: ${state.crumbs}`,
+          '',
+        ];
+
+        roster.forEach((m, i) => {
+          lines.push(`  ${i + 1}. ${m.name} [${m.race} ${m.class}] - ${m.personality}`);
+          lines.push(`     HP:${m.maxHp} ATK:${m.stats.atk} DEF:${m.stats.def} SPD:${m.stats.spd} LCK:${m.stats.lck}`);
+          lines.push(`     Abilities: ${m.abilities.join(', ')}`);
+          lines.push(`     Cost: ${m.cost} crumbs`);
+          lines.push('');
+        });
+
+        lines.push(`  Team size: ${state.team.length}`);
+        lines.push('  Use cookie_tavern with action "recruit" and index to hire.');
+        lines.push('  ==========================');
+
+        return { content: [{ type: 'text', text: lines.join('\n') }] };
+      },
+    },
+
+    {
+      name: 'cookie_equip',
+      description: 'Equip an inventory item to a team member.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          item_index: {
+            type: 'number',
+            description: 'Inventory item index (1-based)',
+            minimum: 1,
+          },
+          member_index: {
+            type: 'number',
+            description: 'Team member index (1-based)',
+            minimum: 1,
+          },
+        },
+        required: ['item_index', 'member_index'],
+        additionalProperties: false,
+      },
+      handler(params, ctx) {
+        const { engine } = ctx;
+        const state = engine.getStateRef();
+
+        const itemIdx = params.item_index - 1;
+        const memberIdx = params.member_index - 1;
+
+        if (!state.inventory || itemIdx < 0 || itemIdx >= state.inventory.length) {
+          return { content: [{ type: 'text', text: `  Invalid item index. Inventory has ${(state.inventory || []).length} items.` }], isError: true };
+        }
+        if (!state.team || memberIdx < 0 || memberIdx >= state.team.length) {
+          return { content: [{ type: 'text', text: `  Invalid member index. Team has ${(state.team || []).length} members.` }], isError: true };
+        }
+
+        const item = state.inventory[itemIdx];
+        const member = state.team[memberIdx];
+
+        if (!canEquip(member, item)) {
+          return { content: [{ type: 'text', text: `  ${member.name} cannot equip ${item.name} (requires level ${item.requiredLevel}).` }], isError: true };
+        }
+
+        const previous = equipItem(member, item);
+        // Remove from inventory
+        state.inventory.splice(itemIdx, 1);
+        // Add previous item back if any
+        if (previous) state.inventory.push(previous);
+
+        const lines = [
+          `  ${member.name} equipped ${item.name} [${item.rarity}]!`,
+          `  Slot: ${item.slot}`,
+          `  Stats: ${Object.entries(item.statBonus || {}).map(([k, v]) => `${k}:+${v}`).join(' ')}`,
+        ];
+        if (previous) {
+          lines.push(`  Unequipped: ${previous.name}`);
+        }
+
+        return { content: [{ type: 'text', text: lines.join('\n') }] };
+      },
+    },
+
+    {
       name: 'cookie_help',
       description: 'Get a list of available commands and current game state.',
       inputSchema: {
@@ -604,6 +917,13 @@ export function defineTools() {
           '    cookie_roll      - Roll a d20',
           '    cookie_inventory - View loot and equipment',
           '    cookie_respond   - Answer an AI prompt',
+          '',
+          '  Passive Mode:',
+          '    cookie_intercept     - Filter prompt text for crumbs',
+          '    cookie_pending       - View/resolve pending actions',
+          '    cookie_dungeon_config - Configure tick interval, auto-loot',
+          '    cookie_tavern        - Recruit team members',
+          '    cookie_equip         - Equip items to team members',
           '',
           '  Save/Load:',
           '    cookie_save      - Save game (slot 1-3)',

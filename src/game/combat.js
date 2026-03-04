@@ -185,6 +185,25 @@ export function createCombat({ team, enemies, rng }) {
     get round() { return round; },
     /** @returns {string[]} Combat log entries */
     get log() { return [...log]; },
+    /**
+     * Auto-resolve all remaining rounds to completion.
+     * @param {number} [maxTurns=200] - Safety limit
+     * @returns {{ outcome: string, rounds: number, log: string[] }}
+     */
+    autoResolveAll(maxTurns = 200) {
+      let turns = 0;
+      while (!finished && turns < maxTurns) {
+        const result = combat.autoAttack();
+        if (result.error) break;
+        turns++;
+      }
+      const teamAlive = turnOrder.some(c => c.side === 'team' && c.currentHp > 0);
+      const outcome = finished
+        ? (teamAlive ? 'victory' : 'defeat')
+        : 'stalemate';
+      return { outcome, rounds: round, log: [...log] };
+    },
+
     /** @returns {object[]} All combatants with current state */
     get combatants() { return turnOrder; },
   };

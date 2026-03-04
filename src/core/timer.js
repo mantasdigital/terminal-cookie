@@ -96,6 +96,15 @@ export function createScheduler(gameState) {
     get isPaused() {
       return paused;
     },
+
+    /**
+     * Returns ms until the next scheduled event fires, or null if queue is empty.
+     * @returns {number|null}
+     */
+    nextEventIn() {
+      if (queue.length === 0) return null;
+      return Math.max(0, queue[0].fireAt - Date.now());
+    },
   };
 
   return scheduler;

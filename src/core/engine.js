@@ -24,14 +24,14 @@ export const GameState = Object.freeze({
  * @type {Record<string, string[]>}
  */
 const TRANSITIONS = {
-  [GameState.MENU]:     [GameState.TAVERN, GameState.SETTINGS, GameState.HELP],
-  [GameState.TAVERN]:   [GameState.DUNGEON, GameState.SETTINGS, GameState.MENU],
-  [GameState.DUNGEON]:  [GameState.COMBAT, GameState.LOOT, GameState.TAVERN, GameState.DEATH],
-  [GameState.COMBAT]:   [GameState.LOOT, GameState.DEATH, GameState.DUNGEON],
-  [GameState.LOOT]:     [GameState.DUNGEON, GameState.TAVERN],
+  [GameState.MENU]:     [GameState.TAVERN, GameState.DUNGEON, GameState.SETTINGS, GameState.HELP],
+  [GameState.TAVERN]:   [GameState.DUNGEON, GameState.COMBAT, GameState.SETTINGS, GameState.MENU],
+  [GameState.DUNGEON]:  [GameState.COMBAT, GameState.LOOT, GameState.TAVERN, GameState.DEATH, GameState.MENU],
+  [GameState.COMBAT]:   [GameState.LOOT, GameState.DEATH, GameState.DUNGEON, GameState.TAVERN],
+  [GameState.LOOT]:     [GameState.DUNGEON, GameState.TAVERN, GameState.COMBAT],
   [GameState.DEATH]:    [GameState.MENU, GameState.TAVERN],
-  [GameState.SETTINGS]: [GameState.MENU, GameState.TAVERN],
-  [GameState.HELP]:     [GameState.MENU, GameState.TAVERN],
+  [GameState.SETTINGS]: [GameState.MENU, GameState.TAVERN, GameState.DUNGEON],
+  [GameState.HELP]:     [GameState.MENU, GameState.TAVERN, GameState.DUNGEON],
 };
 
 /**
@@ -58,6 +58,15 @@ function defaultGameState(seed) {
       crumbsEarned: 0,
       monstersSlain: 0,
     },
+    // Passive mode fields (used by MCP server)
+    passiveConfig: {
+      tickIntervalMs: 15000,
+      autoLoot: true,
+      autoSell: false,
+    },
+    pendingActions: [],
+    passiveLog: [],
+    totalToolCalls: 0,
   };
 }
 
@@ -160,6 +169,14 @@ export function createEngine(options = {}) {
       } catch {
         // Best-effort save on shutdown
       }
+    },
+
+    /**
+     * Get the actual mutable state reference. Used by MCP server for direct mutation.
+     * @returns {object}
+     */
+    getStateRef() {
+      return state;
     },
 
     /** Expose sub-systems for modules that need them. */
