@@ -517,6 +517,14 @@ Open settings in-game by pressing `S` from the Tavern. Use `Up`/`Down` to naviga
 
 Compare your scores with other players through a git-native leaderboard system. No accounts, no servers — just git.
 
+<!-- LEADERBOARD:START -->
+| # | Player | Org | Dungeons | Level | Clicks | Crumbs |
+|---|--------|-----|----------|-------|--------|--------|
+| | *No scores yet — be the first!* | | | | | |
+<!-- LEADERBOARD:END -->
+
+> Leaderboard auto-updates when the repo owner runs `node bin/cookie.js --update-readme` after merging submissions.
+
 ### View the Leaderboard
 
 Three ways to see the leaderboard:
@@ -593,6 +601,7 @@ Options:
   --leaderboard       Show the community leaderboard
   --submit-score      Submit your score to the leaderboard via git
   --merge-leaderboard Merge approved submissions into the leaderboard (repo owner)
+  --update-readme     Update README.md leaderboard table from data (repo owner)
   --version           Print version number
   --help              Show help message
 ```

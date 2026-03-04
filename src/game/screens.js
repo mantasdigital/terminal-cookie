@@ -14,7 +14,9 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __screens_dirname = dirname(fileURLToPath(import.meta.url));
-const SESSIONS_PATH = join(__screens_dirname, '..', '..', 'data', 'sessions.json');
+const PROJECT_ROOT = join(__screens_dirname, '..', '..');
+const SESSIONS_PATH = join(PROJECT_ROOT, 'data', 'sessions.json');
+const COOKIE_BIN = join(PROJECT_ROOT, 'bin', 'cookie.js');
 const SESSION_TTL_MS = 60_000;
 
 // Cache leaderboard data once at import time
@@ -136,8 +138,9 @@ const menuScreen = {
       renderer.bufferWrite(aiRow, 0, renderer.centerText(renderer.color(aiLabel, 'green'), cols));
     } else {
       renderer.bufferWrite(aiRow, 0, renderer.centerText(renderer.dim('Claude AI: not connected'), cols));
-      renderer.bufferWrite(aiRow + 1, 0, renderer.centerText(renderer.dim('Connect: claude mcp add terminal-cookie -- node bin/cookie.js --mcp'), cols));
-      renderer.bufferWrite(aiRow + 2, 0, renderer.centerText(renderer.dim('Then tell Claude: "Click the cookie"'), cols));
+      renderer.bufferWrite(aiRow + 1, 0, renderer.centerText(renderer.dim('Step 1: Run this in another terminal:'), cols));
+      renderer.bufferWrite(aiRow + 2, 0, renderer.centerText(`claude mcp add terminal-cookie -- node ${COOKIE_BIN} --mcp`, cols));
+      renderer.bufferWrite(aiRow + 3, 0, renderer.centerText(renderer.dim('Step 2: Tell Claude: "Click the cookie"'), cols));
     }
 
     renderer.showStatus('Arrow keys to navigate | Enter to select | L=leaderboard | ?=help');

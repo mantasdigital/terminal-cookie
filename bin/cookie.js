@@ -44,6 +44,7 @@ const flags = {
   leaderboard: args.includes('--leaderboard'),
   submitScore: args.includes('--submit-score'),
   mergeLeaderboard: args.includes('--merge-leaderboard'),
+  updateReadme: args.includes('--update-readme'),
 };
 
 // -- Logging ----------------------------------------------------------------
@@ -108,6 +109,7 @@ if (flags.help) {
     `  --leaderboard       Show the community leaderboard\n` +
     `  --submit-score      Submit your score to the leaderboard via git\n` +
     `  --merge-leaderboard Merge approved submissions into the leaderboard (repo owner)\n` +
+    `  --update-readme     Update README.md leaderboard table from data (repo owner)\n` +
     `  --version           Print version and exit\n` +
     `  --help              Show this help message\n\n` +
     `Aliases: tcookie\n`
@@ -284,6 +286,44 @@ if (flags.mergeLeaderboard) {
   } catch {
     process.stdout.write('Remember to commit data/leaderboard.json.\n');
   }
+  process.exit(0);
+}
+
+if (flags.updateReadme) {
+  const { loadLeaderboard, rankEntries } = await import(join(PROJECT_ROOT, 'src', 'leaderboard', 'leaderboard.js'));
+  const readmePath = join(PROJECT_ROOT, 'README.md');
+  const lb = loadLeaderboard();
+  const ranked = rankEntries(lb.entries);
+
+  // Build markdown table
+  const tableLines = [
+    '| # | Player | Org | Dungeons | Level | Clicks | Crumbs |',
+    '|---|--------|-----|----------|-------|--------|--------|',
+  ];
+  if (ranked.length === 0) {
+    tableLines.push('| | *No scores yet — be the first!* | | | | | |');
+  } else {
+    for (let i = 0; i < ranked.length; i++) {
+      const e = ranked[i];
+      tableLines.push(`| ${i + 1} | ${e.name} | ${e.org || '-'} | ${e.dungeons_cleared ?? 0} | ${e.highest_level ?? 0} | ${e.total_clicks ?? 0} | ${e.total_crumbs_earned ?? 0} |`);
+    }
+  }
+  const newTable = tableLines.join('\n');
+
+  const readme = readFileSync(readmePath, 'utf-8');
+  const startMarker = '<!-- LEADERBOARD:START -->';
+  const endMarker = '<!-- LEADERBOARD:END -->';
+  const startIdx = readme.indexOf(startMarker);
+  const endIdx = readme.indexOf(endMarker);
+
+  if (startIdx === -1 || endIdx === -1) {
+    process.stderr.write('Could not find LEADERBOARD markers in README.md\n');
+    process.exit(1);
+  }
+
+  const updated = readme.substring(0, startIdx + startMarker.length) + '\n' + newTable + '\n' + readme.substring(endIdx);
+  writeFileSync(readmePath, updated, 'utf-8');
+  process.stdout.write(`README.md leaderboard updated (${ranked.length} entries).\n`);
   process.exit(0);
 }
 
