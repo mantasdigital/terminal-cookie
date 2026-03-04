@@ -36,6 +36,8 @@ const args = process.argv.slice(2);
 const flags = {
   debug: args.includes('--debug'),
   mcp: args.includes('--mcp'),
+  mine: args.includes('--mine'),
+  setupHooks: args.includes('--setup-hooks'),
   reset: args.includes('--reset'),
   version: args.includes('--version') || args.includes('-v'),
   help: args.includes('--help') || args.includes('-h'),
@@ -97,11 +99,93 @@ if (flags.help) {
     `Options:\n` +
     `  --debug       Enable debug logging\n` +
     `  --mcp         Start MCP server on stdio\n` +
+    `  --setup-hooks Install Claude Code hooks for auto cookie mining\n` +
+    `  --mine        Mine crumbs silently (used by hooks internally)\n` +
     `  --reset       Delete all save data\n` +
     `  --version     Print version and exit\n` +
     `  --help        Show this help message\n\n` +
     `Aliases: tcookie\n`
   );
+  process.exit(0);
+}
+
+if (flags.setupHooks) {
+  // Auto-configure Claude Code hooks so every interaction mines cookies.
+  // Adds UserPromptSubmit + Stop hooks to ~/.claude/settings.json
+  const CLAUDE_DIR = join(homedir(), '.claude');
+  const CLAUDE_SETTINGS = join(CLAUDE_DIR, 'settings.json');
+  const mineCmd = `node ${join(PROJECT_ROOT, 'bin', 'cookie.js')} --mine`;
+
+  mkdirSync(CLAUDE_DIR, { recursive: true });
+
+  let settings = {};
+  if (existsSync(CLAUDE_SETTINGS)) {
+    try {
+      settings = JSON.parse(readFileSync(CLAUDE_SETTINGS, 'utf-8'));
+    } catch {
+      settings = {};
+    }
+  }
+
+  if (!settings.hooks) settings.hooks = {};
+
+  const cookieHook = {
+    hooks: [{ type: 'command', command: mineCmd }],
+    timeout: 3000,
+  };
+
+  // Add hooks for every user input and every Claude response
+  for (const event of ['UserPromptSubmit', 'Stop']) {
+    if (!settings.hooks[event]) {
+      settings.hooks[event] = [];
+    }
+    // Don't duplicate if already installed
+    const alreadyInstalled = settings.hooks[event].some(
+      h => h.hooks?.some(inner => inner.command?.includes('cookie.js') && inner.command?.includes('--mine'))
+    );
+    if (!alreadyInstalled) {
+      settings.hooks[event].push(cookieHook);
+    }
+  }
+
+  writeFileSync(CLAUDE_SETTINGS, JSON.stringify(settings, null, 2), 'utf-8');
+  process.stdout.write(
+    `Cookie mining hooks installed!\n\n` +
+    `Every time you:\n` +
+    `  - Send a message to Claude\n` +
+    `  - Claude finishes responding\n` +
+    `  - Select any choice (yes, no, remember, etc.)\n` +
+    `...you automatically mine +3 crumbs.\n\n` +
+    `Hooks added to: ${CLAUDE_SETTINGS}\n` +
+    `To remove: edit that file and delete the "UserPromptSubmit" and "Stop" hook entries.\n`
+  );
+  process.exit(0);
+}
+
+if (flags.mine) {
+  // Silent cookie mine — called by Claude Code hooks on every interaction.
+  // Reads live.json, adds crumbs, writes back. Fast and silent (no stdout).
+  const LIVE_PATH = join(PROJECT_ROOT, 'saves', 'live.json');
+  const SAVES_DIR = join(PROJECT_ROOT, 'saves');
+  try {
+    mkdirSync(SAVES_DIR, { recursive: true });
+    let data = {};
+    if (existsSync(LIVE_PATH)) {
+      data = JSON.parse(readFileSync(LIVE_PATH, 'utf-8'));
+    }
+    const crumbsEarned = 3;
+    data.crumbs = (data.crumbs || 0) + crumbsEarned;
+    if (!data.stats) data.stats = {};
+    data.stats.crumbsEarned = (data.stats.crumbsEarned || 0) + crumbsEarned;
+    data._live = {
+      writerPid: process.pid,
+      writerLabel: 'hook',
+      writtenAt: Date.now(),
+    };
+    writeFileSync(LIVE_PATH, JSON.stringify(data, null, 2), 'utf-8');
+  } catch {
+    // Silent fail — hooks must not break the user's workflow
+  }
   process.exit(0);
 }
 
