@@ -86,6 +86,16 @@ After this, you earn crumbs just by using Claude normally. No game commands need
 
 > **Want the full setup guide?** See [Playing with Claude AI](#playing-with-claude-ai) below for detailed instructions, Claude Desktop setup, troubleshooting, and the multi-terminal mining bonus.
 
+### Step 7: Submit to the leaderboard (optional)
+
+Once you've played some games, submit your score to the community leaderboard:
+
+```bash
+node bin/cookie.js --submit-score
+```
+
+Enter your name (and optionally your org/team), then push the branch and open a PR. See [Community Leaderboard](#community-leaderboard) for full details.
+
 ---
 
 ## How to Play
@@ -378,6 +388,8 @@ Once connected, talk to Claude naturally. Claude calls the game tools behind the
 | `cookie_save` / `cookie_load` | Save and load your game (3 slots) |
 | `cookie_scores` | View high scores |
 | `cookie_roll` | Roll a d20 |
+| `cookie_leaderboard` | View the community leaderboard |
+| `cookie_submit_score` | Submit your score to the leaderboard |
 | `cookie_help` | List all available commands |
 | `security_scan` | Scan code for vulnerabilities |
 | `vault_store` / `vault_retrieve` | Store and retrieve secrets |
@@ -501,19 +513,88 @@ Open settings in-game by pressing `S` from the Tavern. Use `Up`/`Down` to naviga
 
 ---
 
+## Community Leaderboard
+
+Compare your scores with other players through a git-native leaderboard system. No accounts, no servers — just git.
+
+### View the Leaderboard
+
+Three ways to see the leaderboard:
+
+1. **Start screen** — top 5 scores show automatically on the main menu
+2. **Terminal:** `node bin/cookie.js --leaderboard`
+3. **Via Claude:** call the `cookie_leaderboard` MCP tool
+
+Press `L` on the main menu for a detailed leaderboard overlay.
+
+### Submit as an Individual
+
+```bash
+node bin/cookie.js --submit-score
+```
+
+When prompted, enter your display name and press Enter to skip the organization field. Your entry appears on the leaderboard as just your name.
+
+**Via Claude:** `cookie_submit_score` with `name: "YourName"`
+
+### Submit as Part of an Organization
+
+Same command:
+
+```bash
+node bin/cookie.js --submit-score
+```
+
+Enter your display name, then enter your org/team/company name when prompted. Your entry appears as `YourName [YourOrg]` on the leaderboard — great for team competitions and company leaderboards.
+
+**Via Claude:** `cookie_submit_score` with `name: "YourName"` and `org: "YourOrg"`
+
+### What Happens After Submitting
+
+1. A submission file is created in `data/submissions/`
+2. A git branch `leaderboard/submit-<id>` is created and committed
+3. Push the branch and open a PR:
+   ```bash
+   git push -u origin leaderboard/submit-<id>
+   gh pr create --title "Leaderboard submission" --body "Score submission"
+   ```
+4. The repo owner reviews and merges your PR
+5. Your score appears on the leaderboard after the owner runs `--merge-leaderboard`
+
+### Merge Submissions (Repo Owner)
+
+After merging score PRs:
+
+```bash
+node bin/cookie.js --merge-leaderboard
+```
+
+This reads all files in `data/submissions/`, validates them (including anti-cheat plausibility checks and checksum verification), appends to `data/leaderboard.json`, deletes processed files, and commits.
+
+### Privacy
+
+**Shared in submissions:** display name you choose, optional org, game stats (clicks, crumbs, dungeons, etc.), timestamp, integrity checksum.
+
+**Never shared:** save files, vault contents, settings, real identity (unless you choose it as display name). The `saves/` directory stays gitignored.
+
+---
+
 ## CLI Options
 
 ```
 terminal-cookie [options]
 
 Options:
-  --debug        Save debug logs to ~/.terminal-cookie/debug.log
-  --mcp          Start as MCP server (for Claude AI integration)
-  --setup-hooks  Install Claude Code hooks for auto cookie mining
-  --mine         Mine crumbs silently (used by hooks internally)
-  --reset        Delete all save data and start fresh
-  --version      Print version number
-  --help         Show help message
+  --debug             Save debug logs to ~/.terminal-cookie/debug.log
+  --mcp               Start as MCP server (for Claude AI integration)
+  --setup-hooks       Install Claude Code hooks for auto cookie mining
+  --mine              Mine crumbs silently (used by hooks internally)
+  --reset             Delete all save data and start fresh
+  --leaderboard       Show the community leaderboard
+  --submit-score      Submit your score to the leaderboard via git
+  --merge-leaderboard Merge approved submissions into the leaderboard (repo owner)
+  --version           Print version number
+  --help              Show help message
 ```
 
 ---

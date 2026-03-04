@@ -41,6 +41,9 @@ const flags = {
   reset: args.includes('--reset'),
   version: args.includes('--version') || args.includes('-v'),
   help: args.includes('--help') || args.includes('-h'),
+  leaderboard: args.includes('--leaderboard'),
+  submitScore: args.includes('--submit-score'),
+  mergeLeaderboard: args.includes('--merge-leaderboard'),
 };
 
 // -- Logging ----------------------------------------------------------------
@@ -97,13 +100,16 @@ if (flags.help) {
     `Terminal Cookie - Cookie dungeon game + AI security monitor + MCP server\n\n` +
     `Usage: terminal-cookie [options]\n\n` +
     `Options:\n` +
-    `  --debug       Enable debug logging\n` +
-    `  --mcp         Start MCP server on stdio\n` +
-    `  --setup-hooks Install Claude Code hooks for auto cookie mining\n` +
-    `  --mine        Mine crumbs silently (used by hooks internally)\n` +
-    `  --reset       Delete all save data\n` +
-    `  --version     Print version and exit\n` +
-    `  --help        Show this help message\n\n` +
+    `  --debug             Enable debug logging\n` +
+    `  --mcp               Start MCP server on stdio\n` +
+    `  --setup-hooks       Install Claude Code hooks for auto cookie mining\n` +
+    `  --mine              Mine crumbs silently (used by hooks internally)\n` +
+    `  --reset             Delete all save data\n` +
+    `  --leaderboard       Show the community leaderboard\n` +
+    `  --submit-score      Submit your score to the leaderboard via git\n` +
+    `  --merge-leaderboard Merge approved submissions into the leaderboard (repo owner)\n` +
+    `  --version           Print version and exit\n` +
+    `  --help              Show this help message\n\n` +
     `Aliases: tcookie\n`
   );
   process.exit(0);
@@ -185,6 +191,98 @@ if (flags.mine) {
     writeFileSync(LIVE_PATH, JSON.stringify(data, null, 2), 'utf-8');
   } catch {
     // Silent fail — hooks must not break the user's workflow
+  }
+  process.exit(0);
+}
+
+if (flags.leaderboard) {
+  const { loadLeaderboard, formatLeaderboardFull } = await import(join(PROJECT_ROOT, 'src', 'leaderboard', 'leaderboard.js'));
+  const lb = loadLeaderboard();
+  process.stdout.write(formatLeaderboardFull(lb.entries) + '\n');
+  process.exit(0);
+}
+
+if (flags.submitScore) {
+  const { createInterface } = await import('node:readline');
+  const { loadLocalScores, generateSubmissionFile, isGitAvailable, isGhAvailable, createSubmitBranch, getInstructions } = await import(join(PROJECT_ROOT, 'src', 'leaderboard', 'submit.js'));
+
+  const scores = loadLocalScores();
+  if (!scores) {
+    process.stderr.write('No local scores found in saves/scores.json.\nPlay some games first to build up stats!\n');
+    process.exit(1);
+  }
+
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  const ask = (q) => new Promise(resolve => rl.question(q, resolve));
+
+  process.stdout.write('\n=== Submit Score to Leaderboard ===\n\n');
+  process.stdout.write(`Your stats:\n`);
+  process.stdout.write(`  Dungeons cleared: ${scores.dungeons_cleared ?? 0}\n`);
+  process.stdout.write(`  Highest level:    ${scores.highest_level ?? 0}\n`);
+  process.stdout.write(`  Total clicks:     ${scores.total_clicks ?? 0}\n`);
+  process.stdout.write(`  Total crumbs:     ${scores.total_crumbs_earned ?? 0}\n`);
+  process.stdout.write(`  Monsters killed:  ${scores.monsters_killed ?? 0}\n\n`);
+
+  const name = await ask('Display name (required): ');
+  if (!name || name.trim().length === 0) {
+    process.stderr.write('Name is required.\n');
+    rl.close();
+    process.exit(1);
+  }
+  const org = await ask('Organization (optional, press Enter to skip): ');
+  rl.close();
+
+  try {
+    const { id, path, entry } = generateSubmissionFile(scores, name, org || null);
+    process.stdout.write(`\nSubmission created: ${path}\n`);
+
+    if (isGitAvailable()) {
+      process.stdout.write('Creating git branch...\n');
+      const { branch } = createSubmitBranch(id, path);
+      const hasGh = isGhAvailable();
+      process.stdout.write(`Branch created: ${branch}\n`);
+      process.stdout.write(getInstructions(branch, hasGh) + '\n');
+    } else {
+      process.stdout.write('\nGit not available. To submit manually:\n');
+      process.stdout.write(`  1. Commit the file: ${path}\n`);
+      process.stdout.write('  2. Push to a branch and open a PR\n');
+    }
+  } catch (err) {
+    process.stderr.write(`Submission failed: ${err.message}\n`);
+    process.exit(1);
+  }
+  process.exit(0);
+}
+
+if (flags.mergeLeaderboard) {
+  const { loadLeaderboard, saveLeaderboard, mergeSubmissions } = await import(join(PROJECT_ROOT, 'src', 'leaderboard', 'leaderboard.js'));
+  const lb = loadLeaderboard();
+  const result = mergeSubmissions(lb);
+
+  if (result.merged === 0 && result.errors.length === 0) {
+    process.stdout.write('No submissions to merge.\n');
+    process.exit(0);
+  }
+
+  if (result.merged > 0) {
+    saveLeaderboard(lb);
+    process.stdout.write(`Merged ${result.merged} submission(s) into leaderboard.\n`);
+  }
+  if (result.skipped > 0) {
+    process.stdout.write(`Skipped ${result.skipped} submission(s).\n`);
+  }
+  for (const err of result.errors) {
+    process.stderr.write(`  Error: ${err}\n`);
+  }
+
+  // Auto-commit if in git
+  try {
+    const { execSync } = await import('node:child_process');
+    execSync('git add data/leaderboard.json', { cwd: PROJECT_ROOT, stdio: 'pipe' });
+    execSync(`git commit -m "leaderboard: merge ${result.merged} submission(s)"`, { cwd: PROJECT_ROOT, stdio: 'pipe' });
+    process.stdout.write('Changes committed to git.\n');
+  } catch {
+    process.stdout.write('Remember to commit data/leaderboard.json.\n');
   }
   process.exit(0);
 }

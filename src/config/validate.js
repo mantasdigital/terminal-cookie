@@ -65,6 +65,15 @@ const SCHEMAS = {
       },
     },
   },
+  'leaderboard.json': {
+    type: 'object',
+    required: ['version', 'updated_at', 'entries'],
+    types: {
+      version: 'number',
+      updated_at: 'string',
+      entries: 'array',
+    },
+  },
 };
 
 /**
@@ -149,6 +158,22 @@ export function validateDataFiles(dataDir) {
       }
       for (let i = 0; i < parsed.length; i++) {
         errors.push(...validateItem(parsed[i], schema.items, file, i));
+      }
+    } else if (schema.type === 'object') {
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+        errors.push({ file, field: '', message: 'Expected top-level object' });
+        continue;
+      }
+      for (const field of schema.required) {
+        if (!(field in parsed)) {
+          errors.push({ file, field, message: `Missing required field "${field}"` });
+          continue;
+        }
+        const expectedType = schema.types[field];
+        const value = parsed[field];
+        if (expectedType && !checkType(value, expectedType)) {
+          errors.push({ file, field, message: `Expected ${expectedType}, got ${typeOf(value)}` });
+        }
       }
     }
   }

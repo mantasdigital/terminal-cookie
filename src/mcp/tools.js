@@ -8,6 +8,8 @@ import { generateTavernRoster } from '../game/team.js';
 import { equipItem, canEquip } from '../game/loot.js';
 import { generateDungeon } from '../game/dungeon.js';
 import { COOKIE_REACTIONS } from './reactions.js';
+import { loadLeaderboard, formatLeaderboardFull } from '../leaderboard/leaderboard.js';
+import { loadLocalScores, generateSubmissionFile } from '../leaderboard/submit.js';
 
 const scanner = createScanner();
 const redactor = createRedactor();
@@ -955,6 +957,10 @@ export function defineTools() {
           '    cookie_load      - Load game (slot 1-3)',
           '    cookie_scores    - View high scores',
           '',
+          '  Leaderboard:',
+          '    cookie_leaderboard   - View the community leaderboard',
+          '    cookie_submit_score  - Submit your score to the leaderboard',
+          '',
           '  Security:',
           '    security_scan    - Scan code for risks',
           '    vault_store      - Store secret in vault',
@@ -969,6 +975,85 @@ export function defineTools() {
         return {
           content: [{ type: 'text', text: lines.join('\n') }],
         };
+      },
+    },
+
+    {
+      name: 'cookie_leaderboard',
+      description: 'View the community leaderboard. Shows top players ranked by dungeons cleared and highest level.',
+      inputSchema: {
+        type: 'object',
+        properties: {},
+        additionalProperties: false,
+      },
+      handler(params, ctx) {
+        const lb = loadLeaderboard();
+        return {
+          content: [{ type: 'text', text: formatLeaderboardFull(lb.entries) }],
+        };
+      },
+    },
+
+    {
+      name: 'cookie_submit_score',
+      description: 'Submit your local score to the community leaderboard. Creates a submission file for PR-based review.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          name: {
+            type: 'string',
+            description: 'Your display name for the leaderboard (required)',
+          },
+          org: {
+            type: 'string',
+            description: 'Your organization or team name (optional)',
+          },
+        },
+        required: ['name'],
+        additionalProperties: false,
+      },
+      handler(params, ctx) {
+        const scores = loadLocalScores();
+        if (!scores) {
+          return {
+            content: [{ type: 'text', text: '  No local scores found. Play some games first!' }],
+            isError: true,
+          };
+        }
+
+        try {
+          const { id, path, entry } = generateSubmissionFile(scores, params.name, params.org || null);
+          const lines = [
+            '  === SCORE SUBMITTED ===',
+            '',
+            `  ID:       ${id}`,
+            `  Name:     ${entry.name}`,
+            entry.org ? `  Org:      ${entry.org}` : '',
+            `  Dungeons: ${entry.dungeons_cleared}`,
+            `  Level:    ${entry.highest_level}`,
+            `  Clicks:   ${entry.total_clicks}`,
+            `  Crumbs:   ${entry.total_crumbs_earned}`,
+            '',
+            `  File: ${path}`,
+            '',
+            '  To complete submission:',
+            '    1. Create a branch: git checkout -b leaderboard/submit-' + id,
+            '    2. Commit: git add data/submissions/ && git commit -m "leaderboard: submit score"',
+            '    3. Push: git push -u origin leaderboard/submit-' + id,
+            '    4. Open a PR for review',
+            '',
+            '  ========================',
+          ];
+
+          return {
+            content: [{ type: 'text', text: lines.filter(l => l !== '').join('\n') }],
+          };
+        } catch (err) {
+          return {
+            content: [{ type: 'text', text: `  Submission failed: ${err.message}` }],
+            isError: true,
+          };
+        }
       },
     },
   ];

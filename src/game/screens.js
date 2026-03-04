@@ -8,6 +8,11 @@ import { titleScreen, masterCookie, miniCookie, dungeonMap, monsterArt, lootIcon
 import { renderHelp } from '../ui/help.js';
 import { buildPortrait } from './team.js';
 import { resolveRoll } from './combat.js';
+import { loadLeaderboard, formatLeaderboardCompact, formatLeaderboardFull } from '../leaderboard/leaderboard.js';
+
+// Cache leaderboard data once at import time
+let _leaderboardCache = null;
+try { _leaderboardCache = loadLeaderboard(); } catch { _leaderboardCache = { entries: [] }; }
 
 // ── Shared helpers ──────────────────────────────────────────────────
 
@@ -30,6 +35,7 @@ const ui = {
   lootIndex: 0,
   settingIndex: 0,
   helpVisible: false,
+  leaderboardVisible: false,
   notification: '',
   notificationTimeout: null,
 };
@@ -41,31 +47,55 @@ function notify(renderer, msg, level = 'info') {
 
 // ── MENU SCREEN ─────────────────────────────────────────────────────
 
-const menuOptions = ['New Game', 'Load Game', 'Settings', 'Quit'];
+const menuOptions = ['New Game', 'Load Game', 'Leaderboard', 'Settings', 'Quit'];
 
 const menuScreen = {
   render(state, renderer) {
     renderer.clear();
+    const cols = renderer.capabilities.cols;
     const title = titleScreen();
     const lines = title.split('\n');
     for (let i = 0; i < lines.length; i++) {
-      renderer.bufferWrite(1 + i, 0, renderer.centerText(lines[i], renderer.capabilities.cols));
+      renderer.bufferWrite(1 + i, 0, renderer.centerText(lines[i], cols));
     }
 
-    const menuTop = lines.length + 3;
+    // Compact leaderboard between title and menu
+    const lbEntries = _leaderboardCache?.entries ?? [];
+    if (lbEntries.length > 0) {
+      const lbText = formatLeaderboardCompact(lbEntries, 5);
+      const lbLines = lbText.split('\n');
+      const lbTop = lines.length + 2;
+      for (let i = 0; i < lbLines.length; i++) {
+        renderer.bufferWrite(lbTop + i, 0, renderer.centerText(renderer.dim(lbLines[i]), cols));
+      }
+    }
+
+    const menuTop = lines.length + (lbEntries.length > 0 ? 2 + Math.min(lbEntries.length, 5) + 2 : 3);
     for (let i = 0; i < menuOptions.length; i++) {
       const prefix = i === ui.menuIndex ? ' > ' : '   ';
       const label = prefix + menuOptions[i];
       const styled = i === ui.menuIndex ? renderer.bold(label) : label;
-      renderer.bufferWrite(menuTop + i, 0, renderer.centerText(styled, renderer.capabilities.cols));
+      renderer.bufferWrite(menuTop + i, 0, renderer.centerText(styled, cols));
     }
 
-    renderer.showStatus('Arrow keys to navigate | Enter to select | ? for help');
+    renderer.showStatus('Arrow keys to navigate | Enter to select | L=leaderboard | ?=help');
+
+    // Full leaderboard overlay
+    if (ui.leaderboardVisible) {
+      const fullLb = formatLeaderboardFull(lbEntries);
+      const lbOverlayLines = fullLb.split('\n');
+      const startRow = Math.max(0, Math.floor((renderer.capabilities.rows - lbOverlayLines.length) / 2));
+      const startCol = Math.max(0, Math.floor((cols - (lbOverlayLines[0]?.length ?? 0)) / 2));
+      for (let i = 0; i < lbOverlayLines.length; i++) {
+        renderer.bufferWrite(startRow + i, startCol, lbOverlayLines[i]);
+      }
+    }
+
     if (ui.helpVisible) {
       const help = renderHelp('MENU');
       const helpLines = help.split('\n');
       const startRow = Math.max(0, Math.floor((renderer.capabilities.rows - helpLines.length) / 2));
-      const startCol = Math.max(0, Math.floor((renderer.capabilities.cols - (helpLines[0]?.length ?? 0)) / 2));
+      const startCol = Math.max(0, Math.floor((cols - (helpLines[0]?.length ?? 0)) / 2));
       for (let i = 0; i < helpLines.length; i++) {
         renderer.bufferWrite(startRow + i, startCol, helpLines[i]);
       }
@@ -76,6 +106,7 @@ const menuScreen = {
   async handleInput(key, engine) {
     if (key === '?') { ui.helpVisible = !ui.helpVisible; return; }
     if (ui.helpVisible) { if (key === 'escape') ui.helpVisible = false; return; }
+    if (ui.leaderboardVisible) { if (key === 'escape' || key === 'l') ui.leaderboardVisible = false; return; }
 
     if (key === 'up') ui.menuIndex = (ui.menuIndex - 1 + menuOptions.length) % menuOptions.length;
     else if (key === 'down') ui.menuIndex = (ui.menuIndex + 1) % menuOptions.length;
@@ -84,20 +115,23 @@ const menuScreen = {
         case 0: // New Game
           await engine.transition(GameState.TAVERN);
           break;
-        case 1: // Load Game — engine expects save integration externally
+        case 1: // Load Game
           await engine.transition(GameState.TAVERN);
           break;
-        case 2: // Settings
+        case 2: // Leaderboard
+          ui.leaderboardVisible = !ui.leaderboardVisible;
+          break;
+        case 3: // Settings
           await engine.transition(GameState.SETTINGS);
           break;
-        case 3: // Quit
+        case 4: // Quit
           await engine.shutdown();
           break;
       }
     } else if (key === 'n') {
       await engine.transition(GameState.TAVERN);
     } else if (key === 'l') {
-      await engine.transition(GameState.TAVERN);
+      ui.leaderboardVisible = !ui.leaderboardVisible;
     } else if (key === 's') {
       await engine.transition(GameState.SETTINGS);
     } else if (key === 'q' || key === 'escape') {
@@ -770,6 +804,7 @@ export function resetUIState() {
   ui.dungeonChoice = 0;
   ui.lootIndex = 0;
   ui.helpVisible = false;
+  ui.leaderboardVisible = false;
 }
 
 export { screens };
