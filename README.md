@@ -137,13 +137,23 @@ When the game starts, you see the main menu. Use these keys:
 
 ## Playing with Claude AI
 
-Terminal Cookie can also run as a background game inside Claude Code or Claude Desktop. Claude plays the game for you -- dungeons auto-progress, monsters get fought, and loot piles up while you work.
+Terminal Cookie is built to be played through Claude. The game runs as an MCP (Model Context Protocol) server -- Claude connects to it and uses game tools directly in your conversation. You talk to Claude, Claude plays the game.
 
 **The terminal game (`npm start`) and Claude mode are separate.** You can use one or both, but not in the same terminal window.
 
-### Quick Setup (2 steps)
+### What is MCP?
 
-**Step 1:** Open a regular terminal, go to the game folder, and find your full path:
+MCP (Model Context Protocol) lets Claude use external tools. Terminal Cookie registers itself as an MCP server, giving Claude access to game commands like `cookie_click`, `cookie_tavern`, `cookie_explore`, etc. When you ask Claude to "click the cookie", Claude literally calls the `cookie_click` tool and the game responds.
+
+---
+
+### Connecting to Claude Code (Recommended)
+
+Claude Code is the terminal-based Claude CLI. This is the fastest way to play.
+
+#### Step 1: Find your game path
+
+Open a terminal, go to the game folder, and get the full path:
 
 ```bash
 cd terminal-cookie
@@ -152,21 +162,27 @@ pwd
 
 This prints something like `/Users/yourname/Downloads/terminal-cookie`. Copy it.
 
-**Step 2:** In that same terminal, run this command (paste your path from step 1):
+#### Step 2: Register the MCP server
+
+Run this command in the same terminal (paste your actual path):
 
 ```bash
 claude mcp add terminal-cookie -- node /YOUR/PATH/HERE/bin/cookie.js --mcp
 ```
 
-**Real example** (if the game is in your Downloads folder):
+**Real example** (macOS, game in Downloads):
 
 ```bash
 claude mcp add terminal-cookie -- node /Users/yourname/Downloads/terminal-cookie/bin/cookie.js --mcp
 ```
 
-That's it! Next time you open Claude Code, the game will be available.
+**Real example** (Windows):
 
-### Verify It Works
+```bash
+claude mcp add terminal-cookie -- node C:\Users\yourname\Downloads\terminal-cookie\bin\cookie.js --mcp
+```
+
+#### Step 3: Verify it works
 
 Open Claude Code and type:
 
@@ -174,28 +190,42 @@ Open Claude Code and type:
 /mcp
 ```
 
-You should see `terminal-cookie` listed. Then just ask Claude:
+You should see `terminal-cookie` in the list with a green status. Then ask Claude:
 
 ```
-"Start a Terminal Cookie game -- recruit a hero and explore a dungeon"
+"Click the cookie"
 ```
 
-### Alternative Setup Methods
+If you see crumbs and a cookie, you're connected!
 
-<details>
-<summary>Add from inside Claude Code (without a separate terminal)</summary>
+#### Troubleshooting connection
 
-While in a Claude Code session, type:
+If `terminal-cookie` doesn't appear in `/mcp`:
 
-```
-/mcp add terminal-cookie -- node /FULL/PATH/TO/terminal-cookie/bin/cookie.js --mcp
-```
-</details>
+1. **Check Node.js version:** Run `node --version` -- you need v18 or newer
+2. **Check the path:** Make sure the path in your `claude mcp add` command points to the actual `bin/cookie.js` file
+3. **Reinstall dependencies:** Run `npm install` in the game folder
+4. **Restart Claude Code:** Close and reopen your terminal, then start Claude Code again
+5. **Check logs:** Run `claude mcp add terminal-cookie -- node /path/to/bin/cookie.js --mcp` again -- it will overwrite the old entry
 
-<details>
-<summary>Make it permanent (always available in every project)</summary>
+---
 
-Edit `~/.claude/settings.json` (in your home folder):
+### Connecting to Claude Desktop App
+
+Claude Desktop is the GUI app for macOS/Windows. You edit a config file to add MCP servers.
+
+#### Step 1: Find the config file
+
+| OS | Config file location |
+|----|---------------------|
+| macOS | `~/Library/Application Support/Claude/claude_desktop_config.json` |
+| Windows | `%APPDATA%\Claude\claude_desktop_config.json` |
+
+If the file doesn't exist, create it.
+
+#### Step 2: Add Terminal Cookie to the config
+
+Open the config file in any text editor and add (or merge) this:
 
 ```json
 {
@@ -207,12 +237,56 @@ Edit `~/.claude/settings.json` (in your home folder):
   }
 }
 ```
-</details>
 
-<details>
-<summary>Claude Desktop App</summary>
+Replace `/FULL/PATH/TO/terminal-cookie` with your actual path.
 
-Edit your Claude Desktop config file (`claude_desktop_config.json`):
+**macOS example:**
+
+```json
+{
+  "mcpServers": {
+    "terminal-cookie": {
+      "command": "node",
+      "args": ["/Users/yourname/Downloads/terminal-cookie/bin/cookie.js", "--mcp"]
+    }
+  }
+}
+```
+
+**Windows example:**
+
+```json
+{
+  "mcpServers": {
+    "terminal-cookie": {
+      "command": "node",
+      "args": ["C:\\Users\\yourname\\Downloads\\terminal-cookie\\bin\\cookie.js", "--mcp"]
+    }
+  }
+}
+```
+
+#### Step 3: Restart Claude Desktop
+
+Quit the app completely and reopen it. You should see a hammer icon in the chat input -- that means MCP tools are loaded. Click it to confirm `terminal-cookie` tools are listed.
+
+#### Step 4: Start playing
+
+Type in the chat:
+
+```
+"Click the cookie"
+```
+
+Claude will call the `cookie_click` tool and respond with crumbs, ASCII art, and a cookie-themed reaction.
+
+---
+
+### Make It Permanent (All Projects)
+
+By default, `claude mcp add` registers the server for the current project only. To make Terminal Cookie available in every Claude Code project:
+
+Edit `~/.claude/settings.json` (create it if it doesn't exist):
 
 ```json
 {
@@ -224,15 +298,30 @@ Edit your Claude Desktop config file (`claude_desktop_config.json`):
   }
 }
 ```
-</details>
+
+---
 
 ### Playing Through Claude
 
-Once connected, just ask Claude to interact with the game. Claude has access to these tools:
+Once connected, talk to Claude naturally. Claude calls the game tools behind the scenes.
+
+**Things you can say:**
+
+- "Click the cookie" -- earns crumbs with a unique Claude reaction each time
+- "Show me the tavern" -- browse available recruits
+- "Recruit the first hero" -- hire a team member
+- "Explore dungeon level 1" -- send your team into a dungeon
+- "What's my status?" -- see team, crumbs, progress
+- "Check for pending actions" -- handle boss fights and loot
+- "Roll a d20" -- roll the dice
+- "Save my game to slot 1" -- save progress
+- "Scan this code for security issues: ..." -- use the security scanner
+
+#### All Available Tools
 
 | Tool | What it does |
 |------|-------------|
-| `cookie_click` | Click the cookie for crumbs |
+| `cookie_click` | Click the cookie -- Claude responds with a unique reaction and awards crumbs. Multi-terminal bonus applies! |
 | `cookie_status` | See your team, crumbs, and dungeon progress |
 | `cookie_explore` | Enter a dungeon (auto-advances every 15 seconds) |
 | `cookie_tavern` | View and recruit team members |
@@ -249,7 +338,7 @@ Once connected, just ask Claude to interact with the game. Claude has access to 
 
 #### Example: Your First Game via Claude
 
-Just tell Claude something like:
+Just tell Claude:
 
 ```
 "Start a Terminal Cookie game for me -- recruit a hero and explore a dungeon"
@@ -259,11 +348,39 @@ Or do it step by step:
 
 ```
 1. Use cookie_tavern to show me the recruits
-2. Use cookie_tavern with action=recruit and index=0 to hire the first one
-3. Use cookie_explore to enter a dungeon
-4. Use cookie_status to check progress
-5. Use cookie_pending to handle any boss fights
+2. Recruit the first hero
+3. Explore dungeon level 1
+4. Check my status
+5. Handle any pending boss fights
 ```
+
+---
+
+### Multi-Terminal Mining
+
+Connect Terminal Cookie from **multiple Claude sessions at the same time** to mine crumbs faster. Each additional terminal connection boosts your cookie click output:
+
+| Terminals connected | Mining multiplier |
+|--------------------|-------------------|
+| 1 | x1.0 (normal) |
+| 2 | x1.5 |
+| 3 | x2.0 |
+| 4 | x2.5 |
+| 5+ | x3.0 (max) |
+
+**How it works:**
+
+- Each MCP server instance registers itself as an active session
+- Sessions are shared via a local file -- no network required
+- Inactive sessions expire after 60 seconds automatically
+- The bonus applies to `cookie_click` crumb rewards
+- You can see your active terminal count in the status line
+
+**Example:** Open 3 Claude Code windows, each with Terminal Cookie connected. Clicking the cookie in any of them earns double crumbs (x2.0). The more terminals you have open and actively making tool calls, the faster you mine.
+
+This works across Claude Code sessions, Claude Desktop, or any mix of both.
+
+---
 
 ### How Passive Mode Works
 

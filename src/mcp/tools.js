@@ -19,34 +19,71 @@ export function defineTools() {
   return [
     {
       name: 'cookie_click',
-      description: 'Click the cookie to earn crumbs. The most basic action in Terminal Cookie.',
+      description: 'Click the cookie to earn crumbs. Claude responds with a unique cookie-themed reaction each time. Connecting multiple terminals increases mining speed.',
       inputSchema: {
         type: 'object',
         properties: {},
         additionalProperties: false,
       },
       handler(params, ctx) {
-        const { engine, cookie, scores, settings } = ctx;
+        const { engine, cookie, scores, settings, sessions } = ctx;
         const state = engine.getStateRef();
         const earned = cookie.click();
         const bonuses = settings.getBonuses();
         const bonus = Math.floor(earned * (bonuses.crumbMultiplier - 1));
-        const total = earned + bonus;
 
-        if (bonus > 0) {
-          state.crumbs += bonus;
+        // Multi-terminal mining bonus
+        const sessionMultiplier = sessions ? sessions.multiplier() : 1.0;
+        const sessionBonus = Math.floor(earned * (sessionMultiplier - 1));
+        const total = earned + bonus + sessionBonus;
+
+        if (bonus + sessionBonus > 0) {
+          state.crumbs += bonus + sessionBonus;
         }
         scores.recordClick(total);
-        scores.setMax('highest_crumbs', state.crumbs + (bonus > 0 ? bonus : 0));
+        scores.setMax('highest_crumbs', state.crumbs);
 
+        // Pick a cookie reaction — Claude delivers these as flavorful responses
+        const reactions = [
+          { msg: 'The cookie crumbles perfectly under your click. Delicious efficiency.', flavor: 'satisfied' },
+          { msg: 'A golden crumb flies off the cookie and lands in your inventory. Nice catch!', flavor: 'lucky' },
+          { msg: 'The cookie vibrates with arcane energy. Your clicking hand tingles.', flavor: 'magical' },
+          { msg: 'CRUNCH. That was a particularly satisfying click. The cookie gods approve.', flavor: 'powerful' },
+          { msg: 'You click with the precision of a thousand bakers. Crumbs rain down.', flavor: 'epic' },
+          { msg: 'The cookie whispers secrets of the dungeon between bites...', flavor: 'mysterious' },
+          { msg: 'A tiny cookie golem forms from the crumbs and salutes you before dissolving.', flavor: 'whimsical' },
+          { msg: 'Click! The sound echoes through the terminal. Somewhere, a cookie smiles.', flavor: 'zen' },
+          { msg: 'Your click resonates across all connected terminals. The cookie network grows stronger.', flavor: 'networked' },
+          { msg: 'The cookie offers no resistance. Pure, buttery submission.', flavor: 'smooth' },
+          { msg: 'A critical click! The cookie shatters into premium crumbs.', flavor: 'critical' },
+          { msg: 'The dough yields. Another click, another crumb closer to greatness.', flavor: 'determined' },
+        ];
+
+        const pick = reactions[Math.abs(Date.now() + cookie.sessionClicks) % reactions.length];
         const art = miniCookie();
+
+        const activeTerminals = sessions ? sessions.activeSessions() : 1;
+
         const lines = [
           art,
           '',
-          `  +${total} crumbs!${bonus > 0 ? ` (${earned} base + ${bonus} bonus)` : ''}`,
-          `  Total: ${cookie.crumbs} crumbs`,
-          `  Session clicks: ${cookie.sessionClicks}`,
+          `  ${pick.msg}`,
+          '',
+          `  +${total} crumbs!`,
         ];
+
+        // Show breakdown if there are bonuses
+        const parts = [`${earned} base`];
+        if (bonus > 0) parts.push(`+${bonus} settings bonus`);
+        if (sessionBonus > 0) parts.push(`+${sessionBonus} multi-terminal bonus`);
+        if (parts.length > 1) lines.push(`  (${parts.join(', ')})`);
+
+        lines.push(`  Total: ${cookie.crumbs} crumbs`);
+        lines.push(`  Session clicks: ${cookie.sessionClicks}`);
+
+        if (activeTerminals > 1) {
+          lines.push(`  Terminals mining: ${activeTerminals} (x${sessionMultiplier.toFixed(1)} speed)`);
+        }
 
         return {
           content: [{ type: 'text', text: lines.join('\n') }],

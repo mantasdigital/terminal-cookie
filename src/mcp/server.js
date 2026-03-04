@@ -15,15 +15,18 @@ import { defineTools } from './tools.js';
 import { createPassiveRunner } from './passive-runner.js';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { writeFileSync, mkdirSync, existsSync } from 'fs';
+import { writeFileSync, readFileSync, mkdirSync, existsSync } from 'fs';
+import { createSessionTracker } from './sessions.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__dirname, '..', '..');
 const SETTINGS_PATH = join(PROJECT_ROOT, 'data', 'settings.json');
+const SESSIONS_PATH = join(PROJECT_ROOT, 'data', 'sessions.json');
 
 // Initialize game systems
 const engine = createEngine();
 const gameState = engine.getStateRef();
+const sessions = createSessionTracker(SESSIONS_PATH);
 const cookie = createCookieHandler(gameState);
 const settings = createSettings(SETTINGS_PATH);
 settings.load();
@@ -55,6 +58,7 @@ const toolContext = {
   scores,
   vault,
   passiveRunner,
+  sessions,
   saveState(slot, state) {
     return saveGame(slot, state);
   },
@@ -114,6 +118,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   // Serialize tool calls through engine mutex
   return engine.mutex.withLock(async () => {
     try {
+      // Register this session heartbeat
+      sessions.heartbeat();
+
       // Drain background events that happened since last tool call
       const backgroundEvents = passiveRunner.drain();
 
@@ -140,7 +147,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         .map(c => c.text)
         .join('\n');
 
+      const activeCount = sessions.activeSessions();
+      const sessionInfo = activeCount > 1
+        ? `  Terminals connected: ${activeCount} (x${sessions.multiplier().toFixed(1)} mining speed)`
+        : '';
       const appendParts = [originalText, '', '---', statusText];
+      if (sessionInfo) appendParts.push(sessionInfo);
 
       if (backgroundEvents.length > 0) {
         appendParts.push('', '  Recent events:');
