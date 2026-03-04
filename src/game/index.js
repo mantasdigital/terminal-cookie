@@ -423,8 +423,8 @@ export async function runGame(options = {}) {
     if (voiceController) voiceController.stop();
     input.stop();
     resize.destroy();
-    renderer.clear();
     renderer.showCursor();
+    renderer.leaveAltScreen();
   }
 
   // Start everything
@@ -444,6 +444,9 @@ export async function runGame(options = {}) {
 
   input.start();
   // resize handler auto-starts on creation (listens to SIGWINCH)
+
+  // Enter alternate screen buffer to prevent scrollback pollution
+  renderer.enterAltScreen();
 
   // Initial render
   renderCurrentScreen();

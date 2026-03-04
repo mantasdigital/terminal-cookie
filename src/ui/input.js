@@ -74,6 +74,15 @@ export function createInputHandler() {
     const now = Date.now();
     const str = data.toString();
 
+    // Check for known multi-byte escape sequences BEFORE paste detection.
+    // Arrow keys etc. are 3+ bytes and would otherwise trigger the paste detector,
+    // causing them to be split into individual chars (\x1b → escape → exits app).
+    if (SPECIAL_KEYS[str] !== undefined) {
+      lastEventTime = now;
+      emitKey(data);
+      return;
+    }
+
     // Paste detection: multiple chars arriving at once or in quick succession
     if (str.length >= PASTE_MIN_CHARS || (pasteBuffer.length > 0 && (now - lastEventTime) < PASTE_THRESHOLD_MS)) {
       pasteBuffer += str;

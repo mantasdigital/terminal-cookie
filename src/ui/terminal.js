@@ -76,6 +76,7 @@ export function createRenderer(capabilities) {
   let caps = { ...capabilities };
   const useAnsi = caps.ansi;
   let colorBlindSafe = false;
+  let inAlternateScreen = false;
 
   // Screen buffer: array of row strings
   let buffer = [];
@@ -86,6 +87,22 @@ export function createRenderer(capabilities) {
     bufferDirty = false;
   }
   initBuffer();
+
+  /** Enter the alternate screen buffer (prevents scrollback pollution). */
+  function enterAltScreen() {
+    if (useAnsi && !inAlternateScreen) {
+      rawWrite(`${ESC}?1049h`);
+      inAlternateScreen = true;
+    }
+  }
+
+  /** Leave the alternate screen buffer (restores original terminal content). */
+  function leaveAltScreen() {
+    if (useAnsi && inAlternateScreen) {
+      rawWrite(`${ESC}?1049l`);
+      inAlternateScreen = false;
+    }
+  }
 
   // ---- low-level ANSI helpers ----
 
@@ -245,6 +262,8 @@ export function createRenderer(capabilities) {
     stripAnsi,
     centerText,
     updateCapabilities,
+    enterAltScreen,
+    leaveAltScreen,
     get capabilities() { return caps; },
     set colorBlindSafe(val) { colorBlindSafe = val; },
     get colorBlindSafe() { return colorBlindSafe; },

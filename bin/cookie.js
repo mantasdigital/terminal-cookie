@@ -181,6 +181,13 @@ if (flags.mcp) {
   // Graceful shutdown
   async function gracefulShutdown() {
     log.debug('Graceful shutdown initiated');
+    // Restore terminal: leave alternate screen, show cursor, disable raw mode
+    process.stdout.write('\x1b[?25h\x1b[?1049l');
+    try {
+      if (process.stdin.isTTY && process.stdin.setRawMode) {
+        process.stdin.setRawMode(false);
+      }
+    } catch { /* best effort */ }
     try {
       if (engine && typeof engine.shutdown === 'function') {
         await engine.shutdown();
