@@ -195,11 +195,10 @@ if (flags.mcp) {
   process.on('SIGINT', gracefulShutdown);
   process.on('SIGTERM', gracefulShutdown);
 
-  // Start the engine
+  // Start the game
   try {
-    const { createEngine } = await import(join(PROJECT_ROOT, 'src', 'core', 'engine.js'));
-    engine = createEngine();
-    await engine.start();
+    const { runGame } = await import(join(PROJECT_ROOT, 'src', 'game', 'index.js'));
+    await runGame({ debug: flags.debug });
   } catch (err) {
     log.error(`Engine failed to start: ${err.stack || err.message}`);
     process.stderr.write(`Failed to start game: ${err.message}\n`);
