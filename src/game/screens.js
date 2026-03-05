@@ -40,7 +40,6 @@ function checkAIConnection() {
   try {
     if (!existsSync(SESSIONS_PATH)) {
       _aiCache = { connected: false, count: 0 };
-      _aiDebug = 'file not found: ' + SESSIONS_PATH;
     } else {
       const data = JSON.parse(readFileSync(SESSIONS_PATH, 'utf-8'));
       let count = 0;
@@ -48,17 +47,14 @@ function checkAIConnection() {
         if (now - session.lastSeen <= SESSION_TTL_MS) count++;
       }
       _aiCache = { connected: count > 0, count };
-      _aiDebug = `sessions=${Object.keys(data.sessions||{}).length}, active=${count}`;
     }
   } catch (err) {
     _aiCache = { connected: false, count: 0 };
-    _aiDebug = 'error: ' + err.message;
   }
 
   _aiCacheTime = now;
   return _aiCache;
 }
-let _aiDebug = '';
 
 /**
  * Render AI connection badge in top-right corner.
@@ -243,10 +239,6 @@ const menuScreen = {
       renderer.bufferWrite(aiRow + 4, 0, renderer.centerText(renderer.dim('Then tell Claude: "Click the cookie"'), cols));
     }
 
-    // DEBUG: show AI connection debug info
-    if (_aiDebug) {
-      renderer.bufferWrite(aiRow + (ai.connected ? 1 : 6), 0, renderer.dim(`[debug] ${_aiDebug} | path=${SESSIONS_PATH}`));
-    }
 
     renderer.showStatus('Arrows=navigate Enter=select L=leaderboard Q=quit ?=help');
     renderAIBadge(state, renderer);
