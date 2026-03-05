@@ -19,7 +19,7 @@ import { createGraveyard } from './graveyard.js';
 import { createTutorial } from './tutorial.js';
 import { generateDungeon, moveToRoom, clearRoom, getAvailableMoves } from './dungeon.js';
 import { generateEnemy, generateRoomEnemies } from './enemies.js';
-import { generateLoot, generateEnemyDrops, equipItem, sellValue, enchantItem, enchantCost } from './loot.js';
+import { generateLoot, generateEnemyDrops, equipItem, canEquip, sellValue, enchantItem, enchantCost } from './loot.js';
 import { createEventManager } from './events.js';
 import { createStoryManager } from './story.js';
 import { unlockVillage, upgradeBuilding, getBuildingIds, getVillageBonuses, isVillageUnlocked } from './village.js';
@@ -711,6 +711,114 @@ export async function runGame(options = {}) {
       }
     } catch (err) {
       if (debug) process.stderr.write(`[auto-dungeon] ${err.message}\n`);
+    }
+  }
+
+  // ── Auto-recruit & Auto-equip for default mode ───────────────────
+  let autoRecruitLast = 0;
+  let autoEquipLast = 0;
+
+  /**
+   * Auto-recruit: pick the highest total stats affordable member from the roster.
+   * Runs every 2s on the tavern screen when game.autoRecruit is enabled.
+   */
+  async function autoRecruitTick() {
+    if (isWorkMode()) return; // work mode has its own recruit
+    if (!(settings.get('game.autoRecruit') ?? false)) return;
+    if (state.currentState !== GameState.TAVERN) return;
+
+    const now = Date.now();
+    if (now - autoRecruitLast < 2000) return;
+    autoRecruitLast = now;
+
+    const roster = state.tavernRoster ?? [];
+    if (roster.length === 0) return;
+
+    // Find affordable members, sort by highest total stats
+    const affordable = roster
+      .map((m, i) => ({
+        m, i,
+        cost: economy.recruitCost(m),
+        total: m.stats.hp + m.stats.atk + m.stats.def + m.stats.spd + m.stats.lck,
+      }))
+      .filter(x => state.crumbs >= x.cost)
+      .sort((a, b) => b.total - a.total);
+
+    if (affordable.length === 0) return;
+
+    const { m: member, i: idx } = affordable[0];
+    if (economy.tryRecruit(member)) {
+      state.team = state.team ?? [];
+      state.team.push(member);
+      roster.splice(idx, 1);
+      logAdventure(`Auto-recruited ${member.name} the ${member.race} ${member.class}`, 'recruit');
+      renderer.showNotification(`Auto: ${member.name} joins your team!`, 'info');
+      tutorial.advance('recruit');
+      if (!dungeonTimer) {
+        if (state.dungeonProgress) state.dungeonProgress = null;
+        startDungeonTimer();
+      }
+    }
+  }
+
+  /**
+   * Auto-equip: equip best gear from inventory to team, buy heal potions when needed.
+   * Runs every 3s when game.autoEquip is enabled.
+   */
+  async function autoEquipTick() {
+    if (!(settings.get('game.autoEquip') ?? false)) return;
+    if (state.currentState !== GameState.TAVERN) return;
+
+    const now = Date.now();
+    if (now - autoEquipLast < 3000) return;
+    autoEquipLast = now;
+
+    const team = state.team ?? [];
+    const inv = state.inventory ?? [];
+    if (team.length === 0) return;
+
+    // Auto-equip best items from inventory to team members
+    for (const slot of ['weapon', 'armor', 'accessory']) {
+      // Gather all equippable items for this slot, sorted by power descending
+      const slotItems = inv
+        .map((item, i) => ({ item, i }))
+        .filter(x => x.item.slot === slot)
+        .sort((a, b) => (b.item.power ?? 0) - (a.item.power ?? 0));
+
+      for (const { item, i: invIdx } of slotItems) {
+        // Find a team member who would benefit
+        const alive = team.filter(m => m.alive && m.currentHp > 0 && canEquip(m, item));
+        // Prefer member with empty slot, then member with weaker item
+        let bestMember = alive.find(m => !m.equipment?.[slot]);
+        if (!bestMember) {
+          bestMember = alive.find(m => {
+            const current = m.equipment?.[slot];
+            return current && (item.power ?? 0) > (current.power ?? 0);
+          });
+        }
+        if (bestMember) {
+          const prev = equipItem(bestMember, item);
+          const actualIdx = inv.indexOf(item);
+          if (actualIdx >= 0) inv.splice(actualIdx, 1);
+          if (prev) inv.push(prev);
+          logAdventure(`Auto-equipped ${item.name} on ${bestMember.name}`, 'loot');
+          renderer.showNotification(`Auto: ${bestMember.name} equipped ${item.name}`, 'info');
+        }
+      }
+    }
+
+    // Auto-buy heal potions when any team member is below 50% HP
+    const needsHeal = team.some(m => m.alive && m.currentHp > 0 && m.currentHp < m.maxHp * 0.5);
+    const healCost = 15;
+    if (needsHeal && state.crumbs >= healCost) {
+      state.crumbs -= healCost;
+      state._lastCrumbSpend = Date.now();
+      state._lastCrumbSpendAmount = healCost;
+      for (const m of team.filter(m => m.currentHp > 0)) {
+        m.currentHp = Math.min(m.maxHp, m.currentHp + 20);
+      }
+      logAdventure('Auto-bought Healing Potion: team healed +20 HP', 'shop');
+      renderer.showNotification('Auto: team healed +20 HP!', 'success');
     }
   }
 
@@ -1594,6 +1702,8 @@ export async function runGame(options = {}) {
     // Auto-dungeon in default mode (dungeon/combat/loot only)
     if (!isWorkMode()) {
       await autoDungeonTick();
+      await autoRecruitTick();
+      await autoEquipTick();
     }
 
     // Autosave

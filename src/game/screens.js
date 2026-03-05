@@ -1777,6 +1777,8 @@ const SETTINGS_LAYOUT = [
   { section: 'Voice', key: 'voice.inputWords.choice1', label: 'Voice Word: Choice 1', bonus: '' },
   { section: 'Voice', key: 'voice.inputWords.choice2', label: 'Voice Word: Choice 2', bonus: '' },
   { section: 'Game', key: 'game.autoDungeon', label: 'Auto-Dungeon', bonus: 'Auto-play dungeons' },
+  { section: 'Game', key: 'game.autoRecruit', label: 'Auto-Recruit', bonus: 'Recruit best affordable' },
+  { section: 'Game', key: 'game.autoEquip', label: 'Auto-Equip', bonus: 'Equip gear & use potions' },
   { section: 'Game', key: 'game.colorBlindMode', label: 'Color-Blind Mode', bonus: '+2% loot find' },
   { section: 'Game', key: 'game.compactMode', label: 'Compact Mode', bonus: '' },
   { section: 'Game', key: 'game.showAIStatus', label: 'Show AI Status', bonus: '' },
