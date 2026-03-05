@@ -71,7 +71,8 @@ const liveState = createLiveState({
     const local = engine.getStateRef();
 
     // If external state has a newer newGameId, it's a full reset from the game
-    if (external.newGameId && external.newGameId !== local.newGameId) {
+    // Only reset if external is strictly newer (higher timestamp)
+    if (external.newGameId && external.newGameId > (local.newGameId ?? 0)) {
       for (const key of Object.keys(local)) delete local[key];
       Object.assign(local, external);
       return;

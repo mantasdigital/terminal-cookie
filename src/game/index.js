@@ -84,7 +84,9 @@ export async function runGame(options = {}) {
       const local = engine.getStateRef();
 
       // If external state has a newer newGameId, it's a full reset — replace everything
-      if (external.newGameId && external.newGameId !== local.newGameId) {
+      // Only reset if external is strictly newer (higher timestamp) to avoid
+      // stale MCP state overwriting a fresh local new-game reset.
+      if (external.newGameId && external.newGameId > (local.newGameId ?? 0)) {
         for (const key of Object.keys(local)) delete local[key];
         Object.assign(local, external);
         return;
@@ -842,6 +844,10 @@ export async function runGame(options = {}) {
     const newState = engine.getState().currentState;
     if (newState !== prevState) {
       resetUIState();
+      // Ensure tavern roster exists when entering tavern (covers new game / load game)
+      if (newState === GameState.TAVERN && (!state.tavernRoster || state.tavernRoster.length === 0)) {
+        state.tavernRoster = generateTavernRoster(rng);
+      }
       // Restart dungeon timer when returning to tavern with a team
       if (newState === GameState.TAVERN && (state.team ?? []).length > 0 && !state.dungeonProgress && !dungeonTimer) {
         startDungeonTimer();
