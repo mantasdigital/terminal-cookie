@@ -94,16 +94,19 @@ export async function runGame(options = {}) {
         return;
       }
 
-      // After a new game reset, block stale crumb merges for a short window
-      // so old MCP crumbs don't overwrite the fresh 50. Once the MCP catches up
-      // (propagates our newGameId) or enough time passes, resume normal sync.
+      // After a new game reset, block ALL stale merges for a grace window
+      // so old live.json data doesn't overwrite the fresh game state.
+      // Once the live file catches up (same newGameId) or grace expires, resume sync.
       const resetGraceMs = 10_000;
       const resetActive = local.newGameId && local.newGameId !== external.newGameId
         && (Date.now() - local.newGameId) < resetGraceMs;
 
+      // During reset grace: skip all merges — fresh state is authoritative
+      if (resetActive) return;
+
       // Normal merge — take higher crumbs, but not if we just spent locally
       const recentSpend = local._lastCrumbSpend && (Date.now() - local._lastCrumbSpend) < 3000;
-      if (external.crumbs != null && !resetActive && !recentSpend) local.crumbs = Math.max(local.crumbs ?? 0, external.crumbs);
+      if (external.crumbs != null && !recentSpend) local.crumbs = Math.max(local.crumbs ?? 0, external.crumbs);
       // For team, merge by ID — never lose locally recruited members
       if (external.team && Array.isArray(external.team)) {
         const localIds = new Set((local.team ?? []).map(m => m.id));
@@ -1360,6 +1363,10 @@ export async function runGame(options = {}) {
         st.passiveConfig.autoLoot = true;
         st.passiveConfig.autoSell = true;
       }
+      // Generate fresh tavern roster for the new game
+      st.tavernRoster = applyVillageRecruitBonus(generateTavernRoster(rng));
+      // Write fresh state to live.json immediately so stale data doesn't bleed back
+      liveState.write();
       await engine.transition(GameState.TAVERN);
     } else if (result?.action === 'load_game_slot') {
       // Save current game before switching
@@ -1372,6 +1379,8 @@ export async function runGame(options = {}) {
         for (const key of staleKeys) delete state[key];
         for (const key of Object.keys(state)) delete state[key];
         Object.assign(state, loaded.data);
+        // Set a newGameId so live-state grace window blocks stale merges
+        state.newGameId = Date.now();
         activeCombat = null;
         rollBar = null;
         dungeonTimer = null;
@@ -1384,6 +1393,8 @@ export async function runGame(options = {}) {
         if (!state.tavernRoster || state.tavernRoster.length === 0) {
           state.tavernRoster = applyVillageRecruitBonus(generateTavernRoster(rng));
         }
+        // Write loaded state to live.json immediately so stale data doesn't bleed back
+        liveState.write();
         await engine.transition(GameState.TAVERN);
       } else {
         renderer.showNotification('Failed to load save!', 'warn');
