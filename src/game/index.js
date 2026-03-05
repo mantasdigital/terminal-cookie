@@ -309,15 +309,7 @@ export async function runGame(options = {}) {
       }
 
       if (currentState === GameState.TAVERN) {
-        // Auto cookie click every 2s
-        if (now - workModeLastCookieClick >= 2000) {
-          workModeLastCookieClick = now;
-          const bonuses = settings.getBonuses();
-          const talismanCrumb = getTalismanBonuses(state.talisman?.level ?? 1).crumbBonus;
-          const earned = cookie.click();
-          const boosted = Math.floor(earned * (bonuses.crumbMultiplier + talismanCrumb));
-          state.crumbs += (boosted - earned);
-        }
+        // Crumbs are earned via AI interactions only — no auto-click in work mode
 
         // Auto recruit cheapest affordable every 3s
         if (now - workModeLastRecruit >= 3000) {
