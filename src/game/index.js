@@ -104,9 +104,18 @@ export async function runGame(options = {}) {
       // During reset grace: skip all merges — fresh state is authoritative
       if (resetActive) return;
 
-      // Normal merge — take higher crumbs, but not if we just spent locally
-      const recentSpend = local._lastCrumbSpend && (Date.now() - local._lastCrumbSpend) < 10000;
-      if (external.crumbs != null && !recentSpend) local.crumbs = Math.max(local.crumbs ?? 0, external.crumbs);
+      // Normal merge — take higher crumbs, but respect recent spends on either side
+      const localRecentSpend = local._lastCrumbSpend && (Date.now() - local._lastCrumbSpend) < 10000;
+      const externalRecentSpend = external._lastCrumbSpend && (Date.now() - external._lastCrumbSpend) < 10000;
+      if (external.crumbs != null) {
+        if (externalRecentSpend) {
+          // MCP just spent crumbs — accept the lower value
+          local.crumbs = external.crumbs;
+          local._lastCrumbSpend = external._lastCrumbSpend;
+        } else if (!localRecentSpend) {
+          local.crumbs = Math.max(local.crumbs ?? 0, external.crumbs);
+        }
+      }
       // For team, merge by ID — never lose locally recruited members
       if (external.team && Array.isArray(external.team)) {
         const localIds = new Set((local.team ?? []).map(m => m.id));

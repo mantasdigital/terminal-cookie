@@ -80,8 +80,17 @@ const liveState = createLiveState({
 
     // Normal merge
     if (external.newGameId) local.newGameId = external.newGameId;
-    const recentSpend = local._lastCrumbSpend && (Date.now() - local._lastCrumbSpend) < 10000;
-    if (external.crumbs != null && !recentSpend) local.crumbs = Math.max(local.crumbs ?? 0, external.crumbs);
+    const localRecentSpend = local._lastCrumbSpend && (Date.now() - local._lastCrumbSpend) < 10000;
+    const externalRecentSpend = external._lastCrumbSpend && (Date.now() - external._lastCrumbSpend) < 10000;
+    if (external.crumbs != null) {
+      if (externalRecentSpend) {
+        // The game just spent crumbs (recruit, shop, etc.) — accept the lower value
+        local.crumbs = external.crumbs;
+        local._lastCrumbSpend = external._lastCrumbSpend;
+      } else if (!localRecentSpend) {
+        local.crumbs = Math.max(local.crumbs ?? 0, external.crumbs);
+      }
+    }
     if (external.totalToolCalls != null) local.totalToolCalls = Math.max(local.totalToolCalls ?? 0, external.totalToolCalls);
     if (external.team) local.team = external.team;
     if (external.inventory) local.inventory = external.inventory;
