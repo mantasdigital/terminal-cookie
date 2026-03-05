@@ -282,7 +282,8 @@ export async function runGame(options = {}) {
   let workModeLastDeathRecover = 0;
   let workModeLastLootAction = 0;
 
-  function isWorkMode() { return state.gameMode === 'work'; }
+  let workModePaused = false;
+  function isWorkMode() { return state.gameMode === 'work' && !workModePaused; }
 
   function workModeLog(msg) {
     state.passiveLog = state.passiveLog ?? [];
@@ -800,9 +801,9 @@ export async function runGame(options = {}) {
   // ── Input handling ──────────────────────────────────────────────
 
   async function handleKey(event) {
-    // Work mode: Q key returns to menu (stops auto-play)
-    if (isWorkMode() && event.key === 'q') {
-      state.gameMode = 'default';
+    // Work mode: Q key returns to menu (pauses auto-play)
+    if (state.gameMode === 'work' && event.key === 'q') {
+      workModePaused = true;
       removeTalismanCombatBuffs();
       removeShopBuffs();
       removeVillageCombatBuffs();
@@ -1347,6 +1348,10 @@ export async function runGame(options = {}) {
     const newState = engine.getState().currentState;
     if (newState !== prevState) {
       resetUIState();
+      // Unpause work mode when leaving menu (user chose to continue/load/new game)
+      if (prevState === GameState.MENU && workModePaused) {
+        workModePaused = false;
+      }
       // Ensure tavern roster exists when entering tavern (covers new game / load game)
       if (newState === GameState.TAVERN && (!state.tavernRoster || state.tavernRoster.length === 0)) {
         state.tavernRoster = applyVillageRecruitBonus(generateTavernRoster(rng));
