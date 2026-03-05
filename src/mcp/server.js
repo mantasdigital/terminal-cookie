@@ -325,6 +325,18 @@ async function main() {
   // Start live state sync with terminal game
   liveState.start();
 
+  // Poll hook crumbs every 5s so Claude interactions (selections, messages)
+  // earn crumbs without needing an explicit tool call
+  const HOOK_POLL_MS = 5000;
+  const hookPollHandle = setInterval(() => {
+    engine.mutex.withLock(() => {
+      const drained = drainHookCrumbs(gameState);
+      if (drained > 0) {
+        liveState.write();
+      }
+    });
+  }, HOOK_POLL_MS);
+
   // Autosave every 60s to a dedicated auto-save file (doesn't overwrite manual saves)
   const AUTOSAVE_DIR = join(PROJECT_ROOT, 'saves');
   const AUTOSAVE_PATH = join(AUTOSAVE_DIR, 'autosave.json');
@@ -351,6 +363,7 @@ async function main() {
 
 // Clean up intervals and sessions on exit so the process releases the folder
 process.on('exit', () => {
+  if (hookPollHandle) clearInterval(hookPollHandle);
   if (autosaveHandle) clearInterval(autosaveHandle);
   passiveRunner.stop();
   liveState.stop();
