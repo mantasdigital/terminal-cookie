@@ -339,10 +339,10 @@ Edit `~/.claude/settings.json` (create it if it doesn't exist):
 
 Cookie mining hooks are **installed automatically** the first time you start the game or connect via MCP. Every single Claude interaction mines cookies:
 
-- You type a message → **+5 crumbs**
-- Claude responds → **+5 crumbs**
-- You click "yes", "no", "remember", or any choice → **+5 crumbs**
-- You approve a tool call → **+5 crumbs**
+- You type a message → **+1 crumb**
+- Claude responds → **+1 crumb**
+- You click "yes", "no", "remember", or any choice → **+1 crumb**
+- You approve a tool call → **+1 crumb**
 
 You don't need to mention the game at all. Just use Claude for your normal work — writing code, asking questions, reviewing PRs — and cookies mine in the background. The crumbs sync to the terminal game via the live state file.
 

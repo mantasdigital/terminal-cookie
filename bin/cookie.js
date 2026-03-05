@@ -195,7 +195,7 @@ function installHooks({ silent = false } = {}) {
       `  - Send a message to Claude\n` +
       `  - Claude finishes responding\n` +
       `  - Select any choice (yes, no, remember, etc.)\n` +
-      `...you automatically mine +5 crumbs.\n\n` +
+      `...you automatically mine +1 crumb.\n\n` +
       `Hooks added to: ${CLAUDE_SETTINGS}\n` +
       `To remove: edit that file and delete the "UserPromptSubmit" and "Stop" hook entries.\n`
     );
@@ -215,7 +215,7 @@ if (flags.mine) {
   // This avoids race conditions with the MCP server's live.json writes.
   const SAVES_DIR = join(PROJECT_ROOT, 'saves');
   const HOOK_PATH = join(SAVES_DIR, 'hook-crumbs.json');
-  const crumbsEarned = 5;
+  const crumbsEarned = 1;
   try {
     mkdirSync(SAVES_DIR, { recursive: true });
     let hookData = { total: 0 };
