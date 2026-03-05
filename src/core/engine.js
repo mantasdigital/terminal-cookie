@@ -128,6 +128,22 @@ export function createEngine(options = {}) {
     },
 
     /**
+     * Reset state to a fresh new game, preserving the engine instance.
+     * Sets a newGameId so the live-state bridge knows to do a full reset
+     * instead of a Math.max merge.
+     */
+    resetForNewGame() {
+      const newSeed = generateSeed();
+      const fresh = defaultGameState(newSeed);
+      fresh.newGameId = Date.now();
+      // Clear all existing keys, then apply fresh state
+      for (const key of Object.keys(state)) {
+        delete state[key];
+      }
+      Object.assign(state, fresh);
+    },
+
+    /**
      * Get a shallow copy of the current game state.
      * @returns {object}
      */

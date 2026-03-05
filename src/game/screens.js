@@ -345,8 +345,10 @@ const menuScreen = {
       if (key === 'left' || key === 'right') {
         ui.modeSelection = ui.modeSelection === 0 ? 1 : 0;
       } else if (key === 'enter') {
+        engine.resetForNewGame();
         const state = engine.getStateRef();
         state.gameMode = ui.modeSelection === 0 ? 'default' : 'work';
+        state.currentState = GameState.MENU; // needed for valid transition
         ui.modeSelectVisible = false;
         await engine.transition(GameState.TAVERN);
       } else if (key === 'escape') {

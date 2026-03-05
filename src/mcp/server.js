@@ -68,8 +68,16 @@ scores.load();
 const liveState = createLiveState({
   getState: () => ({ ...engine.getStateRef() }),
   setState: (external) => {
-    // Merge terminal game changes into MCP state
     const local = engine.getStateRef();
+
+    // If external state has a newer newGameId, it's a full reset from the game
+    if (external.newGameId && external.newGameId !== local.newGameId) {
+      for (const key of Object.keys(local)) delete local[key];
+      Object.assign(local, external);
+      return;
+    }
+
+    // Normal merge
     if (external.crumbs != null) local.crumbs = Math.max(local.crumbs ?? 0, external.crumbs);
     if (external.totalToolCalls != null) local.totalToolCalls = Math.max(local.totalToolCalls ?? 0, external.totalToolCalls);
     if (external.team) local.team = external.team;

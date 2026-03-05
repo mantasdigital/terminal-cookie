@@ -81,9 +81,21 @@ export async function runGame(options = {}) {
     getState: () => engine.getState(),
     skipInitialPoll: options.newGame === true,
     setState: (external) => {
-      // Merge MCP server changes into local state
       const local = engine.getStateRef();
-      // For crumbs, take the higher value to avoid losing local earnings
+
+      // If external state has a newer newGameId, it's a full reset — replace everything
+      if (external.newGameId && external.newGameId !== local.newGameId) {
+        for (const key of Object.keys(local)) delete local[key];
+        Object.assign(local, external);
+        return;
+      }
+
+      // If we just started a new game but external hasn't caught up yet, skip stale merge
+      if (local.newGameId && local.newGameId !== external.newGameId) {
+        return;
+      }
+
+      // Normal merge — take higher crumbs to avoid losing local earnings
       if (external.crumbs != null) local.crumbs = Math.max(local.crumbs ?? 0, external.crumbs);
       // For team, merge by ID — never lose locally recruited members
       if (external.team && Array.isArray(external.team)) {
