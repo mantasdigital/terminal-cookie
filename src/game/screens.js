@@ -202,7 +202,7 @@ function notify(renderer, msg, level = 'info') {
 function renderWorkModeBadge(state, renderer) {
   if (state.gameMode !== 'work') return;
   renderer.bufferWrite(0, 2, renderer.color(' WORK MODE ', 'yellow'));
-  renderer.bufferWrite(0, 15, renderer.dim('Q=Quit'));
+  renderer.bufferWrite(0, 15, renderer.dim('Q=Menu'));
 
   // Show last 5 passive log entries near bottom
   const log = state.passiveLog ?? [];
@@ -265,7 +265,7 @@ const menuScreen = {
     }
 
 
-    renderer.showStatus('Arrows=navigate Enter=select L=leaderboard Q=quit ?=help');
+    renderer.showStatus('Arrows=navigate Enter=select L=leaderboard Q=menu ?=help');
     renderAIBadge(state, renderer);
     renderSecurityBanner(state, renderer);
     renderSecurityLogOverlay(state, renderer);
@@ -829,7 +829,7 @@ const tavernScreen = {
       renderer.bufferWrite(timerRow + 1, 4, renderer.dim('Press [E] to enter now'));
     }
 
-    renderer.showStatus('R=recruit I=inv H=shop V=village T=talisman G=log E=dungeon Q=quit ?=help');
+    renderer.showStatus('R=recruit I=inv H=shop V=village T=talisman G=log E=dungeon Q=menu ?=help');
     renderAIBadge(state, renderer);
     renderWorkModeBadge(state, renderer);
     renderSecurityBanner(state, renderer);
@@ -983,7 +983,7 @@ const tavernScreen = {
         await engine.transition(GameState.MENU);
         break;
       case 'q':
-        return 'save_and_quit';
+        return 'go_to_menu';
     }
   },
 };
@@ -1085,7 +1085,7 @@ const dungeonScreen = {
     }
 
     const autoDungeon = state.settings?.game?.autoDungeon ?? true;
-    renderer.showStatus(autoDungeon ? 'Auto-dungeon ON | Esc=retreat Q=quit W=save ?=help' : 'Arrows=navigate Enter=interact Esc=retreat Q=quit W=save ?=help');
+    renderer.showStatus(autoDungeon ? 'Auto-dungeon ON | Esc=retreat Q=menu W=save ?=help' : 'Arrows=navigate Enter=interact Esc=retreat Q=menu W=save ?=help');
     renderAIBadge(state, renderer);
     renderWorkModeBadge(state, renderer);
     renderSecurityBanner(state, renderer);
@@ -1125,7 +1125,7 @@ const dungeonScreen = {
       case 'escape':
         return 'retreat_to_tavern';
       case 'q':
-        return 'save_and_quit';
+        return 'go_to_menu';
     }
   },
 };
@@ -1218,9 +1218,9 @@ const combatScreen = {
 
     // Auto-battle indicator
     const autoRow = rows - 3;
-    renderer.bufferWrite(autoRow, 4, renderer.dim('Auto-battling... Space=speed up  A=instant resolve  F=flee  Q=quit'));
+    renderer.bufferWrite(autoRow, 4, renderer.dim('Auto-battling... Space=speed up  A=instant resolve  F=flee  Q=menu'));
 
-    renderer.showStatus('Space=speed up | A=resolve all | F=flee | Q=quit | ?=help');
+    renderer.showStatus('Space=speed up | A=resolve all | F=flee | Q=menu | ?=help');
     renderAIBadge(state, renderer);
     renderWorkModeBadge(state, renderer);
     renderSecurityBanner(state, renderer);
@@ -1251,7 +1251,7 @@ const combatScreen = {
       case 'f':
         return 'flee';
       case 'q':
-        return 'save_and_quit';
+        return 'go_to_menu';
     }
   },
 };
@@ -1343,7 +1343,7 @@ const lootScreen = {
     renderer.bufferWrite(actionsRow, 4, renderer.bold('Actions:'));
     renderer.bufferWrite(actionsRow + 1, 6, '[E] Equip   [S] Sell   [D] Discard   [Enter] Next');
 
-    renderer.showStatus('Up/Down=select E=equip S=sell D=discard Enter=continue Q=quit');
+    renderer.showStatus('Up/Down=select E=equip S=sell D=discard Enter=continue Q=menu');
     renderAIBadge(state, renderer);
     renderWorkModeBadge(state, renderer);
     renderer.render();
@@ -1398,7 +1398,7 @@ const lootScreen = {
         ui.lootIndex = 0;
         break;
       case 'q':
-        return 'save_and_quit';
+        return 'go_to_menu';
     }
   },
 };
@@ -1484,7 +1484,7 @@ const deathScreen = {
     const bottomRow = renderer.capabilities.rows - 3;
     renderer.bufferWrite(bottomRow, 0, renderer.centerText('[Enter] Return to Tavern   [M] Return to Menu', cols));
 
-    renderer.showStatus('Enter=tavern M/Esc=menu Q=quit');
+    renderer.showStatus('Enter=tavern M/Esc=menu Q=menu');
     renderAIBadge(state, renderer);
     renderWorkModeBadge(state, renderer);
     renderSecurityBanner(state, renderer);
@@ -1503,7 +1503,7 @@ const deathScreen = {
         await engine.transition(GameState.MENU);
         break;
       case 'q':
-        return 'save_and_quit';
+        return 'go_to_menu';
     }
   },
 };

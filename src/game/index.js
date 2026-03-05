@@ -800,12 +800,20 @@ export async function runGame(options = {}) {
   // ── Input handling ──────────────────────────────────────────────
 
   async function handleKey(event) {
-    // Work mode: Q key exits the game from any screen
+    // Work mode: Q key returns to menu (stops auto-play)
     if (isWorkMode() && event.key === 'q') {
+      state.gameMode = 'default';
+      removeTalismanCombatBuffs();
+      removeShopBuffs();
+      removeVillageCombatBuffs();
+      activeCombat = null;
+      rollBar = null;
+      state._lastCombatRoll = null;
+      state.dungeonProgress = null;
+      dungeonTimer = null;
       saveGame(slot, engine.getState());
-      await engine.shutdown();
-      cleanup();
-      process.exit(0);
+      await engine.transition(GameState.MENU);
+      return;
     }
 
     const s = engine.getState();
@@ -1321,6 +1329,18 @@ export async function runGame(options = {}) {
     } else if (result === 'save_and_quit') {
       saveGame(slot, engine.getState());
       await engine.shutdown();
+    } else if (result === 'go_to_menu') {
+      // Clean up combat/dungeon state and return to menu
+      removeTalismanCombatBuffs();
+      removeShopBuffs();
+      removeVillageCombatBuffs();
+      activeCombat = null;
+      rollBar = null;
+      state._lastCombatRoll = null;
+      state.dungeonProgress = null;
+      dungeonTimer = null;
+      saveGame(slot, engine.getState());
+      await engine.transition(GameState.MENU);
     }
 
     // Reset UI state on screen transition
