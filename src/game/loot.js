@@ -137,9 +137,10 @@ function pickRarity(rarities, rng, minRarity) {
  * @returns {object[]} Array of loot items
  */
 export function generateEnemyDrops({ enemy, level, rng, usedSignatures }) {
+  if (!enemy) return [];
   const drops = [];
 
-  if (rng.chance(enemy.dropChance)) {
+  if (rng.chance(enemy.dropChance ?? 0.3)) {
     const item = generateLoot({
       level,
       rng,

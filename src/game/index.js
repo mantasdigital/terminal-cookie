@@ -938,10 +938,47 @@ export async function runGame(options = {}) {
     // Roll bar tick during combat
     if (rollBar && !rollBar.isStopped) {
       const { expired } = rollBar.tick();
-      if (expired && activeCombat) {
+      if (expired && activeCombat && !activeCombat.isFinished) {
         // Auto-roll on timeout
         const val = rollBar.value;
-        activeCombat.attack(val);
+        const attackResult = activeCombat.attack(val);
+        if (attackResult.outcome === 'victory') {
+          state.stats.monstersSlain = (state.stats.monstersSlain ?? 0) + 1;
+          const dp = state.dungeonProgress;
+          const level = dp?.level ?? 1;
+          const defeatedEnemies = activeCombat.combatants.filter(c => c.side === 'enemy');
+          const drops = [];
+          for (const enemy of defeatedEnemies) {
+            drops.push(...generateEnemyDrops({ enemy, level, rng }));
+          }
+          state.pendingLoot = drops;
+          for (const m of (state.team ?? []).filter(t => t.currentHp > 0)) {
+            awardXP(m, level);
+          }
+          if (dp) clearRoom(dp, dp.currentRoom);
+          removeTalismanCombatBuffs();
+          activeCombat = null;
+          rollBar = null;
+          await engine.transition(GameState.LOOT);
+        } else if (attackResult.outcome === 'defeat') {
+          state.stats.deaths = (state.stats.deaths ?? 0) + 1;
+          const dungeonLevel = state.dungeonProgress?.level ?? 1;
+          const penalty = storyManager.applyDeathPenalty(dungeonLevel);
+          const talismanDeathReward = awardDeathReward(state);
+          state.lastTalismanDeathReward = talismanDeathReward;
+          const salvaged = salvageLoot(state, rng);
+          state.lastSalvagedLoot = salvaged;
+          storyManager.addStoryEntry(`Your team has fallen! Lost ${penalty} crumbs.`, 'combat');
+          graveyard.recordWipe(state.team, state.lastDungeonSeed ?? 0);
+          economy.activateWipeDiscount();
+          removeTalismanCombatBuffs();
+          activeCombat = null;
+          rollBar = null;
+          await engine.transition(GameState.DEATH);
+        } else {
+          rollBar = createRollBar();
+          rollBar.start();
+        }
       }
     }
 
