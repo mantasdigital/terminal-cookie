@@ -445,36 +445,113 @@ export function monsterArt(template, mutations = []) {
 // ---- Loot Icons ----
 
 const LOOT_ICONS = {
-  weapon:  '[/>',
-  armor:   '[A]',
-  helmet:  '{^}',
-  shield:  '(#)',
-  ring:    ' o ',
-  amulet:  '<*>',
-  potion:  ' U ',
-  scroll:  '=|=',
-  boots:   '|_|',
-  gloves:  '\\m/',
+  weapon:    '/|>',
+  armor:     '[+]',
+  helmet:    '{^}',
+  shield:    '(O)',
+  ring:      '<o>',
+  amulet:    '<%>',
+  accessory: '<o>',
+  potion:    '{U}',
+  scroll:    '~#~',
+  boots:     '|_|',
+  gloves:    '\\~/',
+  consumable:'(*)' ,
 };
 
-const RARITY_INDICATOR = {
-  common:    '.',
-  uncommon:  '+',
-  rare:      '*',
-  epic:      '#',
-  legendary: '!',
+const RARITY_BRACKET = {
+  common:    [' ', ' '],
+  uncommon:  ['+', '+'],
+  rare:      ['*', '*'],
+  epic:      ['#', '#'],
+  legendary: ['!', '!'],
 };
 
 /**
  * Small loot icon per slot with rarity indicator.
- * @param {string} slot - weapon|armor|helmet|shield|ring|amulet|potion|scroll|boots|gloves
+ * @param {string} slot - weapon|armor|helmet|shield|ring|amulet|potion|scroll|boots|gloves|accessory|consumable
  * @param {string} rarity - common|uncommon|rare|epic|legendary
  * @returns {string}
  */
 export function lootIcon(slot, rarity) {
   const icon = LOOT_ICONS[slot] || '[?]';
-  const ind = RARITY_INDICATOR[rarity] || '.';
-  return `${ind}${icon}${ind}`;
+  const [l, r] = RARITY_BRACKET[rarity] || [' ', ' '];
+  return `${l}${icon}${r}`;
+}
+
+/**
+ * Multi-line item art (3 lines) for detail views.
+ * @param {string} slot
+ * @param {string} rarity
+ * @returns {string[]}
+ */
+export function itemArt(slot, rarity) {
+  const arts = {
+    weapon: [
+      '  |  ',
+      '  |==>',
+      '  |  ',
+    ],
+    armor: [
+      ' .--.',
+      ' |##|',
+      ' \'--\'',
+    ],
+    helmet: [
+      ' .^^.',
+      ' |  |',
+      ' \'--\'',
+    ],
+    shield: [
+      ' .--.',
+      ' |()| ',
+      '  \\/  ',
+    ],
+    ring: [
+      '     ',
+      ' (o) ',
+      '     ',
+    ],
+    amulet: [
+      '  |  ',
+      ' <%> ',
+      '     ',
+    ],
+    accessory: [
+      '     ',
+      ' <o> ',
+      '     ',
+    ],
+    potion: [
+      '  _  ',
+      ' {~} ',
+      ' {_} ',
+    ],
+    scroll: [
+      ' .==.',
+      ' |~~|',
+      ' \'==\'',
+    ],
+    boots: [
+      '     ',
+      ' |  |',
+      ' |__|',
+    ],
+    gloves: [
+      '     ',
+      ' \\\\//  ',
+      '  \\/  ',
+    ],
+  };
+  const art = arts[slot] || ['     ', ' [?] ', '     '];
+  const rarityColors = {
+    common: null,
+    uncommon: 'green',
+    rare: 'cyan',
+    epic: 'magenta',
+    legendary: 'yellow',
+  };
+  return { lines: art, color: rarityColors[rarity] || null };
 }
 
 /**

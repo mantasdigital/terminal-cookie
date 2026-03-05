@@ -4,7 +4,7 @@
  */
 
 import { GameState } from '../core/engine.js';
-import { titleScreen, masterCookie, miniCookie, dungeonMap, monsterArt, lootIcon, teamMember } from '../ui/ascii.js';
+import { titleScreen, masterCookie, miniCookie, dungeonMap, monsterArt, lootIcon, itemArt, teamMember } from '../ui/ascii.js';
 import { renderHelp } from '../ui/help.js';
 import { buildPortrait } from './team.js';
 import { resolveRoll } from './combat.js';
@@ -164,6 +164,19 @@ function hpBar(current, max, width = 20) {
 
 function truncate(str, len) {
   return str.length > len ? str.substring(0, len - 1) + '~' : str;
+}
+
+/** Color a loot icon based on rarity. */
+function coloredIcon(renderer, slot, rarity) {
+  const icon = lootIcon(slot, rarity);
+  const colors = {
+    common: 'brightBlack',
+    uncommon: 'green',
+    rare: 'cyan',
+    epic: 'magenta',
+    legendary: 'yellow',
+  };
+  return renderer.color(icon, colors[rarity] || 'brightBlack');
 }
 
 // ── Menu state for each screen ──────────────────────────────────────
@@ -485,12 +498,12 @@ const menuScreen = {
 // ── Shop item definitions ───────────────────────────────────────────
 
 const SHOP_ITEMS = [
-  { id: 'heal_potion',   name: 'Healing Potion',   cost: 15,  desc: 'Heal all team +20 HP',         icon: '+' },
-  { id: 'whetstone',     name: 'Whetstone',        cost: 25,  desc: '+3 ATK for next combat',       icon: '/' },
-  { id: 'iron_shield',   name: 'Iron Shield Oil',  cost: 25,  desc: '+3 DEF for next combat',       icon: '#' },
-  { id: 'lucky_charm',   name: 'Lucky Charm',      cost: 40,  desc: '+5 LCK for next combat',       icon: '*' },
-  { id: 'enchant_scroll',name: 'Enchant Scroll',   cost: 50,  desc: 'Enchant selected inventory item', icon: '~' },
-  { id: 'reroll_roster', name: 'Refresh Roster',   cost: 30,  desc: 'New recruits at the tavern',   icon: '?' },
+  { id: 'heal_potion',   name: 'Healing Potion',   cost: 15,  desc: 'Heal all team +20 HP',             icon: '{U}' },
+  { id: 'whetstone',     name: 'Whetstone',        cost: 25,  desc: '+3 ATK for next combat',           icon: '/|>' },
+  { id: 'iron_shield',   name: 'Iron Shield Oil',  cost: 25,  desc: '+3 DEF for next combat',           icon: '(O)' },
+  { id: 'lucky_charm',   name: 'Lucky Charm',      cost: 40,  desc: '+5 LCK for next combat',           icon: '<o>' },
+  { id: 'enchant_scroll',name: 'Enchant Scroll',   cost: 50,  desc: 'Enchant selected inventory item',  icon: '~#~' },
+  { id: 'reroll_roster', name: 'Refresh Roster',   cost: 30,  desc: 'New recruits at the tavern',       icon: '(?)', },
 ];
 
 // ── TAVERN SCREEN ───────────────────────────────────────────────────
@@ -550,14 +563,14 @@ const tavernScreen = {
           renderer.bufferWrite(contentTop + i * 5, 16, truncate(line, cols - 20));
           const stats = `  ATK:${m.stats.atk} DEF:${m.stats.def} SPD:${m.stats.spd} LCK:${m.stats.lck}`;
           renderer.bufferWrite(contentTop + i * 5 + 1, 16, stats);
-          // Show equipped items inline
+          // Show equipped items inline with colored icons
           const eq = m.equipment ?? {};
           const eqParts = [];
-          if (eq.weapon) eqParts.push(`${lootIcon('weapon', eq.weapon.rarity ?? 'common')}${eq.weapon.name}`);
-          if (eq.armor) eqParts.push(`${lootIcon('armor', eq.armor.rarity ?? 'common')}${eq.armor.name}`);
-          if (eq.accessory) eqParts.push(`${lootIcon(eq.accessory.slot ?? 'ring', eq.accessory.rarity ?? 'common')}${eq.accessory.name}`);
+          if (eq.weapon) eqParts.push(`${coloredIcon(renderer, 'weapon', eq.weapon.rarity ?? 'common')} ${eq.weapon.name}`);
+          if (eq.armor) eqParts.push(`${coloredIcon(renderer, 'armor', eq.armor.rarity ?? 'common')} ${eq.armor.name}`);
+          if (eq.accessory) eqParts.push(`${coloredIcon(renderer, eq.accessory.slot ?? 'ring', eq.accessory.rarity ?? 'common')} ${eq.accessory.name}`);
           if (eqParts.length > 0) {
-            renderer.bufferWrite(contentTop + i * 5 + 2, 16, renderer.dim(truncate(eqParts.join(' '), cols - 20)));
+            renderer.bufferWrite(contentTop + i * 5 + 2, 16, truncate(eqParts.join('  '), cols - 20));
           }
         }
 
@@ -574,18 +587,18 @@ const tavernScreen = {
             const slotSelected = s === ui.partySlot;
             const prefix = slotSelected ? '> ' : '  ';
             if (item) {
-              const icon = lootIcon(slots[s], item.rarity ?? 'common');
+              const icon = coloredIcon(renderer, slots[s], item.rarity ?? 'common');
               const ench = item.enchantLevel ? renderer.color(` +${item.enchantLevel}`, 'cyan') : '';
-              const line = `${prefix}${slotLabels[s]}: ${icon}${item.name}${ench}`;
-              renderer.bufferWrite(contentTop + 2 + s * 2, detCol, slotSelected ? renderer.bold(line) : line);
+              const line = `${prefix}${slotLabels[s]}: ${icon} ${item.name}${ench}`;
+              renderer.bufferWrite(contentTop + 2 + s * 3, detCol, slotSelected ? renderer.bold(line) : line);
               const statStr = item.statBonus ? Object.entries(item.statBonus).map(([k, v]) => `${k}:+${v}`).join(' ') : '';
-              renderer.bufferWrite(contentTop + 3 + s * 2, detCol, renderer.dim(`  Pwr:${item.power ?? 0} ${statStr}`));
+              renderer.bufferWrite(contentTop + 3 + s * 3, detCol, renderer.dim(`    Pwr:${item.power ?? 0} ${statStr}`));
             } else {
-              const line = `${prefix}${slotLabels[s]}: ${renderer.dim('(empty)')}`;
-              renderer.bufferWrite(contentTop + 2 + s * 2, detCol, slotSelected ? renderer.bold(line) : line);
+              const line = `${prefix}${slotLabels[s]}: ${renderer.dim('--- empty ---')}`;
+              renderer.bufferWrite(contentTop + 2 + s * 3, detCol, slotSelected ? renderer.bold(line) : line);
             }
           }
-          renderer.bufferWrite(contentTop + 9, detCol, renderer.dim('[U] Unequip slot  [Tab] Switch slot'));
+          renderer.bufferWrite(contentTop + 12, detCol, renderer.dim('[U] Unequip  [Tab] Switch slot'));
         }
       }
     } else if (ui.tavernTab === 'recruit') {
@@ -598,13 +611,16 @@ const tavernScreen = {
           const m = roster[i];
           const prefix = i === ui.menuIndex ? '> ' : '  ';
           const affordable = crumbs >= m.cost;
-          const costLabel = affordable ? `${m.cost} crumbs` : renderer.color(`${m.cost} crumbs (need ${m.cost - crumbs} more)`, 'red');
-          const info = `${prefix}${m.name} ${m.race} ${m.class} (${m.personality}) - ${costLabel}`;
-          renderer.bufferWrite(contentTop + i * 2, 4, truncate(info, cols - 8));
-          const stats = `    HP:${m.stats.hp} ATK:${m.stats.atk} DEF:${m.stats.def} SPD:${m.stats.spd} LCK:${m.stats.lck}`;
-          renderer.bufferWrite(contentTop + i * 2 + 1, 4, stats);
+          const costLabel = affordable
+            ? renderer.color(`${m.cost}c`, 'green')
+            : renderer.color(`${m.cost}c`, 'red');
+          const info = `${prefix}${m.name} the ${m.race} ${m.class}  ${costLabel}`;
+          const row = contentTop + i * 3;
+          renderer.bufferWrite(row, 4, i === ui.menuIndex ? renderer.bold(truncate(info, cols - 8)) : truncate(info, cols - 8));
+          const stats = `    HP:${m.stats.hp}  ATK:${m.stats.atk}  DEF:${m.stats.def}  SPD:${m.stats.spd}  LCK:${m.stats.lck}`;
+          renderer.bufferWrite(row + 1, 4, renderer.dim(stats));
         }
-        renderer.bufferWrite(contentTop + roster.length * 2 + 1, 4, renderer.dim('Use Up/Down to browse, Enter to recruit'));
+        renderer.bufferWrite(contentTop + roster.length * 3 + 1, 4, renderer.dim('Up/Down=browse  Enter=recruit'));
 
         // Show selected recruit portrait on the right side
         const selected = roster[ui.menuIndex];
@@ -612,16 +628,17 @@ const tavernScreen = {
           const previewCol = Math.max(cols - 28, Math.floor(cols * 0.6));
           const portrait = buildPortrait(selected);
           renderer.bufferWrite(contentTop, previewCol, renderer.bold(selected.name));
-          renderer.bufferWrite(contentTop + 1, previewCol, `${selected.race} ${selected.class}`);
+          renderer.bufferWrite(contentTop + 1, previewCol, renderer.dim(`${selected.race} ${selected.class}`));
+          renderer.bufferWrite(contentTop + 2, previewCol, renderer.dim(`(${selected.personality})`));
           for (let j = 0; j < portrait.length; j++) {
-            renderer.bufferWrite(contentTop + 3 + j, previewCol + 2, portrait[j]);
+            renderer.bufferWrite(contentTop + 4 + j, previewCol + 2, portrait[j]);
           }
           // Show abilities
           const abilities = selected.abilities ?? [];
           if (abilities.length > 0) {
-            renderer.bufferWrite(contentTop + 8, previewCol, renderer.dim('Abilities:'));
+            renderer.bufferWrite(contentTop + 9, previewCol, renderer.dim('Abilities:'));
             for (let a = 0; a < abilities.length; a++) {
-              renderer.bufferWrite(contentTop + 9 + a, previewCol + 2, abilities[a]);
+              renderer.bufferWrite(contentTop + 10 + a, previewCol + 2, abilities[a]);
             }
           }
         }
@@ -629,44 +646,59 @@ const tavernScreen = {
     } else if (ui.tavernTab === 'inventory') {
       const inv = state.inventory ?? [];
       if (inv.length === 0) {
-        renderer.bufferWrite(contentTop, 4, 'Inventory is empty. Find loot in dungeons!');
+        renderer.bufferWrite(contentTop + 1, 4, 'Inventory is empty. Find loot in dungeons!');
       } else {
-        const maxShow = Math.min(inv.length, 14);
+        const maxShow = Math.min(inv.length, 10);
         for (let i = 0; i < maxShow; i++) {
           const item = inv[i];
           const prefix = i === ui.invIndex ? '> ' : '  ';
-          const icon = lootIcon(item.slot ?? 'weapon', item.rarity ?? 'common');
+          const icon = coloredIcon(renderer, item.slot ?? 'weapon', item.rarity ?? 'common');
           const enchLvl = item.enchantLevel ? renderer.color(` +${item.enchantLevel}`, 'cyan') : '';
-          const line = `${prefix}${icon} ${item.name ?? 'Unknown'} (${item.rarity ?? '?'})${enchLvl} val:${item.value ?? 0}`;
-          renderer.bufferWrite(contentTop + i, 4, i === ui.invIndex ? renderer.bold(line) : line);
+          const rarityColor = { uncommon: 'green', rare: 'cyan', epic: 'magenta', legendary: 'yellow' };
+          const rarityTag = item.rarity !== 'common' ? renderer.color(` (${item.rarity})`, rarityColor[item.rarity] || 'brightBlack') : '';
+          const line = `${prefix}${icon} ${item.name ?? 'Unknown'}${rarityTag}${enchLvl}`;
+          const row = contentTop + Math.floor(i * 1.5);
+          renderer.bufferWrite(row, 4, i === ui.invIndex ? renderer.bold(line) : line);
+          // Value on second line for selected item
+          if (i === ui.invIndex) {
+            renderer.bufferWrite(row + 1, 10, renderer.dim(`val: ${item.value ?? 0} crumbs`));
+          }
         }
-        if (inv.length > 14) {
-          renderer.bufferWrite(contentTop + 14, 4, renderer.dim(`... +${inv.length - 14} more`));
+        if (inv.length > 10) {
+          renderer.bufferWrite(contentTop + Math.floor(10 * 1.5), 4, renderer.dim(`... +${inv.length - 10} more`));
         }
 
         // Selected item detail on right
         const sel = inv[ui.invIndex];
         if (sel) {
-          const detCol = Math.max(cols - 32, Math.floor(cols * 0.55));
-          renderer.bufferWrite(contentTop, detCol, renderer.bold(sel.name ?? 'Unknown'));
-          renderer.bufferWrite(contentTop + 1, detCol, `Slot: ${sel.slot ?? '?'}  Rarity: ${sel.rarity ?? '?'}`);
-          renderer.bufferWrite(contentTop + 2, detCol, `Power: ${sel.power ?? 0}  Value: ${sel.value ?? 0}`);
+          const detCol = Math.max(cols - 34, Math.floor(cols * 0.55));
+          // Item art
+          const art = itemArt(sel.slot ?? 'weapon', sel.rarity ?? 'common');
+          for (let a = 0; a < art.lines.length; a++) {
+            const artLine = art.color ? renderer.color(art.lines[a], art.color) : art.lines[a];
+            renderer.bufferWrite(contentTop + a, detCol, artLine);
+          }
+          const infoStart = contentTop + art.lines.length + 1;
+          renderer.bufferWrite(infoStart, detCol, renderer.bold(sel.name ?? 'Unknown'));
+          renderer.bufferWrite(infoStart + 1, detCol, renderer.dim(`${sel.slot ?? '?'} / ${sel.rarity ?? '?'}`));
+          renderer.bufferWrite(infoStart + 3, detCol, `Power: ${sel.power ?? 0}  Value: ${sel.value ?? 0}`);
           if (sel.statBonus) {
-            const statStr = Object.entries(sel.statBonus).map(([k, v]) => `${k}:+${v}`).join(' ');
-            renderer.bufferWrite(contentTop + 3, detCol, `Stats: ${statStr}`);
+            const statStr = Object.entries(sel.statBonus).map(([k, v]) => `${k}: +${v}`).join('  ');
+            renderer.bufferWrite(infoStart + 4, detCol, statStr);
           }
           if (sel.effect) {
-            renderer.bufferWrite(contentTop + 4, detCol, renderer.dim(`Effect: ${sel.effect}`));
+            renderer.bufferWrite(infoStart + 5, detCol, renderer.dim(`Effect: ${sel.effect}`));
           }
           const rawECost = enchantCost(sel);
           const vDisc = getVillageBonuses(state).enchantDiscount;
           const eCost = Math.max(1, Math.round(rawECost * (1 - vDisc)));
           const canEnchant = (state.crumbs ?? 0) >= eCost && sel.slot !== 'consumable';
           const discLabel = vDisc > 0 ? ` (-${Math.round(vDisc * 100)}%)` : '';
-          renderer.bufferWrite(contentTop + 6, detCol, canEnchant
-            ? renderer.color(`[X] Enchant (${eCost} crumbs${discLabel})`, 'cyan')
-            : renderer.dim(`Enchant: ${eCost} crumbs${discLabel}`));
-          renderer.bufferWrite(contentTop + 7, detCol, '[E] Equip to...  [S] Sell  [D] Drop');
+          renderer.bufferWrite(infoStart + 7, detCol, canEnchant
+            ? renderer.color(`[X] Enchant (${eCost}c${discLabel})`, 'cyan')
+            : renderer.dim(`Enchant: ${eCost}c${discLabel}`));
+          renderer.bufferWrite(infoStart + 9, detCol, '[E] Equip to...');
+          renderer.bufferWrite(infoStart + 10, detCol, '[S] Sell  [D] Drop');
         }
 
         // Equip picker overlay — choose which team member gets the item
@@ -697,16 +729,19 @@ const tavernScreen = {
       }
     } else if (ui.tavernTab === 'shop') {
       renderer.bufferWrite(contentTop - 1, 4, renderer.bold('Welcome to the Shop!'));
+      renderer.bufferWrite(contentTop, 4, renderer.dim(`You have ${formatCrumbs(state.crumbs ?? 0)} crumbs`));
       const crumbs = state.crumbs ?? 0;
       for (let i = 0; i < SHOP_ITEMS.length; i++) {
         const item = SHOP_ITEMS[i];
         const prefix = i === ui.shopIndex ? '> ' : '  ';
         const affordable = crumbs >= item.cost;
         const costStr = affordable ? renderer.color(`${item.cost}c`, 'green') : renderer.color(`${item.cost}c`, 'red');
-        const line = `${prefix}[${item.icon}] ${item.name}  ${costStr}  ${renderer.dim(item.desc)}`;
-        renderer.bufferWrite(contentTop + i * 2, 4, i === ui.shopIndex ? renderer.bold(line) : line);
+        const line = `${prefix}${renderer.dim(item.icon)} ${item.name}  ${costStr}`;
+        const row = contentTop + 2 + i * 2;
+        renderer.bufferWrite(row, 4, i === ui.shopIndex ? renderer.bold(line) : line);
+        renderer.bufferWrite(row + 1, 10, renderer.dim(item.desc));
       }
-      renderer.bufferWrite(contentTop + SHOP_ITEMS.length * 2 + 1, 4, renderer.dim('Up/Down to browse, Enter to buy'));
+      renderer.bufferWrite(contentTop + 2 + SHOP_ITEMS.length * 2 + 1, 4, renderer.dim('Up/Down=browse  Enter=buy'));
 
       // Show active buffs on right
       const buffs = state.shopBuffs ?? {};
@@ -1347,14 +1382,16 @@ const lootScreen = {
       for (let i = 0; i < prizes.length; i++) {
         const prefix = i === selectedIdx ? renderer.color(' >> ', 'yellow') : '    ';
         const rarity = prizes[i].rarity ?? 'common';
+        const icon = coloredIcon(renderer, prizes[i].slot ?? 'weapon', rarity);
         const color = rarity === 'legendary' ? 'yellow' : rarity === 'rare' ? 'cyan' : rarity === 'uncommon' ? 'green' : 'brightBlack';
-        renderer.bufferWrite(5 + i, 4, prefix + renderer.color(`[${rarity.toUpperCase()}] ${prizes[i].name}`, color));
+        renderer.bufferWrite(5 + i * 2, 4, prefix + icon + ' ' + renderer.color(prizes[i].name, color));
+        renderer.bufferWrite(6 + i * 2, 12, renderer.dim(rarity));
       }
 
       if (!spinning && selectedIdx >= 0) {
         const won = prizes[selectedIdx];
-        renderer.bufferWrite(5 + prizes.length + 1, 4, renderer.bold(`You won: ${won?.name ?? 'something'}!`));
-        renderer.bufferWrite(5 + prizes.length + 2, 4, '[E] Equip   [S] Sell   [Enter] Continue');
+        renderer.bufferWrite(5 + prizes.length * 2 + 1, 4, renderer.bold(`You won: ${won?.name ?? 'something'}!`));
+        renderer.bufferWrite(5 + prizes.length * 2 + 3, 4, '[E] Equip   [S] Sell   [Enter] Continue');
       }
 
       renderer.showStatus(spinning ? 'Spinning...' : 'Enter=spin/continue E=equip S=sell');
@@ -1377,17 +1414,21 @@ const lootScreen = {
     for (let i = 0; i < loot.length; i++) {
       const item = loot[i];
       const prefix = i === ui.lootIndex ? '> ' : '  ';
-      const icon = lootIcon(item.slot ?? 'weapon', item.rarity ?? 'common');
+      const icon = coloredIcon(renderer, item.slot ?? 'weapon', item.rarity ?? 'common');
       const selected = i === ui.lootIndex;
-      const line = `${prefix}${icon} ${item.name ?? 'Unknown Item'} (${item.rarity ?? 'common'})`;
-      renderer.bufferWrite(3 + i * 3, 4, selected ? renderer.bold(line) : line);
+      const rarityColor = { uncommon: 'green', rare: 'cyan', epic: 'magenta', legendary: 'yellow' };
+      const nameStr = item.rarity && item.rarity !== 'common'
+        ? renderer.color(item.name ?? 'Unknown Item', rarityColor[item.rarity] || 'brightBlack')
+        : (item.name ?? 'Unknown Item');
+      const line = `${prefix}${icon} ${nameStr}`;
+      renderer.bufferWrite(3 + i * 4, 4, selected ? renderer.bold(line) : line);
 
       // Item stats
       if (item.stats) {
-        const statLine = Object.entries(item.stats).map(([k, v]) => `${k}:${v > 0 ? '+' : ''}${v}`).join(' ');
-        renderer.bufferWrite(4 + i * 3, 8, statLine);
+        const statLine = Object.entries(item.stats).map(([k, v]) => `${k}: ${v > 0 ? '+' : ''}${v}`).join('  ');
+        renderer.bufferWrite(4 + i * 4, 10, statLine);
       }
-      renderer.bufferWrite(5 + i * 3, 8, `Value: ${item.value ?? 0} crumbs`);
+      renderer.bufferWrite(5 + i * 4, 10, renderer.dim(`${item.rarity ?? 'common'} / val: ${item.value ?? 0}c`));
     }
 
     // Show fallen allies warning
@@ -1395,22 +1436,21 @@ const lootScreen = {
     const alive = team.filter(m => m.currentHp > 0).length;
     const dead = team.length - alive;
     let extraRow = 0;
+    const warnStart = 3 + loot.length * 4 + 1;
     if (dead > 0 || (state.stats?.permanentDeaths ?? 0) > 0) {
-      const warnRow = 3 + loot.length * 3;
       if (dead > 0) {
-        renderer.bufferWrite(warnRow, 4, renderer.color(`${dead} ally fell in combat — their gear was saved to inventory.`, 'red'));
-        extraRow = 1;
+        renderer.bufferWrite(warnStart + extraRow, 4, renderer.color(`${dead} ally fell — gear saved to inventory.`, 'red'));
+        extraRow++;
       }
       if (alive === 0) {
-        renderer.bufferWrite(warnRow + extraRow, 4, renderer.color('No survivors. You will return to the tavern.', 'red'));
+        renderer.bufferWrite(warnStart + extraRow, 4, renderer.color('No survivors. Returning to tavern.', 'red'));
         extraRow++;
       }
     }
 
     // Actions for selected item
-    const actionsRow = 3 + loot.length * 3 + 1 + extraRow;
-    renderer.bufferWrite(actionsRow, 4, renderer.bold('Actions:'));
-    renderer.bufferWrite(actionsRow + 1, 6, '[E] Equip   [S] Sell   [D] Discard   [Enter] Next');
+    const actionsRow = warnStart + extraRow + 1;
+    renderer.bufferWrite(actionsRow, 6, '[E] Equip   [S] Sell   [D] Discard   [Enter] Next');
 
     renderer.showStatus('Up/Down=select E=equip S=sell D=discard Enter=continue Q=menu');
     renderAIBadge(state, renderer);
@@ -1526,21 +1566,24 @@ const deathScreen = {
     const salvaged = state.lastSalvagedLoot ?? [];
     if (salvaged.length > 0) {
       renderer.bufferWrite(row++, 4, renderer.color('Talisman salvaged items to inventory:', 'yellow'));
+      row++;
       for (let i = 0; i < salvaged.length; i++) {
         const item = salvaged[i];
-        const source = item.salvageSource ? ` (from ${item.salvageSource})` : '';
+        const source = item.salvageSource ? renderer.dim(` (from ${item.salvageSource})`) : '';
         renderer.bufferWrite(row++, 6,
-          `${lootIcon(item.slot ?? 'weapon', item.rarity ?? 'common')} ${item.name ?? 'Item'}${source}`);
+          `${coloredIcon(renderer, item.slot ?? 'weapon', item.rarity ?? 'common')} ${item.name ?? 'Item'}${source}`);
       }
     }
 
     // Recovered loot (graveyard)
     const recovered = state.recoveredLoot ?? [];
     if (recovered.length > 0) {
+      row++;
       renderer.bufferWrite(row++, 4, renderer.color('Recovered from the grave:', 'yellow'));
+      row++;
       for (let i = 0; i < recovered.length; i++) {
         const item = recovered[i];
-        renderer.bufferWrite(row++, 6, `${lootIcon(item.slot ?? 'weapon', item.rarity ?? 'common')} ${item.name ?? 'Item'}`);
+        renderer.bufferWrite(row++, 6, `${coloredIcon(renderer, item.slot ?? 'weapon', item.rarity ?? 'common')} ${item.name ?? 'Item'}`);
       }
     }
 
@@ -1604,7 +1647,7 @@ const dungeonSummaryScreen = {
       }
     }
 
-    const startRow = success ? 3 : 9;
+    const startRow = success ? 3 : 10;
     let row = startRow;
 
     // Crumbs earned
@@ -1613,24 +1656,32 @@ const dungeonSummaryScreen = {
     const crumbsEarned = Math.max(0, crumbsNow - crumbsBefore);
     renderer.bufferWrite(row++, 4, renderer.bold('-- Run Summary --'));
     row++;
-    renderer.bufferWrite(row++, 6, `Crumbs earned:   ${formatCrumbs(crumbsEarned)}`);
+
+    renderer.bufferWrite(row++, 6, `Crumbs earned:   ${renderer.color(formatCrumbs(crumbsEarned), crumbsEarned > 0 ? 'green' : 'brightBlack')}`);
     renderer.bufferWrite(row++, 6, `Rooms cleared:   ${stats.roomsCleared ?? 0}`);
     renderer.bufferWrite(row++, 6, `Monsters slain:  ${stats.monstersSlain ?? 0}`);
+    row++;
 
     // Loot
     const loot = stats.lootCollected ?? [];
     if (loot.length > 0) {
       renderer.bufferWrite(row++, 6, `Loot found:      ${loot.length} item(s)`);
+      row++;
       const maxLoot = Math.min(loot.length, 5);
       for (let i = 0; i < maxLoot; i++) {
         const item = loot[i];
-        const icon = lootIcon(item.slot ?? 'weapon', item.rarity ?? 'common');
-        renderer.bufferWrite(row++, 8, `${icon} ${item.name ?? 'Item'} (${item.rarity ?? 'common'})`);
+        const icon = coloredIcon(renderer, item.slot ?? 'weapon', item.rarity ?? 'common');
+        const rarityColor = { uncommon: 'green', rare: 'cyan', epic: 'magenta', legendary: 'yellow' };
+        const name = item.rarity && item.rarity !== 'common'
+          ? renderer.color(item.name ?? 'Item', rarityColor[item.rarity] || 'brightBlack')
+          : (item.name ?? 'Item');
+        renderer.bufferWrite(row++, 8, `${icon} ${name}`);
       }
       if (loot.length > 5) renderer.bufferWrite(row++, 8, renderer.dim(`... +${loot.length - 5} more`));
     } else {
       renderer.bufferWrite(row++, 6, renderer.dim('No loot found'));
     }
+    row++;
 
     if (stats.lootSold > 0) {
       renderer.bufferWrite(row++, 6, `Loot sold for:   ${stats.lootSold} crumbs`);
@@ -1638,11 +1689,13 @@ const dungeonSummaryScreen = {
 
     // Allies lost
     if (stats.alliesLost > 0) {
+      row++;
       renderer.bufferWrite(row++, 6, renderer.color(`Allies lost:     ${stats.alliesLost}`, 'red'));
     }
 
     // Death-specific info
     if (!success) {
+      row++;
       const penalty = stats.deathPenalty ?? 0;
       if (penalty > 0) {
         renderer.bufferWrite(row++, 6, renderer.color(`Death penalty:   -${penalty} crumbs`, 'red'));
@@ -1655,11 +1708,12 @@ const dungeonSummaryScreen = {
       if (salvaged.length > 0) {
         row++;
         renderer.bufferWrite(row++, 4, renderer.color('Talisman salvaged:', 'yellow'));
+        row++;
         for (let i = 0; i < Math.min(salvaged.length, 4); i++) {
           const item = salvaged[i];
-          const source = item.salvageSource ? ` (from ${item.salvageSource})` : '';
+          const source = item.salvageSource ? renderer.dim(` (from ${item.salvageSource})`) : '';
           renderer.bufferWrite(row++, 6,
-            `${lootIcon(item.slot ?? 'weapon', item.rarity ?? 'common')} ${item.name ?? 'Item'}${source}`);
+            `${coloredIcon(renderer, item.slot ?? 'weapon', item.rarity ?? 'common')} ${item.name ?? 'Item'}${source}`);
         }
       }
     }
