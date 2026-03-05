@@ -202,6 +202,7 @@ function notify(renderer, msg, level = 'info') {
 function renderWorkModeBadge(state, renderer) {
   if (state.gameMode !== 'work') return;
   renderer.bufferWrite(0, 2, renderer.color(' WORK MODE ', 'yellow'));
+  renderer.bufferWrite(0, 15, renderer.dim('Q=Quit'));
 
   // Show last 5 passive log entries near bottom
   const log = state.passiveLog ?? [];
@@ -1081,7 +1082,8 @@ const dungeonScreen = {
       renderer.bufferWrite(partyRow, col, `${m.name} ${hpBar(m.currentHp, m.maxHp, 8)}`);
     }
 
-    renderer.showStatus('Arrows=navigate Enter=interact W=save ?=help');
+    const autoDungeon = state.settings?.game?.autoDungeon ?? true;
+    renderer.showStatus(autoDungeon ? 'Auto-dungeon ON (toggle in Settings) W=save ?=help' : 'Arrows=navigate Enter=interact W=save ?=help');
     renderAIBadge(state, renderer);
     renderWorkModeBadge(state, renderer);
     renderSecurityBanner(state, renderer);
@@ -1508,6 +1510,7 @@ const SETTINGS_LAYOUT = [
   { section: 'Voice', key: 'voice.feedbackSound', label: 'Voice Feedback Sound', bonus: '' },
   { section: 'Voice', key: 'voice.inputWords.choice1', label: 'Voice Word: Choice 1', bonus: '' },
   { section: 'Voice', key: 'voice.inputWords.choice2', label: 'Voice Word: Choice 2', bonus: '' },
+  { section: 'Game', key: 'game.autoDungeon', label: 'Auto-Dungeon', bonus: 'Auto-play dungeons' },
   { section: 'Game', key: 'game.colorBlindMode', label: 'Color-Blind Mode', bonus: '+2% loot find' },
   { section: 'Game', key: 'game.compactMode', label: 'Compact Mode', bonus: '' },
   { section: 'Game', key: 'game.showAIStatus', label: 'Show AI Status', bonus: '' },

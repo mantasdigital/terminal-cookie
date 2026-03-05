@@ -38,11 +38,11 @@ const HELP_DATA = {
     ],
   },
   DUNGEON: {
-    title: 'Dungeon',
+    title: 'Dungeon (Auto by default)',
     keys: [
-      ['Up/Down',   'Choose a path at forks'],
-      ['Enter',     'Interact with current room'],
-      ['Esc',       'Retreat back to tavern'],
+      ['Up/Down',   'Choose a path at forks (manual)'],
+      ['Enter',     'Interact with current room (manual)'],
+      ['W',         'Save game'],
       ['?',         'Show/hide this help'],
     ],
   },

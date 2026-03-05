@@ -516,6 +516,131 @@ export async function runGame(options = {}) {
     }
   }
 
+  // ── Auto-dungeon for default mode ────────────────────────────────
+  // When game.autoDungeon setting is on (default), dungeon/combat/loot
+  // auto-resolve like work mode — the player only manages the tavern manually.
+
+  let autoDungeonLastRoomAdvance = 0;
+  let autoDungeonLastLootAction = 0;
+  let autoDungeonLastDeathRecover = 0;
+
+  function isAutoDungeon() {
+    return !isWorkMode() && (settings.get('game.autoDungeon') ?? true);
+  }
+
+  async function autoDungeonTick() {
+    if (!isAutoDungeon()) return;
+    const now = Date.now();
+    const currentState = state.currentState;
+
+    try {
+      if (currentState === GameState.DUNGEON) {
+        if (now - autoDungeonLastRoomAdvance >= 2000) {
+          autoDungeonLastRoomAdvance = now;
+          const dp = state.dungeonProgress;
+          if (dp) {
+            const room = dp.rooms?.find(r => r.id === dp.currentRoom);
+            const conns = room?.connections ?? [];
+            if (conns.length > 1) {
+              const uiState = getUIState();
+              uiState.dungeonChoice = rng.int(0, conns.length - 1);
+            }
+            if (conns.length === 0 && !room?.content) {
+              state.stats.dungeonsCleared = (state.stats.dungeonsCleared ?? 0) + 1;
+              state.dungeonProgress = null;
+              try { await engine.transition(GameState.TAVERN); } catch { /* ignore */ }
+              return;
+            }
+          }
+          await handleKey({ key: 'enter' });
+        }
+        return;
+      }
+
+      if (currentState === GameState.COMBAT) {
+        // Auto-combat already runs via combatAutoTimer in gameLoop — no extra action needed
+        // But if combat is finished and stuck, recover
+        if (activeCombat && activeCombat.isFinished) {
+          activeCombat = null;
+          rollBar = null;
+          if (state.dungeonProgress) {
+            try { await engine.transition(GameState.DUNGEON); } catch { /* ignore */ }
+          } else {
+            try { await engine.transition(GameState.TAVERN); } catch { /* ignore */ }
+          }
+        } else if (!activeCombat) {
+          if (state.dungeonProgress) {
+            try { await engine.transition(GameState.DUNGEON); } catch {
+              try { await engine.transition(GameState.TAVERN); } catch { /* stuck */ }
+            }
+          } else {
+            try { await engine.transition(GameState.TAVERN); } catch { /* stuck */ }
+          }
+        }
+        return;
+      }
+
+      if (currentState === GameState.LOOT) {
+        // Auto-resolve spin wheel
+        if (state.spinWheel) {
+          if (state.spinWheel.selectedIdx < 0) {
+            const prizes = state.spinWheel.prizes;
+            state.spinWheel.selectedIdx = rng.int(0, prizes.length - 1);
+          }
+          const item = state.spinWheel.prizes[state.spinWheel.selectedIdx];
+          if (item) {
+            const member = (state.team ?? []).find(m => m.currentHp > 0 && !m.equipment?.[item.slot ?? 'weapon']);
+            if (member) {
+              member.equipment = member.equipment ?? {};
+              member.equipment[item.slot ?? 'weapon'] = item;
+            } else {
+              economy.sellItem(item);
+            }
+          }
+          state.spinWheel = null;
+          return;
+        }
+
+        if (now - autoDungeonLastLootAction >= 500) {
+          autoDungeonLastLootAction = now;
+          const loot = state.pendingLoot ?? [];
+          if (loot.length > 0) {
+            const item = loot[0];
+            const slot = item.slot ?? 'weapon';
+            const member = (state.team ?? []).find(m => m.currentHp > 0 && !m.equipment?.[slot]);
+            if (member) {
+              member.equipment = member.equipment ?? {};
+              member.equipment[slot] = item;
+            } else {
+              economy.sellItem(item);
+            }
+            loot.splice(0, 1);
+          } else {
+            if (state.dungeonProgress) {
+              try { await engine.transition(GameState.DUNGEON); } catch { /* ignore */ }
+            } else {
+              try { await engine.transition(GameState.TAVERN); } catch { /* ignore */ }
+            }
+          }
+        }
+        return;
+      }
+
+      if (currentState === GameState.DEATH) {
+        if (now - autoDungeonLastDeathRecover >= 2000) {
+          autoDungeonLastDeathRecover = now;
+          state.team = [];
+          state.dungeonProgress = null;
+          state.tavernRoster = applyVillageRecruitBonus(generateTavernRoster(rng));
+          try { await engine.transition(GameState.TAVERN); } catch { /* ignore */ }
+        }
+        return;
+      }
+    } catch (err) {
+      if (debug) process.stderr.write(`[auto-dungeon] ${err.message}\n`);
+    }
+  }
+
   /** Handle combat end (victory or defeat) — shared logic for all combat paths. */
   async function handleCombatEnd(attackResult) {
     if (attackResult.outcome === 'victory') {
@@ -675,6 +800,14 @@ export async function runGame(options = {}) {
   // ── Input handling ──────────────────────────────────────────────
 
   async function handleKey(event) {
+    // Work mode: Q key exits the game from any screen
+    if (isWorkMode() && event.key === 'q') {
+      saveGame(slot, engine.getState());
+      await engine.shutdown();
+      cleanup();
+      process.exit(0);
+    }
+
     const s = engine.getState();
     const screen = getScreen(s.currentState);
     if (!screen) return;
@@ -1250,6 +1383,11 @@ export async function runGame(options = {}) {
     // Work mode auto-loop
     if (isWorkMode()) {
       await workModeTick();
+    }
+
+    // Auto-dungeon in default mode (dungeon/combat/loot only)
+    if (!isWorkMode()) {
+      await autoDungeonTick();
     }
 
     // Autosave
