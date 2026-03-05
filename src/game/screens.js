@@ -14,6 +14,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
 import { formatCrumbs } from '../ui/format.js';
+import { getTalismanBonuses, getUpgradeCost, canUpgrade, getMaxLevel, formatTalismanInfo } from './talisman.js';
 
 const __screens_dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__screens_dirname, '..', '..');
@@ -415,8 +416,8 @@ const tavernScreen = {
     renderer.bufferWrite(3, 12, renderer.dim('Earned via AI interactions'));
 
     // Tabs
-    const tabs = ['[Party]', '[Recruit]', '[Inventory]'];
-    const tabMap = ['party', 'recruit', 'inventory'];
+    const tabs = ['[Party]', '[Recruit]', '[Inventory]', '[Talisman]'];
+    const tabMap = ['party', 'recruit', 'inventory', 'talisman'];
     let tabStr = '';
     for (let i = 0; i < tabs.length; i++) {
       const active = tabMap[i] === ui.tavernTab;
@@ -475,6 +476,46 @@ const tavernScreen = {
           renderer.bufferWrite(contentTop + 12, 4, `... and ${inv.length - 12} more`);
         }
       }
+    } else if (ui.tavernTab === 'talisman') {
+      const talisman = state.talisman;
+      if (!talisman) {
+        renderer.bufferWrite(contentTop, 4, 'No talisman found.');
+      } else {
+        // Talisman ASCII art
+        const art = [
+          '    *',
+          '   /|\\',
+          '  / | \\',
+          ' /  |  \\',
+          ' \\  |  /',
+          '  \\ | /',
+          '   \\|/',
+          '    *',
+        ];
+        for (let i = 0; i < art.length; i++) {
+          renderer.bufferWrite(contentTop + i, 4, renderer.color(art[i], 'yellow'));
+        }
+
+        // Talisman info
+        const info = formatTalismanInfo(talisman, state.crumbs ?? 0);
+        for (let i = 0; i < info.length; i++) {
+          renderer.bufferWrite(contentTop + i, 18, info[i]);
+        }
+
+        // Upgrade prompt
+        const promptRow = contentTop + Math.max(art.length, info.length) + 1;
+        if (talisman.level < getMaxLevel()) {
+          const cost = getUpgradeCost(talisman.level);
+          const affordable = (state.crumbs ?? 0) >= cost;
+          if (affordable) {
+            renderer.bufferWrite(promptRow, 4, renderer.color('Press [U] to upgrade!', 'green'));
+          } else {
+            renderer.bufferWrite(promptRow, 4, renderer.dim(`Need ${cost} crumbs to upgrade (have ${state.crumbs ?? 0})`));
+          }
+        } else {
+          renderer.bufferWrite(promptRow, 4, renderer.color('Talisman is fully upgraded!', 'yellow'));
+        }
+      }
     }
 
     // Dungeon auto-start timer
@@ -488,7 +529,7 @@ const tavernScreen = {
       renderer.bufferWrite(timerRow + 1, 4, renderer.dim('Press [E] to enter now'));
     }
 
-    renderer.showStatus('R=recruit I=inventory E=dungeon W=save Ctrl-C=quit ?=help');
+    renderer.showStatus('R=recruit I=inventory T=talisman E=dungeon W=save Ctrl-C=quit ?=help');
     renderAIBadge(state, renderer);
     renderWorkModeBadge(state, renderer);
     renderSecurityBanner(state, renderer);
@@ -521,13 +562,19 @@ const tavernScreen = {
       case 'i':
         ui.tavernTab = 'inventory';
         break;
+      case 't':
+        ui.tavernTab = 'talisman';
+        break;
+      case 'u':
+        if (ui.tavernTab === 'talisman') return 'talisman_upgrade';
+        break;
       case 'left':
-        { const tabs = ['party', 'recruit', 'inventory'];
+        { const tabs = ['party', 'recruit', 'inventory', 'talisman'];
           const idx = tabs.indexOf(ui.tavernTab);
           ui.tavernTab = tabs[(idx - 1 + tabs.length) % tabs.length]; }
         break;
       case 'right':
-        { const tabs = ['party', 'recruit', 'inventory'];
+        { const tabs = ['party', 'recruit', 'inventory', 'talisman'];
           const idx = tabs.indexOf(ui.tavernTab);
           ui.tavernTab = tabs[(idx + 1) % tabs.length]; }
         break;
@@ -968,19 +1015,24 @@ const deathScreen = {
       renderer.bufferWrite(summaryRow + 5, 6, renderer.color(`Crumbs lost:    ${penalty} (death penalty)`, 'red'));
     }
 
+    const talismanReward = state.lastTalismanDeathReward ?? 0;
+    if (talismanReward > 0) {
+      renderer.bufferWrite(summaryRow + 6, 6, renderer.color(`Talisman saved: +${talismanReward} crumbs (consolation)`, 'cyan'));
+    }
+
     // Recovered loot
     const recovered = state.recoveredLoot ?? [];
     if (recovered.length > 0) {
-      renderer.bufferWrite(summaryRow + 6, 4, renderer.color('Recovered from the grave:', 'yellow'));
+      renderer.bufferWrite(summaryRow + 7, 4, renderer.color('Recovered from the grave:', 'yellow'));
       for (let i = 0; i < recovered.length; i++) {
         const item = recovered[i];
-        renderer.bufferWrite(summaryRow + 7 + i, 6, `${lootIcon(item.slot ?? 'weapon', item.rarity ?? 'common')} ${item.name ?? 'Item'}`);
+        renderer.bufferWrite(summaryRow + 8 + i, 6, `${lootIcon(item.slot ?? 'weapon', item.rarity ?? 'common')} ${item.name ?? 'Item'}`);
       }
     }
 
     // Graveyard run hint
     if (state.graveyardRunAvailable) {
-      renderer.bufferWrite(summaryRow + 8 + recovered.length, 4,
+      renderer.bufferWrite(summaryRow + 9 + recovered.length, 4,
         renderer.color('A graveyard run is available — re-enter the same dungeon to recover more!', 'cyan'));
     }
 

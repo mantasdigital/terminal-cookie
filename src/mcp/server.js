@@ -86,6 +86,10 @@ const liveState = createLiveState({
     if (external.inventory) local.inventory = external.inventory;
     if (external.stats) Object.assign(local.stats, external.stats);
     if (external.dungeonProgress !== undefined) local.dungeonProgress = external.dungeonProgress;
+    if (external.talisman) {
+      local.talisman = local.talisman ?? { level: 1 };
+      local.talisman.level = Math.max(local.talisman.level, external.talisman.level ?? 1);
+    }
   },
   label: 'mcp',
 });

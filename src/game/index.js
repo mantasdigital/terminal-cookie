@@ -26,6 +26,7 @@ import { getScreen, getUIState, resetUIState } from './screens.js';
 import { classifyPrompt } from '../prompts/classifier.js';
 import { getWidget } from '../prompts/widgets.js';
 import { createLiveState } from '../save/live-state.js';
+import { getTalismanBonuses, applyTalismanRegen, awardDeathReward, upgradeTalisman, canUpgrade } from './talisman.js';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -128,6 +129,10 @@ export async function runGame(options = {}) {
       if (external.pendingActions) local.pendingActions = external.pendingActions;
       if (external.passiveLog) local.passiveLog = external.passiveLog;
       if (external.totalToolCalls != null) local.totalToolCalls = Math.max(local.totalToolCalls ?? 0, external.totalToolCalls);
+      if (external.talisman) {
+        local.talisman = local.talisman ?? { level: 1 };
+        local.talisman.level = Math.max(local.talisman.level, external.talisman.level ?? 1);
+      }
     },
     label: 'game',
   });
@@ -157,6 +162,26 @@ export async function runGame(options = {}) {
   let rollBar = null;
   let activeCombat = null;
   let voiceController = null;
+
+  function applyTalismanCombatBuffs() {
+    const b = getTalismanBonuses(state.talisman?.level ?? 1);
+    if (b.atkBonus > 0 || b.defBonus > 0) {
+      for (const m of (state.team ?? []).filter(m => m.currentHp > 0)) {
+        m.stats.atk += b.atkBonus;
+        m.stats.def += b.defBonus;
+      }
+    }
+  }
+
+  function removeTalismanCombatBuffs() {
+    const b = getTalismanBonuses(state.talisman?.level ?? 1);
+    if (b.atkBonus > 0 || b.defBonus > 0) {
+      for (const m of (state.team ?? [])) {
+        m.stats.atk -= b.atkBonus;
+        m.stats.def -= b.defBonus;
+      }
+    }
+  }
 
   // ── Dungeon auto-start timer ──────────────────────────────────
   // After first recruit, show a countdown; auto-enter dungeon when it expires.
@@ -216,8 +241,9 @@ export async function runGame(options = {}) {
         if (now - workModeLastCookieClick >= 2000) {
           workModeLastCookieClick = now;
           const bonuses = settings.getBonuses();
+          const talismanCrumb = getTalismanBonuses(state.talisman?.level ?? 1).crumbBonus;
           const earned = cookie.click();
-          const boosted = Math.floor(earned * bonuses.crumbMultiplier);
+          const boosted = Math.floor(earned * (bonuses.crumbMultiplier + talismanCrumb));
           state.crumbs += (boosted - earned);
         }
 
@@ -299,6 +325,7 @@ export async function runGame(options = {}) {
               awardXP(m, level);
             }
             if (dp) clearRoom(dp, dp.currentRoom);
+            removeTalismanCombatBuffs();
             activeCombat = null;
             rollBar = null;
             workModeLog('Auto: combat victory!');
@@ -307,15 +334,19 @@ export async function runGame(options = {}) {
             state.stats.deaths = (state.stats.deaths ?? 0) + 1;
             const dungeonLevel = state.dungeonProgress?.level ?? 1;
             const penalty = storyManager.applyDeathPenalty(dungeonLevel);
+            const talismanDeathReward = awardDeathReward(state);
+            state.lastTalismanDeathReward = talismanDeathReward;
             storyManager.addStoryEntry(`Your team has fallen! Lost ${penalty} crumbs.`, 'combat');
             graveyard.recordWipe(state.team, state.lastDungeonSeed ?? 0);
             economy.activateWipeDiscount();
+            removeTalismanCombatBuffs();
             activeCombat = null;
             rollBar = null;
             workModeLog('Auto: team defeated');
             await engine.transition(GameState.DEATH);
           } else if (attackResult.error) {
             // Combat stuck — force recovery
+            removeTalismanCombatBuffs();
             activeCombat = null;
             rollBar = null;
             workModeLog('Auto: combat error, recovering');
@@ -327,6 +358,7 @@ export async function runGame(options = {}) {
           }
         } else {
           // No active combat but stuck in COMBAT state — recover
+          removeTalismanCombatBuffs();
           activeCombat = null;
           rollBar = null;
           if (state.dungeonProgress) {
@@ -449,7 +481,8 @@ export async function runGame(options = {}) {
         } else if (room.type === 'loot') {
           room.content = 'loot';
           const bonuses = settings.getBonuses();
-          room.loot = [generateLoot({ level: dungeonLevel, rng, qualityBonus: bonuses.lootFindBonus, usedSignatures })].filter(Boolean);
+          const talismanLoot = getTalismanBonuses(state.talisman?.level ?? 1).lootQuality;
+          room.loot = [generateLoot({ level: dungeonLevel, rng, qualityBonus: bonuses.lootFindBonus + talismanLoot, usedSignatures })].filter(Boolean);
         } else if (room.type === 'trap') {
           room.content = 'trap';
         } else if (room.type === 'shrine') {
@@ -541,10 +574,18 @@ export async function runGame(options = {}) {
     // Handle action results from screens
     if (result === 'cookie_click') {
       const bonuses = settings.getBonuses();
+      const talismanCrumb = getTalismanBonuses(state.talisman?.level ?? 1).crumbBonus;
       const earned = cookie.click();
-      const boosted = Math.floor(earned * bonuses.crumbMultiplier);
+      const boosted = Math.floor(earned * (bonuses.crumbMultiplier + talismanCrumb));
       state.crumbs += (boosted - earned); // add bonus portion
       tutorial.advance('click_cookie');
+    } else if (result === 'talisman_upgrade') {
+      const upgraded = upgradeTalisman(state);
+      if (upgraded.success) {
+        renderer.showNotification(`Talisman upgraded to level ${upgraded.newLevel}! Cost: ${upgraded.cost} crumbs`, 'success');
+      } else {
+        renderer.showNotification('Cannot upgrade talisman — not enough crumbs or already max level.', 'warn');
+      }
     } else if (result === 'recruit_select') {
       const ui = getUIState();
       const roster = state.tavernRoster ?? [];
@@ -586,6 +627,7 @@ export async function runGame(options = {}) {
           }
           // Clear room content
           if (dp) clearRoom(dp, dp.currentRoom);
+          removeTalismanCombatBuffs();
           activeCombat = null;
           rollBar = null;
           await engine.transition(GameState.LOOT);
@@ -593,9 +635,12 @@ export async function runGame(options = {}) {
           state.stats.deaths = (state.stats.deaths ?? 0) + 1;
           const dungeonLevel = state.dungeonProgress?.level ?? 1;
           const penalty = storyManager.applyDeathPenalty(dungeonLevel);
+          const talismanDeathReward = awardDeathReward(state);
+          state.lastTalismanDeathReward = talismanDeathReward;
           storyManager.addStoryEntry(`Your team has fallen! Lost ${penalty} crumbs to the dungeon.`, 'combat');
           graveyard.recordWipe(state.team, state.lastDungeonSeed ?? 0);
           economy.activateWipeDiscount();
+          removeTalismanCombatBuffs();
           await engine.transition(GameState.DEATH);
         } else {
           // Next turn — start new roll bar
@@ -620,6 +665,7 @@ export async function runGame(options = {}) {
           awardXP(m, level);
         }
         if (dp) clearRoom(dp, dp.currentRoom);
+        removeTalismanCombatBuffs();
         activeCombat = null;
         rollBar = null;
         await engine.transition(GameState.LOOT);
@@ -627,7 +673,10 @@ export async function runGame(options = {}) {
         state.stats.deaths = (state.stats.deaths ?? 0) + 1;
         const dungeonLevel = state.dungeonProgress?.level ?? 1;
         const penalty = storyManager.applyDeathPenalty(dungeonLevel);
+        const talismanDeathReward = awardDeathReward(state);
+        state.lastTalismanDeathReward = talismanDeathReward;
         storyManager.addStoryEntry(`Your team has fallen! Lost ${penalty} crumbs to the dungeon.`, 'combat');
+        removeTalismanCombatBuffs();
         await engine.transition(GameState.DEATH);
       }
     } else if (result === 'loot_equip' || result === 'loot_sell' || result === 'loot_discard') {
@@ -712,6 +761,7 @@ export async function runGame(options = {}) {
 
         if (room?.content === 'enemy' && (room.enemies?.length > 0 || room.enemy)) {
           const enemies = room.enemies ?? [room.enemy];
+          applyTalismanCombatBuffs();
           activeCombat = createCombat({
             team: state.team,
             enemies,
@@ -727,10 +777,11 @@ export async function runGame(options = {}) {
           if (rng.chance(0.3)) {
             const level = dp?.level ?? 1;
             const bonuses = settings.getBonuses();
+            const talismanLoot = getTalismanBonuses(state.talisman?.level ?? 1).lootQuality;
             const prizes = [];
             const rarities = ['common', 'common', 'uncommon', 'uncommon', 'rare', 'legendary'];
             for (let i = 0; i < 6; i++) {
-              const item = generateLoot({ level, rng, qualityBonus: bonuses.lootFindBonus });
+              const item = generateLoot({ level, rng, qualityBonus: bonuses.lootFindBonus + talismanLoot });
               if (item) {
                 item.rarity = rarities[i];
                 prizes.push(item);
@@ -798,6 +849,7 @@ export async function runGame(options = {}) {
           const nextId = conns[uiState.dungeonChoice] ?? conns[0];
           if (nextId != null) {
             moveToRoom(dp, nextId);
+            applyTalismanRegen(state);
             state.stats.roomsCleared = (state.stats.roomsCleared ?? 0) + 1;
           } else {
             // Dead end or dungeon complete — return to tavern
@@ -829,6 +881,7 @@ export async function runGame(options = {}) {
       settings.reset();
       settings.save();
     } else if (result === 'flee') {
+      removeTalismanCombatBuffs();
       activeCombat = null;
       rollBar = null;
       try { await engine.transition(GameState.DUNGEON); } catch { /* ignore */ }

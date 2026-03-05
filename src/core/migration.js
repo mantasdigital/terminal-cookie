@@ -4,7 +4,7 @@
  */
 
 /** Current save format version. */
-export const CURRENT_VERSION = 3;
+export const CURRENT_VERSION = 4;
 
 /** @type {Map<string, {toVersion: number, fn: function}>} */
 const migrations = new Map();
@@ -99,4 +99,11 @@ registerMigration(2, 3, (data) => ({
   ...data,
   version: 3,
   gameMode: data.gameMode ?? 'default',
+}));
+
+/** v3 → v4: add persistent talisman. */
+registerMigration(3, 4, (data) => ({
+  ...data,
+  version: 4,
+  talisman: data.talisman ?? { level: 1 },
 }));

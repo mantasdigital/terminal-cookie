@@ -11,6 +11,7 @@ import { loadLeaderboard, formatLeaderboardFull } from '../leaderboard/leaderboa
 import { loadLocalScores, generateSubmissionFile } from '../leaderboard/submit.js';
 import { formatCrumbs } from '../ui/format.js';
 import { createStoryManager } from '../game/story.js';
+import { getTalismanBonuses, getUpgradeCost, canUpgrade, upgradeTalisman, getMaxLevel, formatTalismanInfo } from '../game/talisman.js';
 
 const redactor = createRedactor();
 
@@ -574,6 +575,66 @@ export function defineTools(options = {}) {
           lines.push(`     HP:${m.maxHp} ATK:${m.stats.atk} DEF:${m.stats.def} SPD:${m.stats.spd} LCK:${m.stats.lck}`);
           lines.push(`     Cost: ${m.cost} crumbs`);
         });
+        return { content: [{ type: 'text', text: lines.join('\n') }] };
+      },
+    },
+
+    {
+      name: 'cookie_talisman',
+      description: 'View or upgrade your talisman. The talisman is a persistent artifact that survives death and provides passive bonuses (crumb%, loot quality, HP regen, death consolation, team stats). Upgradeable with crumbs across 10 levels.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          action: {
+            type: 'string',
+            description: 'Action: "view" (default) or "upgrade"',
+            enum: ['view', 'upgrade'],
+          },
+        },
+        additionalProperties: false,
+      },
+      handler(params, ctx) {
+        const { engine } = ctx;
+        const state = engine.getStateRef();
+
+        // Ensure talisman exists
+        if (!state.talisman) {
+          state.talisman = { level: 1 };
+        }
+
+        const action = params.action || 'view';
+
+        if (action === 'upgrade') {
+          const result = upgradeTalisman(state);
+          if (result.success) {
+            const b = getTalismanBonuses(result.newLevel);
+            return { content: [{ type: 'text', text: [
+              `Talisman upgraded to level ${result.newLevel}! (cost: ${result.cost} crumbs)`,
+              `Crumbs remaining: ${formatCrumbs(state.crumbs)}`,
+              '',
+              `Current bonuses:`,
+              `  Crumb bonus:     +${Math.round(b.crumbBonus * 100)}%`,
+              `  Loot quality:    +${b.lootQuality}`,
+              `  HP regen/room:   +${b.hpRegen}`,
+              `  Death consolation: ${b.deathReward} crumbs`,
+              b.atkBonus > 0 ? `  Team ATK:        +${b.atkBonus}` : null,
+              b.defBonus > 0 ? `  Team DEF:        +${b.defBonus}` : null,
+            ].filter(Boolean).join('\n') }] };
+          }
+
+          if (state.talisman.level >= getMaxLevel()) {
+            return { content: [{ type: 'text', text: 'Talisman is already at max level (10)!' }] };
+          }
+          const cost = getUpgradeCost(state.talisman.level);
+          return { content: [{ type: 'text', text: `Not enough crumbs! Need ${cost}, have ${state.crumbs}` }], isError: true };
+        }
+
+        // View
+        const lines = [
+          `=== TALISMAN === ${formatCrumbs(state.crumbs)} crumbs`,
+          '',
+          ...formatTalismanInfo(state.talisman, state.crumbs),
+        ];
         return { content: [{ type: 'text', text: lines.join('\n') }] };
       },
     },

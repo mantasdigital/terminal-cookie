@@ -68,6 +68,7 @@ function defaultGameState(seed) {
     passiveLog: [],
     totalToolCalls: 0,
     gameMode: 'default',
+    talisman: { level: 1 },
   };
 }
 
