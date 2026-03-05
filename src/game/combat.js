@@ -111,8 +111,8 @@ export function createCombat({ team, enemies, rng }) {
       let result;
 
       if (roll.fumble) {
-        // Fumble: miss + self damage
-        const selfDmg = Math.max(1, Math.floor(attacker.stats.atk / 4));
+        // Fumble: miss + self damage (painful — costs 1/3 of ATK)
+        const selfDmg = Math.max(2, Math.floor(attacker.stats.atk / 3));
         attacker.currentHp = Math.max(0, attacker.currentHp - selfDmg);
         result = {
           type: 'fumble',

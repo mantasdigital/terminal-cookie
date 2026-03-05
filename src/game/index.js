@@ -296,7 +296,8 @@ export async function runGame(options = {}) {
                 state.team.push(member);
                 roster.splice(idx, 1);
                 workModeLog(`Auto: recruited ${member.name} the ${member.class}`);
-                if (!dungeonTimer && !state.dungeonProgress) {
+                if (!dungeonTimer) {
+                  if (state.dungeonProgress) state.dungeonProgress = null;
                   startDungeonTimer();
                 }
               }
@@ -498,10 +499,30 @@ export async function runGame(options = {}) {
       for (const m of (state.team ?? []).filter(t => t.currentHp > 0)) {
         awardXP(m, level);
       }
+
+      // Permanent death: remove fallen team members after victory
+      const fallen = (state.team ?? []).filter(m => m.currentHp <= 0);
+      if (fallen.length > 0) {
+        for (const dead of fallen) {
+          // Return equipped items to inventory
+          const eq = dead.equipment ?? {};
+          for (const slot of ['weapon', 'armor', 'accessory']) {
+            if (eq[slot]) {
+              state.inventory = state.inventory ?? [];
+              state.inventory.push(eq[slot]);
+            }
+          }
+          logAdventure(`${dead.name} the ${dead.class} has fallen permanently`, 'death');
+        }
+        state.team = (state.team ?? []).filter(m => m.currentHp > 0);
+        graveyard.recordWipe(fallen, state.lastDungeonSeed ?? 0);
+        state.stats.permanentDeaths = (state.stats.permanentDeaths ?? 0) + fallen.length;
+      }
+
       if (dp) clearRoom(dp, dp.currentRoom);
       removeTalismanCombatBuffs();
       removeShopBuffs();
-      logAdventure(`Victory! Slain enemies, found ${drops.length} loot`, 'combat');
+      logAdventure(`Victory! Slain enemies, found ${drops.length} loot${fallen.length > 0 ? ` (lost ${fallen.length} ally)` : ''}`, 'combat');
       activeCombat = null;
       rollBar = null;
       state._lastCombatRoll = null;
@@ -683,7 +704,8 @@ export async function runGame(options = {}) {
           logAdventure(`Recruited ${member.name} the ${member.race} ${member.class} for ${cost} crumbs`, 'recruit');
           tutorial.advance('recruit');
           // Start dungeon auto-timer after first recruit (if not already running)
-          if (!dungeonTimer && !state.dungeonProgress) {
+          if (!dungeonTimer) {
+            if (state.dungeonProgress) state.dungeonProgress = null;
             startDungeonTimer();
           }
         }
@@ -845,6 +867,23 @@ export async function runGame(options = {}) {
           renderer.showNotification(`Need ${cost} crumbs to enchant (have ${state.crumbs})`, 'warn');
         }
       }
+    } else if (result?.action === 'inv_equip_to') {
+      // Equip to a specific team member (from picker)
+      const inv = state.inventory ?? [];
+      const item = inv[result.index];
+      const team = state.team ?? [];
+      const member = team[result.memberIndex];
+      if (item && member && item.slot !== 'consumable') {
+        const prev = equipItem(member, item);
+        inv.splice(result.index, 1);
+        if (prev) inv.push(prev);
+        logAdventure(`Equipped ${item.name} on ${member.name}`, 'loot');
+        renderer.showNotification(`${member.name} equipped ${item.name}!`, 'success');
+      } else if (item && item.slot === 'consumable') {
+        renderer.showNotification('Cannot equip consumables!', 'warn');
+      } else if (!member) {
+        renderer.showNotification('No team member selected!', 'warn');
+      }
     } else if (result?.action === 'inv_equip') {
       const inv = state.inventory ?? [];
       const item = inv[result.index];
@@ -861,6 +900,31 @@ export async function runGame(options = {}) {
           renderer.showNotification(`${bestMember.name} equipped ${item.name}!`, 'success');
         } else {
           renderer.showNotification('No team members to equip!', 'warn');
+        }
+      }
+    } else if (result?.action === 'party_unequip') {
+      // Unequip an item from a specific team member's slot
+      const team = state.team ?? [];
+      const member = team[result.memberIndex];
+      const slots = ['weapon', 'armor', 'accessory'];
+      const slotName = slots[result.slot];
+      if (member && slotName) {
+        const eq = member.equipment ?? {};
+        const item = eq[slotName];
+        if (item) {
+          // Remove stat bonuses
+          for (const [stat, val] of Object.entries(item.statBonus || {})) {
+            if (member.stats[stat] !== undefined) {
+              member.stats[stat] -= val;
+            }
+          }
+          delete eq[slotName];
+          state.inventory = state.inventory ?? [];
+          state.inventory.push(item);
+          logAdventure(`${member.name} unequipped ${item.name}`, 'loot');
+          renderer.showNotification(`${member.name} unequipped ${item.name} → inventory`, 'info');
+        } else {
+          renderer.showNotification('Nothing equipped in that slot!', 'warn');
         }
       }
     } else if (result?.action === 'inv_sell') {
@@ -1046,7 +1110,9 @@ export async function runGame(options = {}) {
         state.tavernRoster = generateTavernRoster(rng);
       }
       // Restart dungeon timer when returning to tavern with a team
-      if (newState === GameState.TAVERN && (state.team ?? []).length > 0 && !state.dungeonProgress && !dungeonTimer) {
+      if (newState === GameState.TAVERN && (state.team ?? []).length > 0 && !dungeonTimer) {
+        // Clear stale dungeon progress from previous run (e.g., crash mid-dungeon)
+        if (state.dungeonProgress) state.dungeonProgress = null;
         startDungeonTimer();
       }
       // Clear timer when leaving tavern
@@ -1093,8 +1159,13 @@ export async function runGame(options = {}) {
     // Dungeon auto-start timer tick
     if (dungeonTimer && state.currentState === GameState.TAVERN) {
       dungeonTimer.remaining -= FRAME_MS;
-      if (dungeonTimer.remaining <= 0 && (state.team ?? []).length > 0) {
-        await enterDungeon();
+      if (dungeonTimer.remaining <= 0) {
+        if ((state.team ?? []).length > 0) {
+          await enterDungeon();
+        } else {
+          // Timer expired with no team — clear so it can restart on next recruit
+          dungeonTimer = null;
+        }
       }
     }
 

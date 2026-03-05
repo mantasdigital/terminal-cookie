@@ -172,6 +172,10 @@ const ui = {
   invIndex: 0,           // inventory item selection
   shopIndex: 0,          // shop item selection
   logScroll: 0,          // adventure log scroll offset
+  partyIndex: 0,         // party member selection
+  partySlot: 0,          // equipment slot selection within party member (0=weapon,1=armor,2=accessory)
+  equipPicker: false,    // show member picker when equipping from inventory
+  equipPickerIdx: 0,     // selected member in equip picker
   helpVisible: false,
   leaderboardVisible: false,
   securityLogVisible: false,
@@ -447,17 +451,25 @@ const tavernScreen = {
       if (team.length === 0) {
         renderer.bufferWrite(contentTop, 4, 'No team members yet. Press [R] to recruit!');
       } else {
+        // Clamp partyIndex
+        if (ui.partyIndex >= team.length) ui.partyIndex = team.length - 1;
+        if (ui.partyIndex < 0) ui.partyIndex = 0;
+
         for (let i = 0; i < Math.min(team.length, 6); i++) {
           const m = team[i];
+          const selected = i === ui.partyIndex;
+          const marker = selected ? '> ' : '  ';
           const portrait = buildPortrait(m);
           for (let j = 0; j < portrait.length; j++) {
             renderer.bufferWrite(contentTop + i * 5 + j, 4, portrait[j]);
           }
-          const info = `${m.name} Lv${m.level} ${m.race} ${m.class} HP:${hpBar(m.currentHp, m.maxHp, 10)}`;
-          renderer.bufferWrite(contentTop + i * 5, 16, truncate(info, cols - 20));
-          const stats = `ATK:${m.stats.atk} DEF:${m.stats.def} SPD:${m.stats.spd} LCK:${m.stats.lck}`;
+          const dead = m.currentHp <= 0;
+          const info = `${marker}${m.name} Lv${m.level} ${m.race} ${m.class} HP:${hpBar(m.currentHp, m.maxHp, 10)}`;
+          const line = dead ? renderer.color(info, 'red') : (selected ? renderer.bold(info) : info);
+          renderer.bufferWrite(contentTop + i * 5, 16, truncate(line, cols - 20));
+          const stats = `  ATK:${m.stats.atk} DEF:${m.stats.def} SPD:${m.stats.spd} LCK:${m.stats.lck}`;
           renderer.bufferWrite(contentTop + i * 5 + 1, 16, stats);
-          // Show equipped items
+          // Show equipped items inline
           const eq = m.equipment ?? {};
           const eqParts = [];
           if (eq.weapon) eqParts.push(`${lootIcon('weapon', eq.weapon.rarity ?? 'common')}${eq.weapon.name}`);
@@ -466,6 +478,33 @@ const tavernScreen = {
           if (eqParts.length > 0) {
             renderer.bufferWrite(contentTop + i * 5 + 2, 16, renderer.dim(truncate(eqParts.join(' '), cols - 20)));
           }
+        }
+
+        // Selected member equipment detail panel on right
+        const sel = team[ui.partyIndex];
+        if (sel) {
+          const detCol = Math.max(cols - 34, Math.floor(cols * 0.55));
+          renderer.bufferWrite(contentTop, detCol, renderer.bold(`${sel.name}'s Equipment`));
+          const eq = sel.equipment ?? {};
+          const slots = ['weapon', 'armor', 'accessory'];
+          const slotLabels = ['Weapon', 'Armor', 'Accessory'];
+          for (let s = 0; s < slots.length; s++) {
+            const item = eq[slots[s]];
+            const slotSelected = s === ui.partySlot;
+            const prefix = slotSelected ? '> ' : '  ';
+            if (item) {
+              const icon = lootIcon(slots[s], item.rarity ?? 'common');
+              const ench = item.enchantLevel ? renderer.color(` +${item.enchantLevel}`, 'cyan') : '';
+              const line = `${prefix}${slotLabels[s]}: ${icon}${item.name}${ench}`;
+              renderer.bufferWrite(contentTop + 2 + s * 2, detCol, slotSelected ? renderer.bold(line) : line);
+              const statStr = item.statBonus ? Object.entries(item.statBonus).map(([k, v]) => `${k}:+${v}`).join(' ') : '';
+              renderer.bufferWrite(contentTop + 3 + s * 2, detCol, renderer.dim(`  Pwr:${item.power ?? 0} ${statStr}`));
+            } else {
+              const line = `${prefix}${slotLabels[s]}: ${renderer.dim('(empty)')}`;
+              renderer.bufferWrite(contentTop + 2 + s * 2, detCol, slotSelected ? renderer.bold(line) : line);
+            }
+          }
+          renderer.bufferWrite(contentTop + 9, detCol, renderer.dim('[U] Unequip slot  [Tab] Switch slot'));
         }
       }
     } else if (ui.tavernTab === 'recruit') {
@@ -543,7 +582,33 @@ const tavernScreen = {
           renderer.bufferWrite(contentTop + 6, detCol, canEnchant
             ? renderer.color(`[X] Enchant (${eCost} crumbs)`, 'cyan')
             : renderer.dim(`Enchant: ${eCost} crumbs`));
-          renderer.bufferWrite(contentTop + 7, detCol, '[E] Equip  [S] Sell  [D] Drop');
+          renderer.bufferWrite(contentTop + 7, detCol, '[E] Equip to...  [S] Sell  [D] Drop');
+        }
+
+        // Equip picker overlay — choose which team member gets the item
+        if (ui.equipPicker) {
+          const team = state.team ?? [];
+          const boxW = 36;
+          const boxH = team.length + 4;
+          const boxX = Math.floor((cols - boxW) / 2);
+          const boxY = Math.floor((renderer.capabilities.rows - boxH) / 2);
+          renderer.bufferWrite(boxY, boxX, '+' + '-'.repeat(boxW - 2) + '+');
+          renderer.bufferWrite(boxY + 1, boxX, '| ' + renderer.bold('Equip to whom?').padEnd(boxW - 4) + ' |');
+          for (let t = 0; t < team.length; t++) {
+            const m = team[t];
+            const prefix = t === ui.equipPickerIdx ? '> ' : '  ';
+            const dead = m.currentHp <= 0;
+            const eq = m.equipment ?? {};
+            const selItem = inv[ui.invIndex];
+            const slot = selItem?.slot ?? 'weapon';
+            const hasSlot = eq[slot] ? ` [${eq[slot].name}]` : '';
+            let label = `${prefix}${m.name} Lv${m.level} ${m.class}${hasSlot}`;
+            if (dead) label = renderer.color(label, 'red');
+            else if (t === ui.equipPickerIdx) label = renderer.bold(label);
+            renderer.bufferWrite(boxY + 2 + t, boxX, '| ' + truncate(label, boxW - 4).padEnd(boxW - 4) + ' |');
+          }
+          renderer.bufferWrite(boxY + 2 + team.length, boxX, '| ' + renderer.dim('Enter=equip  Esc=cancel').padEnd(boxW - 4) + ' |');
+          renderer.bufferWrite(boxY + 3 + team.length, boxX, '+' + '-'.repeat(boxW - 2) + '+');
         }
       }
     } else if (ui.tavernTab === 'shop') {
@@ -667,6 +732,20 @@ const tavernScreen = {
 
     const state = engine.getState();
 
+    // Equip picker overlay intercepts all keys when visible
+    if (ui.equipPicker) {
+      const team = state.team ?? [];
+      if (key === 'up') ui.equipPickerIdx = Math.max(0, ui.equipPickerIdx - 1);
+      else if (key === 'down') ui.equipPickerIdx = Math.min(team.length - 1, ui.equipPickerIdx + 1);
+      else if (key === 'enter') {
+        ui.equipPicker = false;
+        return { action: 'inv_equip_to', index: ui.invIndex, memberIndex: ui.equipPickerIdx };
+      } else if (key === 'escape') {
+        ui.equipPicker = false;
+      }
+      return;
+    }
+
     switch (key) {
       case 'r':
         ui.tavernTab = 'recruit';
@@ -689,9 +768,15 @@ const tavernScreen = {
         break;
       case 'u':
         if (ui.tavernTab === 'talisman') return 'talisman_upgrade';
+        if (ui.tavernTab === 'party') return { action: 'party_unequip', memberIndex: ui.partyIndex, slot: ui.partySlot };
         break;
       case 'x':
         if (ui.tavernTab === 'inventory') return { action: 'inv_enchant', index: ui.invIndex };
+        break;
+      case 'tab':
+        if (ui.tavernTab === 'party') {
+          ui.partySlot = (ui.partySlot + 1) % 3;
+        }
         break;
       case 'left':
         { const tabs = ['party', 'recruit', 'inventory', 'shop', 'talisman', 'log'];
@@ -704,14 +789,16 @@ const tavernScreen = {
           ui.tavernTab = tabs[(idx + 1) % tabs.length]; }
         break;
       case 'up':
-        if (ui.tavernTab === 'recruit') ui.menuIndex = Math.max(0, ui.menuIndex - 1);
+        if (ui.tavernTab === 'party') ui.partyIndex = Math.max(0, ui.partyIndex - 1);
+        else if (ui.tavernTab === 'recruit') ui.menuIndex = Math.max(0, ui.menuIndex - 1);
         else if (ui.tavernTab === 'inventory') ui.invIndex = Math.max(0, ui.invIndex - 1);
         else if (ui.tavernTab === 'shop') ui.shopIndex = Math.max(0, ui.shopIndex - 1);
         else if (ui.tavernTab === 'log') ui.logScroll = Math.min((state.adventureLog ?? []).length, ui.logScroll + 1);
         else ui.menuIndex = Math.max(0, ui.menuIndex - 1);
         break;
       case 'down':
-        if (ui.tavernTab === 'recruit') ui.menuIndex++;
+        if (ui.tavernTab === 'party') ui.partyIndex = Math.min((state.team ?? []).length - 1, ui.partyIndex + 1);
+        else if (ui.tavernTab === 'recruit') ui.menuIndex++;
         else if (ui.tavernTab === 'inventory') ui.invIndex = Math.min((state.inventory ?? []).length - 1, ui.invIndex + 1);
         else if (ui.tavernTab === 'shop') ui.shopIndex = Math.min(SHOP_ITEMS.length - 1, ui.shopIndex + 1);
         else if (ui.tavernTab === 'log') ui.logScroll = Math.max(0, ui.logScroll - 1);
@@ -720,10 +807,23 @@ const tavernScreen = {
       case 'enter':
         if (ui.tavernTab === 'recruit') return 'recruit_select';
         if (ui.tavernTab === 'shop') return { action: 'shop_buy', index: ui.shopIndex };
-        if (ui.tavernTab === 'inventory') return { action: 'inv_equip', index: ui.invIndex };
+        if (ui.tavernTab === 'inventory') {
+          // Open equip picker if team exists
+          if ((state.team ?? []).length > 0 && (state.inventory ?? []).length > 0) {
+            ui.equipPicker = true;
+            ui.equipPickerIdx = 0;
+          }
+          return;
+        }
         break;
       case 'e':
-        if (ui.tavernTab === 'inventory') return { action: 'inv_equip', index: ui.invIndex };
+        if (ui.tavernTab === 'inventory') {
+          if ((state.team ?? []).length > 0 && (state.inventory ?? []).length > 0) {
+            ui.equipPicker = true;
+            ui.equipPickerIdx = 0;
+          }
+          return;
+        }
         if ((state.team ?? []).length > 0) return 'explore_dungeon';
         break;
       case 'd':
@@ -1069,8 +1169,25 @@ const lootScreen = {
       renderer.bufferWrite(5 + i * 3, 8, `Value: ${item.value ?? 0} crumbs`);
     }
 
+    // Show fallen allies warning
+    const team = state.team ?? [];
+    const alive = team.filter(m => m.currentHp > 0).length;
+    const dead = team.length - alive;
+    let extraRow = 0;
+    if (dead > 0 || (state.stats?.permanentDeaths ?? 0) > 0) {
+      const warnRow = 3 + loot.length * 3;
+      if (dead > 0) {
+        renderer.bufferWrite(warnRow, 4, renderer.color(`${dead} ally fell in combat — their gear was saved to inventory.`, 'red'));
+        extraRow = 1;
+      }
+      if (alive === 0) {
+        renderer.bufferWrite(warnRow + extraRow, 4, renderer.color('No survivors. You will return to the tavern.', 'red'));
+        extraRow++;
+      }
+    }
+
     // Actions for selected item
-    const actionsRow = 3 + loot.length * 3 + 1;
+    const actionsRow = 3 + loot.length * 3 + 1 + extraRow;
     renderer.bufferWrite(actionsRow, 4, renderer.bold('Actions:'));
     renderer.bufferWrite(actionsRow + 1, 6, '[E] Equip   [S] Sell   [D] Discard   [Enter] Next');
 
@@ -1120,9 +1237,10 @@ const lootScreen = {
       case 'd':
         return 'loot_discard';
       case 'enter':
-        if (state.dungeonProgress) {
+        if (state.dungeonProgress && (state.team ?? []).some(m => m.currentHp > 0)) {
           await engine.transition(GameState.DUNGEON);
         } else {
+          // No living team or no dungeon — return to tavern
           await engine.transition(GameState.TAVERN);
         }
         ui.lootIndex = 0;
@@ -1160,49 +1278,52 @@ const deathScreen = {
     // Death summary
     const summaryRow = 14;
     renderer.bufferWrite(summaryRow, 4, renderer.bold('Run Summary:'));
-    renderer.bufferWrite(summaryRow + 1, 6, `Crumbs earned:  ${formatCrumbs(stats.crumbsEarned ?? 0)}`);
-    renderer.bufferWrite(summaryRow + 2, 6, `Monsters slain: ${stats.monstersSlain ?? 0}`);
-    renderer.bufferWrite(summaryRow + 3, 6, `Rooms cleared:  ${stats.roomsCleared ?? 0}`);
-    renderer.bufferWrite(summaryRow + 4, 6, `Total deaths:   ${stats.deaths ?? 0}`);
+    let row = summaryRow + 1;
+    renderer.bufferWrite(row++, 6, `Crumbs earned:  ${formatCrumbs(stats.crumbsEarned ?? 0)}`);
+    renderer.bufferWrite(row++, 6, `Monsters slain: ${stats.monstersSlain ?? 0}`);
+    renderer.bufferWrite(row++, 6, `Rooms cleared:  ${stats.roomsCleared ?? 0}`);
+    renderer.bufferWrite(row++, 6, `Total deaths:   ${stats.deaths ?? 0}`);
+    if (stats.permanentDeaths) {
+      renderer.bufferWrite(row++, 6, renderer.color(`Allies lost:    ${stats.permanentDeaths} (permanent)`, 'red'));
+    }
 
     // Death penalty display
     const penalty = state.lastDeathPenalty ?? 0;
     if (penalty > 0) {
-      renderer.bufferWrite(summaryRow + 5, 6, renderer.color(`Crumbs lost:    ${penalty} (death penalty)`, 'red'));
+      renderer.bufferWrite(row++, 6, renderer.color(`Crumbs lost:    ${penalty} (death penalty)`, 'red'));
     }
 
     const talismanReward = state.lastTalismanDeathReward ?? 0;
     if (talismanReward > 0) {
-      renderer.bufferWrite(summaryRow + 6, 6, renderer.color(`Talisman saved: +${talismanReward} crumbs (consolation)`, 'cyan'));
+      renderer.bufferWrite(row++, 6, renderer.color(`Talisman saved: +${talismanReward} crumbs (consolation)`, 'cyan'));
     }
 
     // Talisman salvaged loot
-    let extraRows = 0;
+    row++;
     const salvaged = state.lastSalvagedLoot ?? [];
     if (salvaged.length > 0) {
-      renderer.bufferWrite(summaryRow + 7, 4, renderer.color('Talisman salvaged items to inventory:', 'yellow'));
+      renderer.bufferWrite(row++, 4, renderer.color('Talisman salvaged items to inventory:', 'yellow'));
       for (let i = 0; i < salvaged.length; i++) {
         const item = salvaged[i];
         const source = item.salvageSource ? ` (from ${item.salvageSource})` : '';
-        renderer.bufferWrite(summaryRow + 8 + i, 6,
+        renderer.bufferWrite(row++, 6,
           `${lootIcon(item.slot ?? 'weapon', item.rarity ?? 'common')} ${item.name ?? 'Item'}${source}`);
       }
-      extraRows = salvaged.length + 1;
     }
 
     // Recovered loot (graveyard)
     const recovered = state.recoveredLoot ?? [];
     if (recovered.length > 0) {
-      renderer.bufferWrite(summaryRow + 7 + extraRows, 4, renderer.color('Recovered from the grave:', 'yellow'));
+      renderer.bufferWrite(row++, 4, renderer.color('Recovered from the grave:', 'yellow'));
       for (let i = 0; i < recovered.length; i++) {
         const item = recovered[i];
-        renderer.bufferWrite(summaryRow + 8 + extraRows + i, 6, `${lootIcon(item.slot ?? 'weapon', item.rarity ?? 'common')} ${item.name ?? 'Item'}`);
+        renderer.bufferWrite(row++, 6, `${lootIcon(item.slot ?? 'weapon', item.rarity ?? 'common')} ${item.name ?? 'Item'}`);
       }
     }
 
     // Graveyard run hint
     if (state.graveyardRunAvailable) {
-      renderer.bufferWrite(summaryRow + 9 + extraRows + recovered.length, 4,
+      renderer.bufferWrite(row++, 4,
         renderer.color('A graveyard run is available — re-enter the same dungeon to recover more!', 'cyan'));
     }
 
@@ -1427,6 +1548,10 @@ export function resetUIState() {
   ui.invIndex = 0;
   ui.shopIndex = 0;
   ui.logScroll = 0;
+  ui.partyIndex = 0;
+  ui.partySlot = 0;
+  ui.equipPicker = false;
+  ui.equipPickerIdx = 0;
   ui.helpVisible = false;
   ui.leaderboardVisible = false;
   ui.securityLogVisible = false;
