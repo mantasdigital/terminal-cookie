@@ -67,6 +67,11 @@ function renderAIBadge(state, renderer) {
 
   const cols = renderer.capabilities.cols;
   const ai = checkAIConnection();
+
+  // Crumbs + AI status on row 0
+  const crumbText = `Crumbs: ${formatCrumbs(state.crumbs ?? 0)}`;
+  const crumbLen = crumbText.replace(/\x1b\[[^m]*m/g, '').length;
+
   let badge;
   if (ai.connected) {
     badge = ai.count > 1 ? `AI: ${ai.count} connected` : 'AI: connected';
@@ -74,9 +79,12 @@ function renderAIBadge(state, renderer) {
   } else {
     badge = renderer.dim('AI: --');
   }
-  // Right-align at row 0
   const badgeLen = ai.connected ? (ai.count > 1 ? 16 : 13) : 6;
-  renderer.bufferWrite(0, Math.max(0, cols - badgeLen - 1), badge);
+
+  // Right-align: crumbs then AI badge
+  const totalLen = crumbLen + 3 + badgeLen;
+  const startCol = Math.max(0, cols - totalLen - 1);
+  renderer.bufferWrite(0, startCol, renderer.bold(crumbText) + '  ' + badge);
 }
 
 /**

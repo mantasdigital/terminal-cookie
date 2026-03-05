@@ -7,7 +7,7 @@
  * own writes.
  */
 
-import { readFileSync, writeFileSync, appendFileSync, statSync, mkdirSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, appendFileSync, mkdirSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -26,8 +26,9 @@ const POLL_INTERVAL_MS = 1000;
  */
 export function createLiveState({ getState, setState, label = 'unknown', skipInitialPoll = false }) {
   const pid = process.pid;
-  let lastMtimeMs = 0;
   let lastWriteMs = 0;
+  let lastExternalJson = '';   // Track last-seen external JSON to avoid redundant setState calls
+  let lastWrittenJson = '';    // Track our last write to skip our own changes
   let pollHandle = null;
 
   // Temporary debug log — writes to saves/live-debug.log
@@ -60,12 +61,10 @@ export function createLiveState({ getState, setState, label = 'unknown', skipIni
           writtenAt: Date.now(),
         },
       };
-      writeFileSync(LIVE_PATH, JSON.stringify(data, null, 2), 'utf-8');
+      const json = JSON.stringify(data, null, 2);
+      writeFileSync(LIVE_PATH, json, 'utf-8');
       lastWriteMs = Date.now();
-      // Update our mtime tracker so we don't reload our own write
-      try {
-        lastMtimeMs = statSync(LIVE_PATH).mtimeMs;
-      } catch { /* ignore */ }
+      lastWrittenJson = json;
     } catch {
       // best-effort write
     }
@@ -73,30 +72,35 @@ export function createLiveState({ getState, setState, label = 'unknown', skipIni
 
   /**
    * Check if the live file was modified by another process and load if so.
+   * Always reads the file (no mtime optimization) to avoid race conditions
+   * when multiple processes share the same live.json.
    * Returns true if external state was loaded.
    */
   function poll() {
     if (!existsSync(LIVE_PATH)) { _debugLog('poll: file not found'); return false; }
 
     try {
-      const stat = statSync(LIVE_PATH);
-      if (stat.mtimeMs <= lastMtimeMs) return false;
-
-      // File changed — read it
       const raw = readFileSync(LIVE_PATH, 'utf-8');
+
+      // Skip if file content is identical to what we last wrote
+      if (raw === lastWrittenJson) return false;
+
+      // Skip if file content is identical to the last external state we loaded
+      if (raw === lastExternalJson) return false;
+
       const data = JSON.parse(raw);
 
-      // Don't reload our own writes
+      // Don't reload our own writes (belt-and-suspenders with the JSON check above)
       if (data._live?.writerPid === pid) {
-        lastMtimeMs = stat.mtimeMs;
+        lastWrittenJson = raw;
         return false;
       }
 
       // External change detected — merge it
       _debugLog(`poll: external change from ${data._live?.writerLabel}(${data._live?.writerPid}), crumbs=${data.crumbs}`);
+      lastExternalJson = raw;
       const { _live, _tavernRoster, ...stateData } = data;
       setState(stateData);
-      lastMtimeMs = stat.mtimeMs;
       return true;
     } catch (err) {
       _debugLog(`poll: error: ${err.message}`);
