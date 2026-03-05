@@ -173,6 +173,9 @@ if (flags.setupHooks) {
 if (flags.mine) {
   // Silent cookie mine — called by Claude Code hooks on every interaction.
   // Reads live.json, adds crumbs, writes back. Fast and silent (no stdout).
+  // UserPromptSubmit (sending messages) = 5 crumbs
+  // Stop (AI finishes responding) = 3 crumbs
+  // Choice selections (yes/no/remember) trigger both hooks = 8 total
   const LIVE_PATH = join(PROJECT_ROOT, 'saves', 'live.json');
   const SAVES_DIR = join(PROJECT_ROOT, 'saves');
   try {
@@ -181,7 +184,7 @@ if (flags.mine) {
     if (existsSync(LIVE_PATH)) {
       data = JSON.parse(readFileSync(LIVE_PATH, 'utf-8'));
     }
-    const crumbsEarned = 3;
+    const crumbsEarned = 5;
     data.crumbs = (data.crumbs || 0) + crumbsEarned;
     if (!data.stats) data.stats = {};
     data.stats.crumbsEarned = (data.stats.crumbsEarned || 0) + crumbsEarned;

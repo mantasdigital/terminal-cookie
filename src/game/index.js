@@ -469,13 +469,7 @@ export async function runGame(options = {}) {
       return;
     }
 
-    // Every input action earns passive crumbs (selections earn more)
-    const isSelection = result === 'recruit_select' || result === 'loot_equip' || result === 'loot_sell'
-      || result === 'explore_dungeon' || result === 'dungeon_interact' || result === 'attack'
-      || result === 'roll_stop';
-    const passiveEarn = isSelection ? rng.int(2, 5) * 0.001 : 0.001;
-    state.crumbs += passiveEarn;
-    state.stats.crumbsEarned = (state.stats.crumbsEarned ?? 0) + passiveEarn;
+    // Crumbs are earned via AI interactions (MCP server), not key presses
 
     // Handle voice select_1/select_2 shortcuts
     if (event.key === '1' || event.key === 'select_1') {

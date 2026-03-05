@@ -326,12 +326,14 @@ export function createPassiveRunner({ engine, rng, settings, scores }) {
    */
   function passiveEarning(toolName) {
     state.totalToolCalls = (state.totalToolCalls || 0) + 1;
-    const base = 0.000000001;
-    const bonus = state.totalToolCalls % 10 === 0 ? 0.000000005 : 0;
-    const earned = base + bonus;
+    // Base earning per AI tool call
+    const base = 2;
+    // Milestone bonus every 10 calls
+    const milestone = state.totalToolCalls % 10 === 0 ? 5 : 0;
+    const earned = base + milestone;
     state.crumbs += earned;
     state.stats.crumbsEarned = (state.stats.crumbsEarned || 0) + earned;
-    if (bonus > 0) {
+    if (milestone > 0) {
       log(`Milestone! ${state.totalToolCalls} tool calls. +${earned} crumbs!`);
     }
     return earned;

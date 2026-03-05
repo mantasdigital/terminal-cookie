@@ -816,5 +816,42 @@ export function defineTools() {
         return { content: [{ type: 'text', text: `Choice recorded: ${params.choice_id} = ${params.choice}` }] };
       },
     },
+
+    {
+      name: 'cookie_user_choice',
+      description: 'Call this when the user makes a selection choice (yes, no, yes and remember, allow, deny, etc.). Awards bonus crumbs for user engagement. The more the user interacts with AI decisions, the more crumbs they earn.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          choice: {
+            type: 'string',
+            description: 'The choice the user made (e.g. "yes", "no", "yes and remember", "allow", "deny")',
+          },
+          context: {
+            type: 'string',
+            description: 'Brief context of what the choice was about',
+          },
+        },
+        required: ['choice'],
+        additionalProperties: false,
+      },
+      handler(params, ctx) {
+        const { engine, scores } = ctx;
+        const state = engine.getStateRef();
+        const choice = (params.choice || '').toLowerCase();
+
+        // Higher rewards for more engaged choices
+        let crumbReward = 10; // base for any choice
+        if (choice.includes('remember')) crumbReward = 20; // "yes and remember" = highest
+        else if (choice.includes('allow') || choice.includes('yes')) crumbReward = 15;
+        else if (choice.includes('deny') || choice.includes('no')) crumbReward = 12;
+
+        state.crumbs += crumbReward;
+        state.stats.crumbsEarned = (state.stats.crumbsEarned || 0) + crumbReward;
+        scores.increment('total_crumbs_earned', crumbReward);
+
+        return { content: [{ type: 'text', text: `+${crumbReward} crumbs (choice: ${params.choice}) | Total: ${state.crumbs}` }] };
+      },
+    },
   ];
 }
