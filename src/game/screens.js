@@ -109,22 +109,62 @@ function renderAIBadge(state, renderer) {
   }
 }
 
+/** Get the configured security alert key (default '!'). */
+function getAlertKey(state) {
+  return state?.settings?.security?.alertKey ?? '!';
+}
+
+/** Get the configured security dismiss key (default 'd'). */
+function getDismissKey(state) {
+  return state?.settings?.security?.dismissKey ?? 'd';
+}
+
+/**
+ * Handle security log input (toggle and dismiss).
+ * Returns an action string or null. Call at top of handleInput.
+ * @param {string} key
+ * @param {object} engine
+ * @returns {string|null|undefined}
+ */
+function handleSecurityInput(key, engine) {
+  const state = engine.getState();
+  const alertKey = getAlertKey(state);
+  const dismissKey = getDismissKey(state);
+  if (key === alertKey) { ui.securityLogVisible = !ui.securityLogVisible; return 'handled'; }
+  if (ui.securityLogVisible) {
+    if (key === 'escape') { ui.securityLogVisible = false; return 'handled'; }
+    if (key === dismissKey) return 'dismiss_security';
+    return 'handled'; // consume all keys while log is open
+  }
+  return null;
+}
+
 /**
  * Render security alert banner at the top of the screen.
- * Auto-dismisses alerts older than 15 seconds.
+ * Shows unresolved alerts with pause indicator.
  */
 function renderSecurityBanner(state, renderer) {
   if (!state.securityAlerts || state.securityAlerts.length === 0) return;
 
-  const now = Date.now();
-  // Auto-dismiss alerts older than 15 seconds
-  // Note: we filter but don't mutate state here (render is read-only)
-  const active = state.securityAlerts.filter(a => now - a.time < 15000);
-  if (active.length === 0) return;
+  // Check for unresolved (non-dismissed) alerts
+  const unresolved = state.securityAlerts.filter(a => !a.dismissed);
+  if (unresolved.length === 0) {
+    // Still show dismissed but recent alerts briefly
+    const now = Date.now();
+    const recent = state.securityAlerts.filter(a => now - a.time < 15000);
+    if (recent.length === 0) return;
+    const latest = recent[recent.length - 1];
+    const cols = renderer.capabilities.cols;
+    const banner = `[!] SECURITY: ${latest.summary}`;
+    renderer.bufferWrite(1, 0, renderer.color(banner.substring(0, cols), 'brightBlack'));
+    return;
+  }
 
-  const latest = active[active.length - 1];
+  const latest = unresolved[unresolved.length - 1];
   const cols = renderer.capabilities.cols;
-  const banner = `[!] SECURITY: ${latest.summary}`;
+  const aKey = getAlertKey(state);
+  const dKey = getDismissKey(state);
+  const banner = `[!] SECURITY PAUSED: ${latest.summary} | [${aKey}]=view [${dKey.toUpperCase()}]=dismiss`;
   renderer.bufferWrite(1, 0, renderer.color(banner.substring(0, cols), 'red'));
 }
 
@@ -147,8 +187,13 @@ function renderSecurityLogOverlay(state, renderer) {
   // Border
   const border = '+' + '-'.repeat(width - 2) + '+';
   renderer.bufferWrite(startRow, startCol, border);
-  const title = '| SECURITY LOG (press ! to close)';
-  renderer.bufferWrite(startRow + 1, startCol, title + ' '.repeat(Math.max(0, width - title.length - 1)) + '|');
+  const hasUnresolved = (state.securityAlerts ?? []).some(a => !a.dismissed);
+  const aKey = getAlertKey(state);
+  const dKey = getDismissKey(state);
+  const titleText = hasUnresolved
+    ? `| SECURITY LOG  [${aKey}]=close  [${dKey.toUpperCase()}]=dismiss alerts`
+    : `| SECURITY LOG  [${aKey}]=close`;
+  renderer.bufferWrite(startRow + 1, startCol, titleText + ' '.repeat(Math.max(0, width - titleText.length - 1)) + '|');
 
   if (log.length === 0) {
     const empty = '|  No security events recorded.';
@@ -468,8 +513,7 @@ const menuScreen = {
       return;
     }
 
-    if (key === '!') { ui.securityLogVisible = !ui.securityLogVisible; return; }
-    if (ui.securityLogVisible) { if (key === 'escape') ui.securityLogVisible = false; return; }
+    { const sr = handleSecurityInput(key, engine); if (sr === 'handled') return; if (sr) return sr; }
     if (key === '?') { ui.helpVisible = !ui.helpVisible; return; }
     if (ui.helpVisible) { if (key === 'escape') ui.helpVisible = false; return; }
     if (ui.leaderboardVisible) { if (key === 'escape' || key === 'l') ui.leaderboardVisible = false; return; }
@@ -1006,8 +1050,7 @@ const tavernScreen = {
   },
 
   async handleInput(key, engine) {
-    if (key === '!') { ui.securityLogVisible = !ui.securityLogVisible; return; }
-    if (ui.securityLogVisible) { if (key === 'escape') ui.securityLogVisible = false; return; }
+    { const sr = handleSecurityInput(key, engine); if (sr === 'handled') return; if (sr) return sr; }
     if (key === '?') { ui.helpVisible = !ui.helpVisible; return; }
     if (ui.helpVisible) { if (key === 'escape') ui.helpVisible = false; return; }
 
@@ -1276,8 +1319,7 @@ const dungeonScreen = {
   },
 
   async handleInput(key, engine) {
-    if (key === '!') { ui.securityLogVisible = !ui.securityLogVisible; return; }
-    if (ui.securityLogVisible) { if (key === 'escape') ui.securityLogVisible = false; return; }
+    { const sr = handleSecurityInput(key, engine); if (sr === 'handled') return; if (sr) return sr; }
     if (key === '?') { ui.helpVisible = !ui.helpVisible; return; }
     if (ui.helpVisible) { if (key === 'escape') ui.helpVisible = false; return; }
 
@@ -1409,8 +1451,7 @@ const combatScreen = {
   },
 
   async handleInput(key, engine) {
-    if (key === '!') { ui.securityLogVisible = !ui.securityLogVisible; return; }
-    if (ui.securityLogVisible) { if (key === 'escape') ui.securityLogVisible = false; return; }
+    { const sr = handleSecurityInput(key, engine); if (sr === 'handled') return; if (sr) return sr; }
     if (key === '?') { ui.helpVisible = !ui.helpVisible; return; }
     if (ui.helpVisible) { if (key === 'escape') ui.helpVisible = false; return; }
 
@@ -1670,8 +1711,7 @@ const deathScreen = {
   },
 
   async handleInput(key, engine) {
-    if (key === '!') { ui.securityLogVisible = !ui.securityLogVisible; return; }
-    if (ui.securityLogVisible) { if (key === 'escape') ui.securityLogVisible = false; return; }
+    { const sr = handleSecurityInput(key, engine); if (sr === 'handled') return; if (sr) return sr; }
     switch (key) {
       case 'enter':
         await engine.transition(GameState.TAVERN);
@@ -1827,6 +1867,10 @@ const SETTINGS_LAYOUT = [
   { section: 'Security', key: 'security.autoRedact', label: 'Auto-Redact', bonus: '+5% loot find' },
   { section: 'Security', key: 'security.encryptedClipboard', label: 'Encrypted Clipboard', bonus: '+5% XP' },
   { section: 'Security', key: 'security.aiMonitor', label: 'AI Activity Monitor', bonus: '+5% crumbs' },
+  { section: 'Security', key: 'security.alertKey', label: 'Alert View Key', bonus: 'Key to open log', type: 'cycle',
+    options: ['!', '@', '#', '$', '%'] },
+  { section: 'Security', key: 'security.dismissKey', label: 'Alert Dismiss Key', bonus: 'Key to dismiss', type: 'cycle',
+    options: ['d', 'x', 'i', 'r'] },
   { section: 'Voice', key: 'voice.enabled', label: 'Voice Control', bonus: '' },
   { section: 'Voice', key: 'voice.feedbackSound', label: 'Voice Feedback Sound', bonus: '' },
   { section: 'Voice', key: 'voice.inputWords.choice1', label: 'Voice Word: Choice 1', bonus: '' },
@@ -1911,8 +1955,7 @@ const settingsScreen = {
   },
 
   async handleInput(key, engine) {
-    if (key === '!') { ui.securityLogVisible = !ui.securityLogVisible; return; }
-    if (ui.securityLogVisible) { if (key === 'escape') ui.securityLogVisible = false; return; }
+    { const sr = handleSecurityInput(key, engine); if (sr === 'handled') return; if (sr) return sr; }
     switch (key) {
       case 'up':
         ui.settingIndex = Math.max(0, ui.settingIndex - 1);
@@ -2056,10 +2099,13 @@ const cutsceneScreen = {
 
     renderAIBadge(state, renderer);
     renderWorkModeBadge(state, renderer);
+    renderSecurityBanner(state, renderer);
+    renderSecurityLogOverlay(state, renderer);
     renderer.render();
   },
 
-  async handleInput(key) {
+  async handleInput(key, engine) {
+    { const sr = handleSecurityInput(key, engine); if (sr === 'handled') return; if (sr) return sr; }
     if (key === 'enter' || key === 'space' || key === 'escape') {
       return 'cutscene_skip';
     }

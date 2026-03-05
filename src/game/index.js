@@ -381,6 +381,8 @@ export async function runGame(options = {}) {
   async function workModeTick() {
     // Cutscenes auto-advance on their own timer — don't interfere
     if (state.currentState === GameState.CUTSCENE) return;
+    // Security pause — stop auto-gameplay when unresolved security alerts exist
+    if (isSecurityPaused()) return;
     const now = Date.now();
     const currentState = state.currentState;
 
@@ -644,6 +646,17 @@ export async function runGame(options = {}) {
   let autoDungeonLastLootAction = 0;
   let autoDungeonLastDeathRecover = 0;
 
+  /** Check if security alerts should pause auto-gameplay and cutscenes. */
+  function isSecurityPaused() {
+    const aiMonitorEnabled = settings.get('security.aiMonitor') ?? true;
+    if (!aiMonitorEnabled) return false;
+    const alerts = state.securityAlerts ?? [];
+    if (alerts.length === 0) return false;
+    // Only pause on unresolved (non-dismissed) alerts
+    const unresolved = alerts.filter(a => !a.dismissed);
+    return unresolved.length > 0;
+  }
+
   function isAutoDungeon() {
     return !isWorkMode() && (settings.get('game.autoDungeon') ?? true);
   }
@@ -652,6 +665,8 @@ export async function runGame(options = {}) {
     if (!isAutoDungeon()) return;
     // Cutscenes auto-advance on their own timer — don't interfere
     if (state.currentState === GameState.CUTSCENE) return;
+    // Security pause — stop auto-gameplay when unresolved security alerts exist
+    if (isSecurityPaused()) return;
     const now = Date.now();
     const currentState = state.currentState;
 
@@ -1538,6 +1553,11 @@ export async function runGame(options = {}) {
       }
     } else if (result === 'cutscene_skip') {
       skipCutscene();
+    } else if (result === 'dismiss_security') {
+      // Mark all security alerts as dismissed — resumes auto-gameplay and cutscenes
+      const alerts = state.securityAlerts ?? [];
+      for (const a of alerts) a.dismissed = true;
+      renderer.showNotification('Security alerts dismissed', 'info');
     } else if (result === 'summary_continue') {
       // From dungeon summary → tavern (success path)
       state._dungeonRunStats = null;
@@ -1882,8 +1902,8 @@ export async function runGame(options = {}) {
       }
     }
 
-    // Auto-advance cutscene frames
-    if (state.currentState === GameState.CUTSCENE && state._cutscene) {
+    // Auto-advance cutscene frames (paused during security alerts)
+    if (state.currentState === GameState.CUTSCENE && state._cutscene && !isSecurityPaused()) {
       cutsceneTimer += FRAME_MS;
       const frame = state._cutscene.frames[state._cutscene.currentFrame];
       const frameDuration = frame?.duration ?? 1200;
@@ -1892,8 +1912,8 @@ export async function runGame(options = {}) {
       }
     }
 
-    // Auto-combat tick — auto-attack every 600ms
-    if (activeCombat && !activeCombat.isFinished && state.currentState === GameState.COMBAT) {
+    // Auto-combat tick — auto-attack every 600ms (paused during security alerts)
+    if (activeCombat && !activeCombat.isFinished && state.currentState === GameState.COMBAT && !isSecurityPaused()) {
       combatAutoTimer += FRAME_MS;
       if (combatAutoTimer >= 600) {
         combatAutoTimer = 0;
