@@ -1202,7 +1202,7 @@ const dungeonScreen = {
     }
 
     const autoDungeon = state.settings?.game?.autoDungeon ?? true;
-    renderer.showStatus(autoDungeon ? 'Auto-dungeon ON | Esc=retreat Q=menu W=save ?=help' : 'Arrows=navigate Enter=interact Esc=retreat Q=menu W=save ?=help');
+    renderer.showStatus(autoDungeon ? 'Auto-dungeon ON | Q=menu W=save ?=help' : 'Arrows=navigate Enter=interact Q=menu W=save ?=help');
     renderAIBadge(state, renderer);
     renderWorkModeBadge(state, renderer);
     renderSecurityBanner(state, renderer);
@@ -1239,8 +1239,6 @@ const dungeonScreen = {
         return 'dungeon_interact';
       case 'w':
         return 'save_game';
-      case 'escape':
-        return 'retreat_to_tavern';
       case 'q':
         return 'go_to_menu';
     }
@@ -1335,9 +1333,9 @@ const combatScreen = {
 
     // Auto-battle indicator
     const autoRow = rows - 3;
-    renderer.bufferWrite(autoRow, 4, renderer.dim('Auto-battling... Space=speed up  A=instant resolve  F=flee  Q=menu'));
+    renderer.bufferWrite(autoRow, 4, renderer.dim('Auto-battling... Space=speed up  A=instant resolve  Q=menu'));
 
-    renderer.showStatus('Space=speed up | A=resolve all | F=flee | Q=menu | ?=help');
+    renderer.showStatus('Space=speed up | A=resolve all | Q=menu | ?=help');
     renderAIBadge(state, renderer);
     renderWorkModeBadge(state, renderer);
     renderSecurityBanner(state, renderer);
@@ -1365,8 +1363,6 @@ const combatScreen = {
         return 'combat_speed_up';
       case 'a':
         return 'attack';
-      case 'f':
-        return 'flee';
       case 'q':
         return 'go_to_menu';
     }

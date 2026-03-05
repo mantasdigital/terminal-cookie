@@ -1527,26 +1527,6 @@ export async function runGame(options = {}) {
     } else if (result === 'reset_settings') {
       settings.reset();
       settings.save();
-    } else if (result === 'flee') {
-      removeTalismanCombatBuffs();
-      removeShopBuffs();
-      removeVillageCombatBuffs();
-      activeCombat = null;
-      rollBar = null;
-      state._lastCombatRoll = null;
-      logAdventure('Fled from combat!', 'combat');
-      try { await engine.transition(GameState.DUNGEON); } catch { /* ignore */ }
-    } else if (result === 'retreat_to_tavern') {
-      // Abandon dungeon and return to tavern
-      removeTalismanCombatBuffs();
-      removeShopBuffs();
-      removeVillageCombatBuffs();
-      activeCombat = null;
-      rollBar = null;
-      state._lastCombatRoll = null;
-      state.dungeonProgress = null;
-      logAdventure('Retreated from the dungeon', 'dungeon');
-      await engine.transition(GameState.TAVERN);
     } else if (result === 'save_game') {
       saveGame(slot, engine.getState());
       renderer.showNotification('Game saved!', 'success');

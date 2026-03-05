@@ -43,7 +43,6 @@ const HELP_DATA = {
     keys: [
       ['Up/Down',   'Choose a path at forks (manual)'],
       ['Enter',     'Interact with current room (manual)'],
-      ['Esc',       'Retreat to tavern'],
       ['Q',         'Return to menu'],
       ['W',         'Save game'],
       ['?',         'Show/hide this help'],
@@ -54,7 +53,6 @@ const HELP_DATA = {
     keys: [
       ['Space/Enter','Speed up (instant turn)'],
       ['A',         'Auto-resolve entire battle'],
-      ['F',         'Flee from battle'],
       ['Q',         'Return to menu'],
       ['?',         'Show/hide this help'],
     ],
