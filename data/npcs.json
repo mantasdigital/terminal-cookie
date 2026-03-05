@@ -1,0 +1,193 @@
+[
+  {
+    "id": "cave_hermit",
+    "name": "Old Grimbold",
+    "biome": "cave",
+    "type": "hermit",
+    "personality": "cryptic",
+    "dialogue": "I've lived in these caves longer than the stones remember...",
+    "offers": [
+      { "type": "trade", "description": "Offers a health potion for 10 crumbs", "cost": 10, "effect": { "action": "heal", "amount": 20 } },
+      { "type": "warning", "description": "Warns of a trap ahead", "effect": { "action": "reveal_trap" } }
+    ]
+  },
+  {
+    "id": "cave_merchant",
+    "name": "Dusty Pete",
+    "biome": "cave",
+    "type": "merchant",
+    "personality": "jovial",
+    "dialogue": "Welcome, welcome! Fine wares for fine adventurers!",
+    "offers": [
+      { "type": "trade", "description": "Sells a buff scroll for 15 crumbs", "cost": 15, "effect": { "action": "buff", "stat": "atk", "amount": 3, "duration": 5 } },
+      { "type": "trade", "description": "Buys your junk for 5 crumbs", "cost": -5, "effect": { "action": "grant_crumbs", "amount": 5 } }
+    ]
+  },
+  {
+    "id": "cave_lost",
+    "name": "Terri the Trapped",
+    "biome": "cave",
+    "type": "trapped_adventurer",
+    "personality": "desperate",
+    "dialogue": "Please! I've been stuck here for days. Help me and I'll share what I know!",
+    "offers": [
+      { "type": "quest", "description": "Free them: +2 LCK for 5 rooms, -5 crumbs", "cost": 5, "effect": { "action": "buff", "stat": "lck", "amount": 2, "duration": 5 } },
+      { "type": "ignore", "description": "Walk away: gain nothing", "effect": { "action": "none" } }
+    ]
+  },
+  {
+    "id": "crypt_spirit",
+    "name": "The Whispering Shade",
+    "biome": "crypt",
+    "type": "ghost",
+    "personality": "melancholic",
+    "dialogue": "I remember when these halls were filled with light... will you hear my tale?",
+    "offers": [
+      { "type": "quest", "description": "Listen to the tale: +3 DEF for 3 rooms", "effect": { "action": "buff", "stat": "def", "amount": 3, "duration": 3 } },
+      { "type": "riddle", "description": "Answer a riddle for a reward", "effect": { "action": "grant_crumbs", "amount": 20 } }
+    ]
+  },
+  {
+    "id": "crypt_guardian",
+    "name": "Sir Gaius the Eternal",
+    "biome": "crypt",
+    "type": "guardian",
+    "personality": "stern",
+    "dialogue": "Only the worthy may pass. Prove your strength!",
+    "offers": [
+      { "type": "quest", "description": "Duel the guardian: risk HP for loot", "effect": { "action": "skill_check", "stat": "atk", "difficulty": 12 } },
+      { "type": "trade", "description": "Pay respects: 8 crumbs for a blessing", "cost": 8, "effect": { "action": "buff", "stat": "all", "amount": 1, "duration": 3 } }
+    ]
+  },
+  {
+    "id": "crypt_collector",
+    "name": "Moranna the Bone Collector",
+    "biome": "crypt",
+    "type": "merchant",
+    "personality": "eerie",
+    "dialogue": "Beautiful bones you have... I could make you something with them.",
+    "offers": [
+      { "type": "trade", "description": "Buy a bone charm for 12 crumbs", "cost": 12, "effect": { "action": "buff", "stat": "def", "amount": 4, "duration": 8 } },
+      { "type": "warning", "description": "Reveals the boss weakness", "effect": { "action": "reveal_boss" } }
+    ]
+  },
+  {
+    "id": "forest_druid",
+    "name": "Elderleaf",
+    "biome": "forest",
+    "type": "druid",
+    "personality": "serene",
+    "dialogue": "The forest speaks to those who listen. Let me tend your wounds.",
+    "offers": [
+      { "type": "trade", "description": "Full heal for 20 crumbs", "cost": 20, "effect": { "action": "full_heal" } },
+      { "type": "quest", "description": "Nature's blessing: +2 all stats for 3 rooms (free)", "effect": { "action": "buff", "stat": "all", "amount": 2, "duration": 3 } }
+    ]
+  },
+  {
+    "id": "forest_fairy",
+    "name": "Glimwick",
+    "biome": "forest",
+    "type": "fairy",
+    "personality": "mischievous",
+    "dialogue": "Tee-hee! Want to play a game? Answer right and I'll grant a wish!",
+    "offers": [
+      { "type": "riddle", "description": "Answer a riddle: win crumbs or lose HP", "effect": { "action": "random_gift_or_curse", "giftChance": 0.6 } },
+      { "type": "trade", "description": "Buy fairy dust for 7 crumbs (+SPD)", "cost": 7, "effect": { "action": "buff", "stat": "spd", "amount": 5, "duration": 4 } }
+    ]
+  },
+  {
+    "id": "forest_ranger",
+    "name": "Brynn Oakshield",
+    "biome": "forest",
+    "type": "ranger",
+    "personality": "cautious",
+    "dialogue": "The paths ahead are treacherous. I've mapped the safe routes.",
+    "offers": [
+      { "type": "warning", "description": "Reveals map of upcoming rooms", "effect": { "action": "reveal_map" } },
+      { "type": "trade", "description": "Hire as guide: 15 crumbs, avoid next trap", "cost": 15, "effect": { "action": "buff", "stat": "lck", "amount": 5, "duration": 3 } }
+    ]
+  },
+  {
+    "id": "volcano_elementalist",
+    "name": "Pyraxis",
+    "biome": "volcano",
+    "type": "elementalist",
+    "personality": "intense",
+    "dialogue": "The flames bend to my will! Perhaps I can teach you their secrets.",
+    "offers": [
+      { "type": "trade", "description": "Fire enchantment: +5 ATK for 4 rooms, 18 crumbs", "cost": 18, "effect": { "action": "buff", "stat": "atk", "amount": 5, "duration": 4 } },
+      { "type": "quest", "description": "Walk through fire: risk 10 HP for permanent +2 ATK", "effect": { "action": "skill_check", "stat": "def", "difficulty": 10 } }
+    ]
+  },
+  {
+    "id": "volcano_smith",
+    "name": "Forgeclaw",
+    "biome": "volcano",
+    "type": "blacksmith",
+    "personality": "gruff",
+    "dialogue": "Hmph. Your gear looks pitiful. Let me fix that.",
+    "offers": [
+      { "type": "trade", "description": "Reinforce armor: +3 DEF for 6 rooms, 12 crumbs", "cost": 12, "effect": { "action": "buff", "stat": "def", "amount": 3, "duration": 6 } },
+      { "type": "trade", "description": "Sharpen weapons: +2 ATK for 6 rooms, 10 crumbs", "cost": 10, "effect": { "action": "buff", "stat": "atk", "amount": 2, "duration": 6 } }
+    ]
+  },
+  {
+    "id": "volcano_survivor",
+    "name": "Charred Kael",
+    "biome": "volcano",
+    "type": "trapped_adventurer",
+    "personality": "haunted",
+    "dialogue": "I was the last of my party... don't make the same mistakes we did.",
+    "offers": [
+      { "type": "warning", "description": "Shares boss strategy", "effect": { "action": "reveal_boss" } },
+      { "type": "trade", "description": "Gives his last potion for 3 crumbs", "cost": 3, "effect": { "action": "heal", "amount": 30 } }
+    ]
+  },
+  {
+    "id": "abyss_void_touched",
+    "name": "The Unnamed",
+    "biome": "abyss",
+    "type": "void_entity",
+    "personality": "alien",
+    "dialogue": "W̸e̶ ̷s̸e̵e̶ ̵y̷o̷u̴.̵ ̵W̸e̶ ̸o̵f̸f̷e̵r̶ ̶p̷o̸w̷e̵r̷.̵",
+    "offers": [
+      { "type": "quest", "description": "Accept void power: +8 ATK but -3 DEF permanently", "effect": { "action": "mixed_modifier", "buffs": [{ "stat": "atk", "amount": 8, "duration": -1 }], "debuffs": [{ "stat": "def", "amount": -3, "duration": -1 }] } },
+      { "type": "ignore", "description": "Refuse the gift: safe but no reward", "effect": { "action": "none" } }
+    ]
+  },
+  {
+    "id": "abyss_oracle",
+    "name": "The Last Seer",
+    "biome": "abyss",
+    "type": "oracle",
+    "personality": "cryptic",
+    "dialogue": "The end is not what you think. Let me show you the threads of fate.",
+    "offers": [
+      { "type": "riddle", "description": "A prophecy: reveals all room types ahead", "effect": { "action": "reveal_map" } },
+      { "type": "trade", "description": "Fate's blessing: +4 LCK for 5 rooms, 25 crumbs", "cost": 25, "effect": { "action": "buff", "stat": "lck", "amount": 4, "duration": 5 } }
+    ]
+  },
+  {
+    "id": "abyss_shadow",
+    "name": "Silq the Shadow Broker",
+    "biome": "abyss",
+    "type": "merchant",
+    "personality": "sinister",
+    "dialogue": "Everything has a price in the abyss. What can you afford to lose?",
+    "offers": [
+      { "type": "trade", "description": "Shadow cloak: +6 SPD for 4 rooms, 20 crumbs", "cost": 20, "effect": { "action": "buff", "stat": "spd", "amount": 6, "duration": 4 } },
+      { "type": "quest", "description": "Cursed treasure: great loot but -2 all stats for dungeon", "effect": { "action": "mixed_modifier", "buffs": [], "debuffs": [{ "stat": "all", "amount": -2, "duration": -1 }], "loot": true } }
+    ]
+  },
+  {
+    "id": "wandering_riddle_keeper",
+    "name": "The Riddlemaster",
+    "biome": "any",
+    "type": "riddle_keeper",
+    "personality": "playful",
+    "dialogue": "Answer me this, adventurer, and fortune shall be yours!",
+    "offers": [
+      { "type": "riddle", "description": "Answer correctly: +15 crumbs. Wrong: -5 crumbs", "effect": { "action": "riddle_challenge", "reward": 15, "penalty": 5 } }
+    ]
+  }
+]

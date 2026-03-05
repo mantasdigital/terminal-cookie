@@ -10,6 +10,8 @@ import { generateDungeon } from '../game/dungeon.js';
 import { COOKIE_REACTIONS } from './reactions.js';
 import { loadLeaderboard, formatLeaderboardFull } from '../leaderboard/leaderboard.js';
 import { loadLocalScores, generateSubmissionFile } from '../leaderboard/submit.js';
+import { formatCrumbs } from '../ui/format.js';
+import { createStoryManager } from '../game/story.js';
 
 const scanner = createScanner();
 const redactor = createRedactor();
@@ -52,7 +54,7 @@ export function defineTools() {
         ];
 
         return {
-          content: [{ type: 'text', text: `+${total} crumbs | Total: ${cookie.crumbs} | ${pick}` }],
+          content: [{ type: 'text', text: `+${total} crumbs | Total: ${formatCrumbs(cookie.crumbs)} | ${pick}` }],
         };
       },
     },
@@ -85,8 +87,11 @@ export function defineTools() {
         const state = engine.getState();
         const team = (state.team || []).map(m => `${m.name} Lv${m.level} ${m.currentHp}/${m.maxHp}`).join(', ') || 'none';
         const dg = state.dungeonProgress ? `L${state.dungeonProgress.level} R${state.dungeonProgress.currentRoom}` : 'none';
+        const mods = (state.skillModifiers || []).map(m => `${m.stat}${m.amount>0?'+':''}${m.amount}`).join(',');
+        const storyInfo = mods ? ` | Mods:${mods}` : '';
+        const npcInfo = state.activeNPC ? ` | NPC:${state.activeNPC.name}` : '';
         return {
-          content: [{ type: 'text', text: `${state.crumbs}crumbs | Team: ${team} | Inv:${(state.inventory||[]).length} | Dng:${dg}` }],
+          content: [{ type: 'text', text: `${formatCrumbs(state.crumbs)}crumbs | Team: ${team} | Inv:${(state.inventory||[]).length} | Dng:${dg}${storyInfo}${npcInfo}` }],
         };
       },
     },
@@ -137,8 +142,9 @@ export function defineTools() {
         state.dungeonProgress = dungeon;
 
         const totalRooms = dungeon.rooms.length;
+        const lore = dungeon.biomeDescription || '';
         return {
-          content: [{ type: 'text', text: `Dungeon L${level} ${dungeon.biomeName} ${totalRooms}rooms | Team:${aliveMembers.length} | Auto-advancing` }],
+          content: [{ type: 'text', text: `Dungeon L${level} ${dungeon.biomeName} ${totalRooms}rooms | Team:${aliveMembers.length} | Auto-advancing${lore ? ' | ' + lore : ''}` }],
         };
       },
     },
@@ -290,7 +296,7 @@ export function defineTools() {
         const crumbReward = 5;
         state.crumbs = (state.crumbs || 0) + crumbReward;
         scores.increment('total_crumbs_earned', crumbReward);
-        return { content: [{ type: 'text', text: `+${crumbReward} crumbs | Total: ${state.crumbs}` }] };
+        return { content: [{ type: 'text', text: `+${crumbReward} crumbs | Total: ${formatCrumbs(state.crumbs)}` }] };
       },
     },
 
@@ -552,11 +558,11 @@ export function defineTools() {
           state.crumbs -= recruit.cost;
           state.team.push(recruit);
           roster.splice(idx, 1);
-          return { content: [{ type: 'text', text: `+${recruit.name} ${recruit.race} ${recruit.class} | ${state.crumbs}crumbs left` }] };
+          return { content: [{ type: 'text', text: `+${recruit.name} ${recruit.race} ${recruit.class} | ${formatCrumbs(state.crumbs)}crumbs left` }] };
         }
 
         const roster = state._tavernRoster;
-        const lines = [`=== THE CRUMBY TAVERN === ${state.crumbs} crumbs | Team: ${state.team.length}`, ''];
+        const lines = [`=== THE CRUMBY TAVERN === ${formatCrumbs(state.crumbs)} crumbs | Team: ${state.team.length}`, ''];
         roster.forEach((m, i) => {
           lines.push(`  ${i + 1}. ${m.name} [${m.race} ${m.class}] ${m.personality}`);
           lines.push(`     HP:${m.maxHp} ATK:${m.stats.atk} DEF:${m.stats.def} SPD:${m.stats.spd} LCK:${m.stats.lck}`);
@@ -687,6 +693,127 @@ export function defineTools() {
         } catch (err) {
           return { content: [{ type: 'text', text: 'Submit failed' }], isError: true };
         }
+      },
+    },
+
+    {
+      name: 'cookie_narrate',
+      description: 'Claude calls this to inject narrative text into the game. Adds story entries displayed in the terminal during dungeon exploration.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          text: {
+            type: 'string',
+            description: 'Narrative text to display',
+          },
+          type: {
+            type: 'string',
+            description: 'Entry type: room, npc, event, combat, or lore',
+            enum: ['room', 'npc', 'event', 'combat', 'lore'],
+          },
+        },
+        required: ['text'],
+        additionalProperties: false,
+      },
+      handler(params, ctx) {
+        const { engine } = ctx;
+        const state = engine.getStateRef();
+        const story = createStoryManager(state);
+        story.addStoryEntry(params.text, params.type || 'lore');
+        return { content: [{ type: 'text', text: `Narrated: ${params.text.substring(0, 60)}...` }] };
+      },
+    },
+
+    {
+      name: 'cookie_npc_respond',
+      description: 'Resolve an NPC encounter with a choice. Triggers consequences like stat modifiers, crumb rewards, or items.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          choice: {
+            type: 'string',
+            description: 'The choice to make for the NPC encounter',
+          },
+        },
+        required: ['choice'],
+        additionalProperties: false,
+      },
+      handler(params, ctx) {
+        const { engine } = ctx;
+        const state = engine.getStateRef();
+        const story = createStoryManager(state);
+        const npc = story.getActiveNPC();
+        if (!npc) {
+          return { content: [{ type: 'text', text: 'No active NPC encounter.' }], isError: true };
+        }
+        const offer = npc.offers.find(o => o.description.toLowerCase().includes(params.choice.toLowerCase()));
+        if (!offer) {
+          const options = npc.offers.map(o => o.description).join(' | ');
+          return { content: [{ type: 'text', text: `No matching choice. Options: ${options}` }], isError: true };
+        }
+        let result = `Chose: ${offer.description}`;
+        if (offer.effect) {
+          if (offer.effect.action === 'buff' || offer.effect.action === 'mixed_modifier') {
+            const buffs = offer.effect.buffs || [{ stat: offer.effect.stat, amount: offer.effect.amount || 2, duration: offer.effect.duration || 3 }];
+            for (const b of buffs) {
+              story.applySkillModifier({ stat: b.stat, amount: b.amount, duration: b.duration, source: npc.name });
+              result += ` | ${b.amount > 0 ? '+' : ''}${b.amount} ${b.stat}`;
+            }
+            if (offer.effect.debuffs) {
+              for (const d of offer.effect.debuffs) {
+                story.applySkillModifier({ stat: d.stat, amount: d.amount, duration: d.duration, source: npc.name });
+                result += ` | ${d.amount} ${d.stat}`;
+              }
+            }
+          } else if (offer.effect.action === 'heal' || offer.effect.action === 'full_heal') {
+            for (const m of (state.team || []).filter(t => t.currentHp > 0)) {
+              if (offer.effect.action === 'full_heal') {
+                m.currentHp = m.maxHp;
+              } else {
+                m.currentHp = Math.min(m.maxHp, m.currentHp + (offer.effect.amount || 20));
+              }
+            }
+            result += ` | Healed`;
+          } else if (offer.effect.action === 'grant_crumbs') {
+            state.crumbs += offer.effect.amount || 10;
+            result += ` | +${offer.effect.amount} crumbs`;
+          }
+        }
+        if (offer.cost > 0) {
+          state.crumbs = Math.max(0, state.crumbs - offer.cost);
+          result += ` | -${offer.cost} crumbs`;
+        }
+        story.addStoryEntry(`${npc.name}: ${result}`, 'npc');
+        story.setActiveNPC(null);
+        return { content: [{ type: 'text', text: result }] };
+      },
+    },
+
+    {
+      name: 'cookie_story_choice',
+      description: 'Make a story choice during a dungeon event. Applies consequences based on the event definition.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          choice_id: {
+            type: 'string',
+            description: 'The ID of the choice to make',
+          },
+          choice: {
+            type: 'string',
+            description: 'The chosen option',
+          },
+        },
+        required: ['choice_id', 'choice'],
+        additionalProperties: false,
+      },
+      handler(params, ctx) {
+        const { engine } = ctx;
+        const state = engine.getStateRef();
+        const story = createStoryManager(state);
+        story.recordChoice(params.choice_id, params.choice);
+        story.addStoryEntry(`Choice made: ${params.choice}`, 'event');
+        return { content: [{ type: 'text', text: `Choice recorded: ${params.choice_id} = ${params.choice}` }] };
       },
     },
   ];

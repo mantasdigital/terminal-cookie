@@ -31,6 +31,7 @@ const ROOM_TYPE_WEIGHTS = [
   ['trap',    15, 25],
   ['loot',    15, 10],
   ['shrine',  10, 5],
+  ['npc',     10, 15],
   ['boss',    5,  20],
 ];
 
@@ -189,6 +190,7 @@ const ROOM_NAMES = {
   trap:    ['Trapped Hallway', 'Suspicious Room', 'Rigged Passage', 'Danger Zone', 'Booby-Trapped Hall'],
   loot:    ['Treasure Room', 'Glinting Vault', 'Hidden Cache', 'Stash Room', 'Loot Chamber'],
   shrine:  ['Ancient Shrine', 'Healing Font', 'Sacred Altar', 'Blessed Spring', 'Mystic Shrine'],
+  npc: ['Stranger\'s Camp', 'Mysterious Figure', 'Wanderer\'s Rest', 'Hidden Meeting', 'Campfire Glow'],
   boss:    ['Boss Arena', 'Grand Chamber', 'Throne Room', 'Final Stand', 'The Gauntlet'],
 };
 
@@ -198,6 +200,7 @@ const ROOM_DESCRIPTIONS = {
   trap:    'The air feels wrong. Watch your step!',
   loot:    'Something glitters in the corner.',
   shrine:  'A warm light radiates from an ancient altar.',
+  npc: 'Someone waits here... friend or foe?',
   boss:    'A massive chamber. The ground trembles beneath you.',
 };
 

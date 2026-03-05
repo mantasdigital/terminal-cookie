@@ -13,6 +13,8 @@ const COMMAND_TO_KEY = {
   pause_game: 'p',
   accept: 'a',
   reject: 'd',
+  select_1: '1',
+  select_2: '2',
 };
 
 /**
@@ -73,6 +75,26 @@ export function createKeywordMap(config = {}) {
   // Always ensure yes/no are mapped
   if (!wordToCommand.has('yes')) wordToCommand.set('yes', 'accept');
   if (!wordToCommand.has('no')) wordToCommand.set('no', 'reject');
+
+  // Load input word mappings (voice words for choice 1 and choice 2)
+  const inputWords = config.inputWords || { choice1: 'yes', choice2: 'no' };
+  if (inputWords.choice1) {
+    wordToCommand.set(inputWords.choice1.toLowerCase().trim(), 'select_1');
+  }
+  if (inputWords.choice2) {
+    wordToCommand.set(inputWords.choice2.toLowerCase().trim(), 'select_2');
+  }
+
+  // Per-terminal input word overrides
+  if (config.windowWords) {
+    for (const [key, word] of Object.entries(config.windowWords)) {
+      if (key.endsWith('_choice1')) {
+        wordToCommand.set(word.toLowerCase().trim(), 'select_1');
+      } else if (key.endsWith('_choice2')) {
+        wordToCommand.set(word.toLowerCase().trim(), 'select_2');
+      }
+    }
+  }
 
   // Load window words from config
   if (config.windowWords) {

@@ -8,6 +8,8 @@ import { generateRoomEnemies } from '../game/enemies.js';
 import { createCombat } from '../game/combat.js';
 import { generateLoot, sellValue } from '../game/loot.js';
 import { awardXP } from '../game/team.js';
+import { formatCrumbs } from '../ui/format.js';
+import { createStoryManager } from '../game/story.js';
 
 let nextPendingId = 1;
 
@@ -74,6 +76,9 @@ export function createPassiveRunner({ engine, rng, settings, scores }) {
         break;
       case 'loot':
         handleLootRoom(dungeon, room);
+        break;
+      case 'npc':
+        handleNPCRoom(dungeon, room);
         break;
       default:
         handleEmptyRoom(dungeon, room);
@@ -244,6 +249,11 @@ export function createPassiveRunner({ engine, rng, settings, scores }) {
     }
   }
 
+  function handleNPCRoom(dungeon, room) {
+    log(`Room ${room.id}: Encountered a mysterious figure. They share wisdom and move on.`);
+    state.crumbs += 2;
+  }
+
   /**
    * Main tick — advance dungeon by one room.
    */
@@ -295,6 +305,10 @@ export function createPassiveRunner({ engine, rng, settings, scores }) {
     // Resolve the room
     resolveRoom(dungeon, room);
 
+    // Tick story modifiers
+    const story = createStoryManager(state);
+    story.tickModifiers();
+
     // Check if all team members are dead
     const anyAlive = state.team.some(m => m.alive && m.currentHp > 0);
     if (!anyAlive && state.team.length > 0) {
@@ -312,8 +326,8 @@ export function createPassiveRunner({ engine, rng, settings, scores }) {
    */
   function passiveEarning(toolName) {
     state.totalToolCalls = (state.totalToolCalls || 0) + 1;
-    const base = 1;
-    const bonus = state.totalToolCalls % 10 === 0 ? 5 : 0;
+    const base = 0.000000001;
+    const bonus = state.totalToolCalls % 10 === 0 ? 0.000000005 : 0;
     const earned = base + bonus;
     state.crumbs += earned;
     state.stats.crumbsEarned = (state.stats.crumbsEarned || 0) + earned;
@@ -336,7 +350,7 @@ export function createPassiveRunner({ engine, rng, settings, scores }) {
    * Build a status line for appending to MCP responses.
    */
   function statusLine() {
-    const parts = [`Crumbs: ${state.crumbs}`];
+    const parts = [`Crumbs: ${formatCrumbs(state.crumbs)}`];
 
     if (state.team.length > 0) {
       const alive = state.team.filter(m => m.alive).length;

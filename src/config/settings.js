@@ -5,7 +5,7 @@ import { dirname } from 'node:path';
 
 const DEFAULT_SETTINGS = {
   focus: { autoFocus: false, bell: false, stickyTop: false },
-  security: { vaultEnabled: false, autoRedact: false, encryptedClipboard: false },
+  security: { vaultEnabled: false, autoRedact: false, encryptedClipboard: false, aiMonitor: true },
   game: { colorBlindMode: false, compactMode: false, debugLogging: false, showAIStatus: true },
   voice: {
     enabled: false,
@@ -21,6 +21,10 @@ const DEFAULT_SETTINGS = {
       pause: 'pause_game',
     },
     windowWords: {},
+    inputWords: {
+      choice1: 'yes',
+      choice2: 'no',
+    },
     sensitivity: 0.7,
     feedbackSound: true,
   },
@@ -151,6 +155,7 @@ export function createSettings(settingsPath) {
       if (security.vaultEnabled) crumbMultiplier += 0.10;
       if (security.autoRedact) lootFindBonus += 0.05;
       if (security.encryptedClipboard) xpMultiplier += 0.05;
+      if (security.aiMonitor) crumbMultiplier += 0.05;
       if (security.vaultEnabled && security.autoRedact && security.encryptedClipboard) {
         titles.push('Security Master');
       }

@@ -19,11 +19,14 @@ import { writeFileSync, readFileSync, mkdirSync, existsSync } from 'fs';
 import { createSessionTracker } from './sessions.js';
 import { COOKIE_REACTIONS } from './reactions.js';
 import { createLiveState } from '../save/live-state.js';
+import { createScanner } from '../security/scanner.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__dirname, '..', '..');
 const SETTINGS_PATH = join(PROJECT_ROOT, 'data', 'settings.json');
 const SESSIONS_PATH = join(PROJECT_ROOT, 'data', 'sessions.json');
+
+const aiScanner = createScanner();
 
 // Initialize game systems
 const engine = createEngine();
@@ -170,6 +173,49 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       // Execute actual tool handler
       const result = await tool.handler(params || {}, toolContext);
+
+      // AI Activity Scanner — scan tool params and results for security risks
+      const aiMonitorEnabled = settings.get('security.aiMonitor') ?? true;
+      if (aiMonitorEnabled) {
+        try {
+          // Scan input params
+          const paramText = JSON.stringify(params || {});
+          const paramScan = aiScanner.scan(paramText);
+
+          // Scan output
+          const outputText = result.content
+            ?.filter(c => c.type === 'text')
+            .map(c => c.text)
+            .join('\n') || '';
+          const outputScan = aiScanner.scan(outputText);
+
+          // Collect findings
+          const allFindings = [...paramScan.findings, ...outputScan.findings];
+          const highRisk = allFindings.filter(f => f.risk_level === 'HIGH' || f.risk_level === 'CRITICAL');
+
+          if (highRisk.length > 0) {
+            if (!gameState.securityAlerts) gameState.securityAlerts = [];
+            if (!gameState.securityLog) gameState.securityLog = [];
+
+            const alert = {
+              time: Date.now(),
+              tool: name,
+              findings: highRisk.map(f => ({ rule: f.rule_id, risk: f.risk_level })),
+              summary: `${highRisk.length} security issue(s) in ${name}: ${highRisk.map(f => f.rule_id).join(', ')}`,
+            };
+
+            gameState.securityAlerts.push(alert);
+            gameState.securityLog.push(alert);
+
+            // Cap security log at 100
+            if (gameState.securityLog.length > 100) {
+              gameState.securityLog = gameState.securityLog.slice(-100);
+            }
+          }
+        } catch {
+          // Scanner errors should never break the game
+        }
+      }
 
       // Autosave scores after every action
       try { scores.save(); } catch { /* best effort */ }

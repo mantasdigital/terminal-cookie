@@ -21,7 +21,7 @@ export function createCookieHandler(gameState) {
      */
     click() {
       const rate = cookie.currentRate();
-      const earned = Math.max(1, Math.floor(rate));
+      const earned = rate;
       gameState.crumbs += earned;
       gameState.stats.crumbsEarned = (gameState.stats.crumbsEarned ?? 0) + earned;
       sessionClicks++;

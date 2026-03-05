@@ -28,12 +28,15 @@ const MUTATIONS = {
   Enraged:       { hpMul: 1.0, atkMul: 2.0, defMul: 0.5, tag: 'Enraged' },
   'Cookie-Cursed': { hpMul: 1.0, atkMul: 1.0, defMul: 1.0, tag: 'Cookie-Cursed', stealCrumbs: true },
   Regenerating:  { hpMul: 1.0, atkMul: 1.0, defMul: 1.0, tag: 'Regenerating', healPerRound: 5 },
+  Shapeshifter:  { hpMul: 1.0, atkMul: 1.0, defMul: 1.0, tag: 'Shapeshifter', mimicTeam: true },
+  Ancient:       { hpMul: 2.0, atkMul: 2.0, defMul: 2.0, tag: 'Ancient', guaranteedRareDrop: true },
 };
 
 // Exclusion matrix: pairs that cannot coexist
 const EXCLUSIONS = [
   ['Ethereal', 'Armored'],
   ['Swift', 'Giant'],
+  ['Ancient', 'Cookie-Cursed'],
 ];
 
 const MUTATION_NAMES = Object.keys(MUTATIONS);
@@ -112,6 +115,8 @@ export function generateEnemy({ biome, level, rng, isBoss = false, usedNames }) 
     if (m.dodgeChance) properties.dodgeChance = m.dodgeChance;
     if (m.stealCrumbs) properties.stealCrumbs = true;
     if (m.healPerRound) properties.healPerRound = (properties.healPerRound || 0) + m.healPerRound;
+    if (m.mimicTeam) properties.mimicTeam = true;
+    if (m.guaranteedRareDrop) properties.guaranteedRareDrop = true;
   }
 
   // Boss ability
@@ -125,7 +130,7 @@ export function generateEnemy({ biome, level, rng, isBoss = false, usedNames }) 
   const lootQuality = level + mutations.length * 3;
 
   // Loot rarity floor for bosses
-  const minRarity = isBoss ? 'Rare' : null;
+  const minRarity = isBoss ? 'Rare' : (properties.guaranteedRareDrop ? 'Rare' : null);
 
   const spd = Math.max(1, 5 + rng.int(-2, 2) + (properties.goesFirst ? 10 : 0));
 
@@ -227,6 +232,14 @@ function buildEnemyAscii(parts, mutations) {
         break;
       case 'Regenerating':
         lines.push('  +++ +++');
+        break;
+      case 'Shapeshifter':
+        lines = lines.map(l => '?' + l.slice(1));
+        lines.push('  ~shape~shift~');
+        break;
+      case 'Ancient':
+        lines[0] = '*** ' + lines[0] + ' ***';
+        lines.push('  === ANCIENT ===');
         break;
     }
   }
