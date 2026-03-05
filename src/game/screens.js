@@ -93,6 +93,19 @@ function renderAIBadge(state, renderer) {
   const totalLen = crumbLen + 3 + badgeLen;
   const startCol = Math.max(0, cols - totalLen - 1);
   renderer.bufferWrite(0, startCol, renderer.bold(crumbText) + '  ' + badge);
+
+  // Token usage display (below AI badge, off by default)
+  const showTokens = state.settings?.game?.showTokenUsage ?? false;
+  if (showTokens && ai.connected && state.tokenUsage > 0) {
+    const tk = state.tokenUsage;
+    const tokenText = tk >= 1_000_000 ? `${(tk / 1_000_000).toFixed(1)}M` :
+                      tk >= 1_000 ? `${(tk / 1_000).toFixed(1)}K` :
+                      `${tk}`;
+    const tokenLabel = `Tokens: ~${tokenText}`;
+    const tokenLen = tokenLabel.length;
+    const tokenCol = Math.max(0, cols - tokenLen - 1);
+    renderer.bufferWrite(1, tokenCol, renderer.dim(tokenLabel));
+  }
 }
 
 /**
@@ -1767,6 +1780,7 @@ const SETTINGS_LAYOUT = [
   { section: 'Game', key: 'game.colorBlindMode', label: 'Color-Blind Mode', bonus: '+2% loot find' },
   { section: 'Game', key: 'game.compactMode', label: 'Compact Mode', bonus: '' },
   { section: 'Game', key: 'game.showAIStatus', label: 'Show AI Status', bonus: '' },
+  { section: 'Game', key: 'game.showTokenUsage', label: 'Show Token Usage', bonus: '' },
   { section: 'Game', key: 'game.debugLogging', label: 'Debug Logging', bonus: '' },
 ];
 

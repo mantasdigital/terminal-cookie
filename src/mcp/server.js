@@ -104,6 +104,7 @@ const liveState = createLiveState({
       }
     }
     if (external.totalToolCalls != null) local.totalToolCalls = Math.max(local.totalToolCalls ?? 0, external.totalToolCalls);
+    if (external.tokenUsage != null) local.tokenUsage = Math.max(local.tokenUsage ?? 0, external.tokenUsage);
     if (external.team) local.team = external.team;
     if (external.inventory) local.inventory = external.inventory;
     if (external.stats) Object.assign(local.stats, external.stats);
@@ -292,6 +293,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           // Scanner errors should never break the game
         }
       }
+
+      // Estimate token usage from request+response text (~4 chars per token)
+      const tokenInput = JSON.stringify(params || {});
+      const tokenOutput = result.content
+        ?.filter(c => c.type === 'text')
+        .map(c => c.text)
+        .join('\n') || '';
+      const estimatedTokens = Math.ceil((tokenInput.length + tokenOutput.length) / 4);
+      gameState.tokenUsage = (gameState.tokenUsage ?? 0) + estimatedTokens;
 
       // Autosave scores after every action
       try { scores.save(); } catch { /* best effort */ }

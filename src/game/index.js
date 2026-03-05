@@ -153,6 +153,7 @@ export async function runGame(options = {}) {
       if (external.pendingActions) local.pendingActions = external.pendingActions;
       if (external.passiveLog) local.passiveLog = external.passiveLog;
       if (external.totalToolCalls != null) local.totalToolCalls = Math.max(local.totalToolCalls ?? 0, external.totalToolCalls);
+      if (external.tokenUsage != null) local.tokenUsage = Math.max(local.tokenUsage ?? 0, external.tokenUsage);
       if (external.talisman) {
         local.talisman = local.talisman ?? { level: 1 };
         local.talisman.level = Math.max(local.talisman.level, external.talisman.level ?? 1);
