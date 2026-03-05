@@ -15,7 +15,7 @@
      |_______|
 ```
 
-A terminal-based cookie dungeon crawler that doubles as an AI security monitor and Model Context Protocol (MCP) server. Click cookies, recruit adventurers, explore procedurally generated dungeons, and scan code for security vulnerabilities -- all from your terminal.
+A terminal-based cookie dungeon crawler that doubles as an AI security monitor and Model Context Protocol (MCP) server. Recruit adventurers, explore procedurally generated dungeons with auto-play, build villages, upgrade talismans, and scan code for security vulnerabilities -- all from your terminal. Crumbs are earned through AI interactions.
 
 ---
 
@@ -114,13 +114,15 @@ When the game starts, you see the main menu. Use these keys:
 ### Step-by-Step Gameplay
 
 1. **Select "New Game"** from the menu and press `Enter`
-2. **You arrive at the Tavern.** This is your home base.
-3. **Click cookies** -- press `C` or `Space` to earn crumbs (the in-game currency)
-4. **Recruit a hero** -- press `R` to see available recruits, use `Up`/`Down` arrows to pick one, press `Enter` to hire them
-5. **Enter the dungeon** -- press `E` to send your team into a dungeon
-6. **Fight enemies** -- when combat starts, press `Space` or `Enter` to stop the roll bar. Higher rolls = more damage!
-7. **Collect loot** -- after defeating enemies, choose to `E`quip, `S`ell, or `D`iscard items
-8. **Repeat!** -- recruit more heroes, go deeper into dungeons, get stronger
+2. **Choose a mode** -- Default (manual tavern, auto dungeons) or Work (fully automatic)
+3. **You arrive at the Tavern.** This is your home base.
+4. **Earn crumbs** -- crumbs (in-game currency) are earned through AI interactions via MCP, not manual clicks
+5. **Recruit a hero** -- press `R` to see available recruits, use `Up`/`Down` arrows to pick one, press `Enter` to hire them
+6. **Dungeons auto-play** -- once you have a team, a timer starts and the dungeon auto-enters. Combat, loot, and room navigation are handled automatically (toggle in Settings)
+7. **Manage your team** -- equip items to specific characters, unequip gear, sell or enchant items in the tavern
+8. **Build a village** -- with 9+ alive team members, found a village and upgrade 7 buildings for permanent bonuses
+9. **Upgrade your talisman** -- spend crumbs to level up a persistent artifact with bonuses that survive death
+10. **Repeat!** -- recruit more heroes, go deeper into dungeons, get stronger. Fallen allies die permanently.
 
 ### All Controls
 
@@ -128,32 +130,46 @@ When the game starts, you see the main menu. Use these keys:
 
 | Key         | What it does                    |
 |-------------|----------------------------------|
-| `C` or `Space` | Click cookie to earn crumbs  |
 | `R`         | Switch to Recruit tab            |
 | `I`         | Switch to Inventory tab          |
+| `H`         | Switch to Shop tab               |
+| `V`         | Switch to Village tab (9+ team)  |
+| `T`         | Switch to Talisman tab           |
+| `G`         | Switch to Adventure Log tab      |
 | `Left`/`Right` | Switch between tabs          |
-| `Up`/`Down` | Browse list items                |
-| `Enter`     | Recruit the selected hero        |
-| `E`         | Enter the dungeon                |
-| `S`         | Open settings                    |
+| `Up`/`Down` | Browse list / select member      |
+| `Tab`       | Switch equip slot (Party tab)    |
+| `U`         | Unequip slot (Party) / Upgrade (Talisman) |
+| `Enter`/`E` | Equip to member (Inv) / Recruit / Buy |
+| `X`         | Enchant selected item (Inventory)|
+| `S`         | Sell item (Inventory) / Settings |
+| `D`         | Drop item (Inventory)            |
+| `E`         | Enter dungeon (need a team)      |
+| `W`         | Save game                        |
 | `Escape`    | Back to main menu                |
 | `?`         | Show help overlay                |
 
-#### Dungeon
+#### Dungeon (Auto by default)
+
+Dungeons auto-play by default — rooms, combat, loot, and death recovery are handled automatically. Toggle the **Auto-Dungeon** setting in Settings to switch to manual mode.
+
+**Manual mode keys:**
 
 | Key         | What it does                    |
 |-------------|----------------------------------|
 | `Up`/`Down` | Choose path at a fork            |
 | `Enter`     | Interact with current room       |
-| `Escape`    | Retreat back to tavern           |
+| `W`         | Save game                        |
 | `?`         | Show help overlay                |
 
-#### Combat
+#### Combat (Auto-Battle)
+
+Combat auto-resolves on a 600ms tick with d20 dice rolls. You can speed it up or take manual control:
 
 | Key         | What it does                    |
 |-------------|----------------------------------|
-| `Space` or `Enter` | Stop the roll bar (attack!) |
-| `A`         | Auto-attack                      |
+| `Space`/`Enter` | Speed up (instant turn)     |
+| `A`         | Auto-resolve entire battle       |
 | `F`         | Flee from battle                 |
 | `?`         | Show help overlay                |
 
@@ -166,6 +182,10 @@ When the game starts, you see the main menu. Use these keys:
 | `S`         | Sell the selected item           |
 | `D`         | Discard the selected item        |
 | `Enter`     | Continue to next room            |
+
+#### Work Mode
+
+Fully automatic mode — the game recruits, enters dungeons, fights, loots, and recovers from death without any input. Press `Q` to save and exit at any time.
 
 ---
 
@@ -382,6 +402,7 @@ Once connected, talk to Claude naturally. Claude calls the game tools behind the
 | `cookie_dungeon_config` | Change auto-advance speed |
 | `cookie_inventory` | View your items |
 | `cookie_save` / `cookie_load` | Save and load your game (3 slots) |
+| `cookie_talisman` | View, upgrade, or salvage talisman |
 | `cookie_scores` | View high scores |
 | `cookie_roll` | Roll a d20 |
 | `cookie_leaderboard` | View the community leaderboard |
@@ -454,12 +475,13 @@ No extra setup needed. The live sync starts automatically when either the game o
 
 ---
 
-### How Passive Mode Works
+### How Passive Mode Works (MCP / Claude)
 
 - Every **15 seconds**, your dungeon auto-advances one room
 - Regular monsters are **fought automatically** by your team
 - **Boss fights pause** the dungeon and wait for your decision
-- **Every interaction** earns crumbs automatically (auto cookie click)
+- **Every MCP tool call** earns crumbs automatically (auto cookie click)
+- Crumbs are only earned through AI interactions — no passive crumb generation
 - Use `cookie_dungeon_config tick_interval=5` to speed it up (5 seconds per room)
 - Use `cookie_dungeon_config tick_interval=60` to slow it down (60 seconds per room)
 
@@ -491,6 +513,7 @@ Open settings in-game by pressing `S` from the Tavern. Use `Up`/`Down` to naviga
 
 | Setting          | What it does                            |
 |------------------|-----------------------------------------|
+| Auto-Dungeon     | Auto-play dungeons (ON by default)     |
 | Color-Blind Mode | Accessible colors (+2% loot find)      |
 | Compact Mode     | Smaller UI for small terminal windows  |
 | Debug Logging    | Save debug info to a file              |
@@ -506,6 +529,40 @@ Open settings in-game by pressing `S` from the Tavern. Use `Up`/`Down` to naviga
 | Whispering Wilds     | Wolf, Bear, Treant, Bandit, Fairy                 |
 | Cinderforge Caldera  | Imp, Magma Golem, Fire Serpent, Demon, Phoenix    |
 | The Crumbling Abyss  | Shadow, Tentacle, Void Walker, Eldritch, Cookie Monster |
+
+---
+
+## Village System
+
+Once you have **9 or more alive team members**, you can found a village from the Village tab (`V`). The village persists even if your team drops below 9, but building and upgrading requires 9+ alive members.
+
+### Buildings
+
+| Building        | Bonus per Level                                    |
+|-----------------|----------------------------------------------------|
+| Bakery          | +1/2/3 crumbs per dungeon room                    |
+| Forge           | 10%/20%/30% enchant cost discount                 |
+| Watchtower      | +1/2/3 team DEF, scout intel                       |
+| Herbalist       | +1/2/3 HP healed per room, poison resistance       |
+| Training Ground | +10%/20%/30% XP, +1/2/3 recruit stat bonus         |
+| Merchant Guild  | +10%/20%/30% sell price, +1/2/3 shop items          |
+| Archive         | +1/2/3 team ATK, loot quality, intel bonus         |
+
+Each building has 3 upgrade levels with escalating crumb costs.
+
+---
+
+## Talisman
+
+A persistent artifact that grows stronger over 10 upgrade levels. Talisman bonuses **survive death** — even if your entire team wipes, your talisman keeps its level.
+
+Bonuses include crumb multiplier, combat stats, regen, loot quality, and death consolation rewards. Upgrade via the Talisman tab (`T`) in the tavern.
+
+---
+
+## Permanent Death
+
+Fallen team members are **permanently removed** after combat victory. Their equipped gear is returned to your inventory. Track permanent losses in the death screen stats. This makes team composition and equipment management critical.
 
 ---
 
@@ -637,6 +694,8 @@ Crumbs, team, inventory, and dungeon progress sync between both within 1 second.
 ### My team died. What do I do?
 
 Go back to the Tavern and recruit new team members. After a team wipe you get a discount on new recruits! You can also re-enter the same dungeon within 3 runs to recover lost gear.
+
+Note: allies who fall in combat are **permanently dead** — their equipped gear is returned to your inventory, but they're gone forever. Your talisman may salvage some items on a full wipe.
 
 ---
 
