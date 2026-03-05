@@ -90,13 +90,15 @@ export async function runGame(options = {}) {
         return;
       }
 
-      // If we just started a new game but external hasn't caught up yet, skip stale merge
-      if (local.newGameId && local.newGameId !== external.newGameId) {
-        return;
-      }
+      // After a new game reset, block stale crumb merges for a short window
+      // so old MCP crumbs don't overwrite the fresh 50. Once the MCP catches up
+      // (propagates our newGameId) or enough time passes, resume normal sync.
+      const resetGraceMs = 10_000;
+      const resetActive = local.newGameId && local.newGameId !== external.newGameId
+        && (Date.now() - local.newGameId) < resetGraceMs;
 
       // Normal merge — take higher crumbs to avoid losing local earnings
-      if (external.crumbs != null) local.crumbs = Math.max(local.crumbs ?? 0, external.crumbs);
+      if (external.crumbs != null && !resetActive) local.crumbs = Math.max(local.crumbs ?? 0, external.crumbs);
       // For team, merge by ID — never lose locally recruited members
       if (external.team && Array.isArray(external.team)) {
         const localIds = new Set((local.team ?? []).map(m => m.id));
