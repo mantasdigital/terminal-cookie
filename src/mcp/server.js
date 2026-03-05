@@ -80,7 +80,7 @@ const liveState = createLiveState({
 
     // Normal merge
     if (external.newGameId) local.newGameId = external.newGameId;
-    const recentSpend = local._lastCrumbSpend && (Date.now() - local._lastCrumbSpend) < 3000;
+    const recentSpend = local._lastCrumbSpend && (Date.now() - local._lastCrumbSpend) < 10000;
     if (external.crumbs != null && !recentSpend) local.crumbs = Math.max(local.crumbs ?? 0, external.crumbs);
     if (external.totalToolCalls != null) local.totalToolCalls = Math.max(local.totalToolCalls ?? 0, external.totalToolCalls);
     if (external.team) local.team = external.team;

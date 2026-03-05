@@ -1577,6 +1577,124 @@ const deathScreen = {
   },
 };
 
+// ── DUNGEON SUMMARY SCREEN ──────────────────────────────────────────
+
+const dungeonSummaryScreen = {
+  render(state, renderer) {
+    renderer.clear();
+    const cols = renderer.capabilities.cols;
+    const stats = state._dungeonRunStats ?? {};
+    const success = stats.success !== false;
+
+    if (success) {
+      renderer.showHeader('=== Dungeon Cleared! ===');
+    } else {
+      renderer.showHeader('=== Defeat ===');
+      // R.I.P. art for death
+      const deathArt = [
+        '     ___________',
+        '    /           \\',
+        '   |   R.I.P.   |',
+        '   |  Your team  |',
+        '   |  has fallen |',
+        '   |_____________|',
+      ];
+      for (let i = 0; i < deathArt.length; i++) {
+        renderer.bufferWrite(2 + i, 0, renderer.centerText(deathArt[i], cols));
+      }
+    }
+
+    const startRow = success ? 3 : 9;
+    let row = startRow;
+
+    // Crumbs earned
+    const crumbsBefore = stats.crumbsBefore ?? 0;
+    const crumbsNow = state.crumbs ?? 0;
+    const crumbsEarned = Math.max(0, crumbsNow - crumbsBefore);
+    renderer.bufferWrite(row++, 4, renderer.bold('-- Run Summary --'));
+    row++;
+    renderer.bufferWrite(row++, 6, `Crumbs earned:   ${formatCrumbs(crumbsEarned)}`);
+    renderer.bufferWrite(row++, 6, `Rooms cleared:   ${stats.roomsCleared ?? 0}`);
+    renderer.bufferWrite(row++, 6, `Monsters slain:  ${stats.monstersSlain ?? 0}`);
+
+    // Loot
+    const loot = stats.lootCollected ?? [];
+    if (loot.length > 0) {
+      renderer.bufferWrite(row++, 6, `Loot found:      ${loot.length} item(s)`);
+      const maxLoot = Math.min(loot.length, 5);
+      for (let i = 0; i < maxLoot; i++) {
+        const item = loot[i];
+        const icon = lootIcon(item.slot ?? 'weapon', item.rarity ?? 'common');
+        renderer.bufferWrite(row++, 8, `${icon} ${item.name ?? 'Item'} (${item.rarity ?? 'common'})`);
+      }
+      if (loot.length > 5) renderer.bufferWrite(row++, 8, renderer.dim(`... +${loot.length - 5} more`));
+    } else {
+      renderer.bufferWrite(row++, 6, renderer.dim('No loot found'));
+    }
+
+    if (stats.lootSold > 0) {
+      renderer.bufferWrite(row++, 6, `Loot sold for:   ${stats.lootSold} crumbs`);
+    }
+
+    // Allies lost
+    if (stats.alliesLost > 0) {
+      renderer.bufferWrite(row++, 6, renderer.color(`Allies lost:     ${stats.alliesLost}`, 'red'));
+    }
+
+    // Death-specific info
+    if (!success) {
+      const penalty = stats.deathPenalty ?? 0;
+      if (penalty > 0) {
+        renderer.bufferWrite(row++, 6, renderer.color(`Death penalty:   -${penalty} crumbs`, 'red'));
+      }
+      const talismanReward = state.lastTalismanDeathReward ?? 0;
+      if (talismanReward > 0) {
+        renderer.bufferWrite(row++, 6, renderer.color(`Talisman saved:  +${talismanReward} crumbs`, 'cyan'));
+      }
+      const salvaged = state.lastSalvagedLoot ?? [];
+      if (salvaged.length > 0) {
+        row++;
+        renderer.bufferWrite(row++, 4, renderer.color('Talisman salvaged:', 'yellow'));
+        for (let i = 0; i < Math.min(salvaged.length, 4); i++) {
+          const item = salvaged[i];
+          const source = item.salvageSource ? ` (from ${item.salvageSource})` : '';
+          renderer.bufferWrite(row++, 6,
+            `${lootIcon(item.slot ?? 'weapon', item.rarity ?? 'common')} ${item.name ?? 'Item'}${source}`);
+        }
+      }
+    }
+
+    // Continue prompt
+    row += 2;
+    const autoMode = state.gameMode === 'work' || (state.settings?.game?.autoDungeon ?? true);
+    if (autoMode) {
+      renderer.bufferWrite(row, 0, renderer.centerText(renderer.dim('Continuing automatically...'), cols));
+    } else {
+      renderer.bufferWrite(row, 0, renderer.centerText('[Enter] Continue to Tavern   [Q] Menu', cols));
+    }
+
+    renderer.showStatus('Enter=continue Q=menu');
+    renderAIBadge(state, renderer);
+    renderWorkModeBadge(state, renderer);
+    renderSecurityBanner(state, renderer);
+    renderer.render();
+  },
+
+  async handleInput(key, engine) {
+    const state = engine.getState();
+    const isDefeat = state._dungeonRunStats && state._dungeonRunStats.success === false;
+
+    switch (key) {
+      case 'enter': case 'space':
+        return isDefeat ? 'summary_death_continue' : 'summary_continue';
+      case 'q':
+        return 'go_to_menu';
+      case 'escape': case 'm':
+        return 'go_to_menu';
+    }
+  },
+};
+
 // ── SETTINGS SCREEN ─────────────────────────────────────────────────
 
 const SETTINGS_LAYOUT = [
@@ -1748,6 +1866,7 @@ const screens = {
   [GameState.COMBAT]: combatScreen,
   [GameState.LOOT]: lootScreen,
   [GameState.DEATH]: deathScreen,
+  [GameState.DUNGEON_SUMMARY]: dungeonSummaryScreen,
   [GameState.SETTINGS]: settingsScreen,
   [GameState.HELP]: helpScreen,
 };

@@ -105,7 +105,7 @@ export async function runGame(options = {}) {
       if (resetActive) return;
 
       // Normal merge — take higher crumbs, but not if we just spent locally
-      const recentSpend = local._lastCrumbSpend && (Date.now() - local._lastCrumbSpend) < 3000;
+      const recentSpend = local._lastCrumbSpend && (Date.now() - local._lastCrumbSpend) < 10000;
       if (external.crumbs != null && !recentSpend) local.crumbs = Math.max(local.crumbs ?? 0, external.crumbs);
       // For team, merge by ID — never lose locally recruited members
       if (external.team && Array.isArray(external.team)) {
@@ -364,10 +364,11 @@ export async function runGame(options = {}) {
             }
             // Check if dungeon has no more connections (end of dungeon)
             if (conns.length === 0 && !room?.content) {
-              state.dungeonProgress = null;
               state.stats.dungeonsCleared = (state.stats.dungeonsCleared ?? 0) + 1;
+              if (state._dungeonRunStats) state._dungeonRunStats.success = true;
+              state.dungeonProgress = null;
               workModeLog('Auto: dungeon cleared!');
-              try { await engine.transition(GameState.TAVERN); } catch { /* ignore */ }
+              try { await engine.transition(GameState.DUNGEON_SUMMARY); } catch { /* ignore */ }
               return;
             }
           }
@@ -393,6 +394,10 @@ export async function runGame(options = {}) {
             for (const m of (state.team ?? []).filter(t => t.currentHp > 0)) {
               awardXP(m, level);
             }
+            if (state._dungeonRunStats) {
+              state._dungeonRunStats.monstersSlain += defeatedEnemies.length;
+              state._dungeonRunStats.lootCollected.push(...drops);
+            }
             if (dp) clearRoom(dp, dp.currentRoom);
             removeTalismanCombatBuffs();
             removeShopBuffs();
@@ -415,8 +420,13 @@ export async function runGame(options = {}) {
             removeShopBuffs();
             activeCombat = null;
             rollBar = null;
+            if (state._dungeonRunStats) {
+              state._dungeonRunStats.success = false;
+              state._dungeonRunStats.deathPenalty = penalty;
+              state._dungeonRunStats.alliesLost += (state.team ?? []).length;
+            }
             workModeLog(`Auto: team defeated, salvaged ${salvaged.length} items`);
-            await engine.transition(GameState.DEATH);
+            await engine.transition(GameState.DUNGEON_SUMMARY);
           } else if (attackResult.error) {
             // Combat stuck — force recovery
             removeTalismanCombatBuffs();
@@ -511,6 +521,26 @@ export async function runGame(options = {}) {
         }
         return;
       }
+
+      if (currentState === GameState.DUNGEON_SUMMARY) {
+        if (now - workModeLastDeathRecover >= 3000) {
+          workModeLastDeathRecover = now;
+          const wasDefeat = state._dungeonRunStats && !state._dungeonRunStats.success;
+          state._dungeonRunStats = null;
+          if (wasDefeat) {
+            state.team = [];
+            state.dungeonProgress = null;
+            state.tavernRoster = applyVillageRecruitBonus(generateTavernRoster(rng));
+            workModeLog('Auto: summary done, recovering from death');
+          } else {
+            state.dungeonProgress = null;
+            state.tavernRoster = applyVillageRecruitBonus(generateTavernRoster(rng));
+            workModeLog('Auto: summary done, returning to tavern');
+          }
+          try { await engine.transition(GameState.TAVERN); } catch { /* ignore */ }
+        }
+        return;
+      }
     } catch (err) {
       if (debug) process.stderr.write(`[workmode] ${err.message}\n`);
       // Fallback: try to get back to tavern
@@ -551,8 +581,9 @@ export async function runGame(options = {}) {
             }
             if (conns.length === 0 && !room?.content) {
               state.stats.dungeonsCleared = (state.stats.dungeonsCleared ?? 0) + 1;
+              if (state._dungeonRunStats) state._dungeonRunStats.success = true;
               state.dungeonProgress = null;
-              try { await engine.transition(GameState.TAVERN); } catch { /* ignore */ }
+              try { await engine.transition(GameState.DUNGEON_SUMMARY); } catch { /* ignore */ }
               return;
             }
           }
@@ -640,6 +671,24 @@ export async function runGame(options = {}) {
         }
         return;
       }
+
+      if (currentState === GameState.DUNGEON_SUMMARY) {
+        if (now - autoDungeonLastDeathRecover >= 3000) {
+          autoDungeonLastDeathRecover = now;
+          const wasDefeat = state._dungeonRunStats && !state._dungeonRunStats.success;
+          state._dungeonRunStats = null;
+          if (wasDefeat) {
+            state.team = [];
+            state.dungeonProgress = null;
+            state.tavernRoster = applyVillageRecruitBonus(generateTavernRoster(rng));
+          } else {
+            state.dungeonProgress = null;
+            state.tavernRoster = applyVillageRecruitBonus(generateTavernRoster(rng));
+          }
+          try { await engine.transition(GameState.TAVERN); } catch { /* ignore */ }
+        }
+        return;
+      }
     } catch (err) {
       if (debug) process.stderr.write(`[auto-dungeon] ${err.message}\n`);
     }
@@ -667,9 +716,16 @@ export async function runGame(options = {}) {
         }
       }
 
+      // Track run stats
+      if (state._dungeonRunStats) {
+        state._dungeonRunStats.monstersSlain += defeatedEnemies.length;
+        state._dungeonRunStats.lootCollected.push(...drops);
+      }
+
       // Permanent death: remove fallen team members after victory
       const fallen = (state.team ?? []).filter(m => m.currentHp <= 0);
       if (fallen.length > 0) {
+        if (state._dungeonRunStats) state._dungeonRunStats.alliesLost += fallen.length;
         for (const dead of fallen) {
           // Return equipped items to inventory
           const eq = dead.equipment ?? {};
@@ -713,7 +769,12 @@ export async function runGame(options = {}) {
       activeCombat = null;
       rollBar = null;
       state._lastCombatRoll = null;
-      await engine.transition(GameState.DEATH);
+      if (state._dungeonRunStats) {
+        state._dungeonRunStats.success = false;
+        state._dungeonRunStats.deathPenalty = penalty;
+        state._dungeonRunStats.alliesLost += (state.team ?? []).length;
+      }
+      await engine.transition(GameState.DUNGEON_SUMMARY);
     }
   }
 
@@ -726,6 +787,16 @@ export async function runGame(options = {}) {
   /** Generate dungeon and transition to DUNGEON state. */
   async function enterDungeon() {
     dungeonTimer = null;
+    // Initialize run summary for this dungeon
+    state._dungeonRunStats = {
+      crumbsBefore: state.crumbs ?? 0,
+      roomsCleared: 0,
+      monstersSlain: 0,
+      lootCollected: [],
+      lootSold: 0,
+      xpEarned: 0,
+      alliesLost: 0,
+    };
     const dungeonLevel = (state.stats.dungeonsCleared ?? 0) + 1;
     const dungeonSeed = rng.int(1, 999999);
     try {
@@ -935,7 +1006,8 @@ export async function runGame(options = {}) {
       const item = loot[ui.lootIndex];
       if (item) {
         if (result === 'loot_sell') {
-          economy.sellItem(item);
+          const earned = economy.sellItem(item);
+          if (state._dungeonRunStats) state._dungeonRunStats.lootSold += (earned || 0);
         } else if (result === 'loot_equip') {
           // Equip to first team member with empty slot
           const member = (state.team ?? []).find(m => m.alive && !m.equipment[item.slot ?? 'weapon']);
@@ -1153,6 +1225,19 @@ export async function runGame(options = {}) {
         inv.splice(result.index, 1);
         renderer.showNotification(`Dropped ${item.name}`, 'info');
       }
+    } else if (result === 'summary_continue') {
+      // From dungeon summary → tavern (success path)
+      state._dungeonRunStats = null;
+      state.dungeonProgress = null;
+      state.tavernRoster = applyVillageRecruitBonus(generateTavernRoster(rng));
+      await engine.transition(GameState.TAVERN);
+    } else if (result === 'summary_death_continue') {
+      // From dungeon summary → tavern (death path — clear team, regenerate roster)
+      state._dungeonRunStats = null;
+      state.team = [];
+      state.dungeonProgress = null;
+      state.tavernRoster = applyVillageRecruitBonus(generateTavernRoster(rng));
+      await engine.transition(GameState.TAVERN);
     } else if (result === 'explore_dungeon') {
       await enterDungeon();
     } else if (result === 'dungeon_interact') {
@@ -1278,11 +1363,13 @@ export async function runGame(options = {}) {
               }
             }
             state.stats.roomsCleared = (state.stats.roomsCleared ?? 0) + 1;
+            if (state._dungeonRunStats) state._dungeonRunStats.roomsCleared++;
           } else {
-            // Dead end or dungeon complete — return to tavern
+            // Dead end or dungeon complete — show summary
             state.stats.dungeonsCleared = (state.stats.dungeonsCleared ?? 0) + 1;
+            if (state._dungeonRunStats) state._dungeonRunStats.success = true;
             state.dungeonProgress = null;
-            await engine.transition(GameState.TAVERN);
+            await engine.transition(GameState.DUNGEON_SUMMARY);
           }
         }
       }
@@ -1342,6 +1429,7 @@ export async function runGame(options = {}) {
       rollBar = null;
       state._lastCombatRoll = null;
       state.dungeonProgress = null;
+      state._dungeonRunStats = null;
       dungeonTimer = null;
       saveGame(slot, engine.getState());
       await engine.transition(GameState.MENU);

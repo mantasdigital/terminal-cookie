@@ -15,6 +15,7 @@ export const GameState = Object.freeze({
   COMBAT: 'COMBAT',
   LOOT: 'LOOT',
   DEATH: 'DEATH',
+  DUNGEON_SUMMARY: 'DUNGEON_SUMMARY',
   SETTINGS: 'SETTINGS',
   HELP: 'HELP',
 });
@@ -26,10 +27,11 @@ export const GameState = Object.freeze({
 const TRANSITIONS = {
   [GameState.MENU]:     [GameState.TAVERN, GameState.DUNGEON, GameState.SETTINGS, GameState.HELP],
   [GameState.TAVERN]:   [GameState.DUNGEON, GameState.COMBAT, GameState.SETTINGS, GameState.MENU],
-  [GameState.DUNGEON]:  [GameState.COMBAT, GameState.LOOT, GameState.TAVERN, GameState.DEATH, GameState.MENU],
-  [GameState.COMBAT]:   [GameState.LOOT, GameState.DEATH, GameState.DUNGEON, GameState.TAVERN],
-  [GameState.LOOT]:     [GameState.DUNGEON, GameState.TAVERN, GameState.COMBAT],
-  [GameState.DEATH]:    [GameState.MENU, GameState.TAVERN],
+  [GameState.DUNGEON]:  [GameState.COMBAT, GameState.LOOT, GameState.TAVERN, GameState.DEATH, GameState.MENU, GameState.DUNGEON_SUMMARY],
+  [GameState.COMBAT]:   [GameState.LOOT, GameState.DEATH, GameState.DUNGEON, GameState.TAVERN, GameState.DUNGEON_SUMMARY],
+  [GameState.LOOT]:     [GameState.DUNGEON, GameState.TAVERN, GameState.COMBAT, GameState.DUNGEON_SUMMARY],
+  [GameState.DEATH]:    [GameState.MENU, GameState.TAVERN, GameState.DUNGEON_SUMMARY],
+  [GameState.DUNGEON_SUMMARY]: [GameState.TAVERN, GameState.MENU],
   [GameState.SETTINGS]: [GameState.MENU, GameState.TAVERN, GameState.DUNGEON],
   [GameState.HELP]:     [GameState.MENU, GameState.TAVERN, GameState.DUNGEON],
 };
