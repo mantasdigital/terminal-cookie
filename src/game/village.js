@@ -211,6 +211,7 @@ export function upgradeBuilding(gameState, buildingId) {
 
   gameState.crumbs -= cost;
   gameState._lastCrumbSpend = Date.now();
+  gameState._lastCrumbSpendAmount = cost;
   gameState.village.buildings = gameState.village.buildings ?? {};
   gameState.village.buildings[buildingId] = { level: currentLevel + 1 };
 

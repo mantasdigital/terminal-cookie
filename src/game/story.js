@@ -139,7 +139,10 @@ export function createStoryManager(state) {
      */
     applyDeathPenalty(dungeonLevel) {
       const penalty = story.calculateDeathPenalty(state.crumbs, dungeonLevel);
+      const actualPenalty = Math.min(state.crumbs, penalty);
       state.crumbs = Math.max(0, state.crumbs - penalty);
+      state._lastCrumbSpend = Date.now();
+      state._lastCrumbSpendAmount = actualPenalty;
       state.lastDeathPenalty = penalty;
       return penalty;
     },

@@ -568,6 +568,8 @@ export function defineTools(options = {}) {
           const recruit = roster[idx];
           if (state.crumbs < recruit.cost) return { content: [{ type: 'text', text: `Need ${recruit.cost}, have ${state.crumbs}` }], isError: true };
           state.crumbs -= recruit.cost;
+          state._lastCrumbSpend = Date.now();
+          state._lastCrumbSpendAmount = recruit.cost;
           state.team.push(recruit);
           roster.splice(idx, 1);
           return { content: [{ type: 'text', text: `+${recruit.name} ${recruit.race} ${recruit.class} | ${formatCrumbs(state.crumbs)}crumbs left` }] };
@@ -910,6 +912,8 @@ export function defineTools(options = {}) {
         }
         if (offer.cost > 0) {
           state.crumbs = Math.max(0, state.crumbs - offer.cost);
+          state._lastCrumbSpend = Date.now();
+          state._lastCrumbSpendAmount = offer.cost;
           result += ` | -${offer.cost} crumbs`;
         }
         story.addStoryEntry(`${npc.name}: ${result}`, 'npc');

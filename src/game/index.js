@@ -108,10 +108,18 @@ export async function runGame(options = {}) {
       const localRecentSpend = local._lastCrumbSpend && (Date.now() - local._lastCrumbSpend) < 10000;
       const externalRecentSpend = external._lastCrumbSpend && (Date.now() - external._lastCrumbSpend) < 10000;
       if (external.crumbs != null) {
-        if (externalRecentSpend) {
-          // MCP just spent crumbs — accept the lower value
-          local.crumbs = external.crumbs;
+        if (externalRecentSpend && external._lastCrumbSpend !== local._lastCrumbSpend) {
+          // The other side just spent crumbs — apply the spend delta to our local crumbs
+          // so we don't lose any crumbs we earned independently.
+          const spendAmount = external._lastCrumbSpendAmount ?? 0;
+          if (spendAmount > 0) {
+            local.crumbs = Math.max(0, (local.crumbs ?? 0) - spendAmount);
+          } else {
+            // Fallback: no spend amount recorded, take the lower value
+            local.crumbs = Math.min(local.crumbs ?? 0, external.crumbs);
+          }
           local._lastCrumbSpend = external._lastCrumbSpend;
+          local._lastCrumbSpendAmount = external._lastCrumbSpendAmount;
         } else if (!localRecentSpend) {
           local.crumbs = Math.max(local.crumbs ?? 0, external.crumbs);
         }
@@ -1095,6 +1103,7 @@ export async function runGame(options = {}) {
       if (shopItem && state.crumbs >= shopItem.cost) {
         state.crumbs -= shopItem.cost;
         state._lastCrumbSpend = Date.now();
+        state._lastCrumbSpendAmount = shopItem.cost;
         if (shopItem.id === 'heal_potion') {
           for (const m of (state.team ?? []).filter(m => m.currentHp > 0)) {
             m.currentHp = Math.min(m.maxHp, m.currentHp + 20);
@@ -1146,6 +1155,7 @@ export async function runGame(options = {}) {
         if (state.crumbs >= cost) {
           state.crumbs -= cost;
           state._lastCrumbSpend = Date.now();
+          state._lastCrumbSpendAmount = cost;
           enchantItem(item, 1);
           logAdventure(`Enchanted ${item.name} for ${cost} crumbs`, 'enchant');
           renderer.showNotification(`Enchanted ${item.name}! (+2 power)`, 'success');
@@ -1338,7 +1348,10 @@ export async function runGame(options = {}) {
                 }
               }
               if (offer?.cost > 0) {
+                const actualCost = Math.min(state.crumbs, offer.cost);
                 state.crumbs = Math.max(0, state.crumbs - offer.cost);
+                state._lastCrumbSpend = Date.now();
+                state._lastCrumbSpendAmount = actualCost;
               }
             }
           } catch { /* NPC data unavailable */ }

@@ -44,6 +44,7 @@ export function createEconomy(gameState) {
       if (gameState.crumbs < cost) return false;
       gameState.crumbs -= cost;
       gameState._lastCrumbSpend = Date.now();
+      gameState._lastCrumbSpendAmount = cost;
       if (discountRecruitsRemaining > 0) {
         discountRecruitsRemaining--;
       }

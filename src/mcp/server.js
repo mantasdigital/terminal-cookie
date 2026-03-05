@@ -83,10 +83,18 @@ const liveState = createLiveState({
     const localRecentSpend = local._lastCrumbSpend && (Date.now() - local._lastCrumbSpend) < 10000;
     const externalRecentSpend = external._lastCrumbSpend && (Date.now() - external._lastCrumbSpend) < 10000;
     if (external.crumbs != null) {
-      if (externalRecentSpend) {
-        // The game just spent crumbs (recruit, shop, etc.) — accept the lower value
-        local.crumbs = external.crumbs;
+      if (externalRecentSpend && external._lastCrumbSpend !== local._lastCrumbSpend) {
+        // The other side just spent crumbs — apply the spend delta to our local crumbs
+        // so we don't lose any crumbs we earned independently.
+        const spendAmount = external._lastCrumbSpendAmount ?? 0;
+        if (spendAmount > 0) {
+          local.crumbs = Math.max(0, (local.crumbs ?? 0) - spendAmount);
+        } else {
+          // Fallback: no spend amount recorded, take the lower value
+          local.crumbs = Math.min(local.crumbs ?? 0, external.crumbs);
+        }
         local._lastCrumbSpend = external._lastCrumbSpend;
+        local._lastCrumbSpendAmount = external._lastCrumbSpendAmount;
       } else if (!localRecentSpend) {
         local.crumbs = Math.max(local.crumbs ?? 0, external.crumbs);
       }

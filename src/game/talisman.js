@@ -77,6 +77,7 @@ export function upgradeTalisman(gameState) {
   }
   gameState.crumbs -= cost;
   gameState._lastCrumbSpend = Date.now();
+  gameState._lastCrumbSpendAmount = cost;
   talisman.level++;
   return { success: true, newLevel: talisman.level, cost };
 }
