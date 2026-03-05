@@ -43,6 +43,7 @@ export function createEconomy(gameState) {
       const cost = economy.recruitCost(member);
       if (gameState.crumbs < cost) return false;
       gameState.crumbs -= cost;
+      gameState._lastCrumbSpend = Date.now();
       if (discountRecruitsRemaining > 0) {
         discountRecruitsRemaining--;
       }

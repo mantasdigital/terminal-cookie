@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
 import { formatCrumbs } from '../ui/format.js';
 import { getTalismanBonuses, getUpgradeCost, canUpgrade, getMaxLevel, formatTalismanInfo } from './talisman.js';
+import { enchantCost } from './loot.js';
 
 const __screens_dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__screens_dirname, '..', '..');
@@ -164,10 +165,13 @@ function truncate(str, len) {
 /** Persistent UI state across render/input cycles. */
 const ui = {
   menuIndex: 0,
-  tavernTab: 'party',    // party | recruit | inventory
+  tavernTab: 'party',    // party | recruit | inventory | talisman | shop | log
   dungeonChoice: 0,
   lootIndex: 0,
   settingIndex: 0,
+  invIndex: 0,           // inventory item selection
+  shopIndex: 0,          // shop item selection
+  logScroll: 0,          // adventure log scroll offset
   helpVisible: false,
   leaderboardVisible: false,
   securityLogVisible: false,
@@ -398,6 +402,17 @@ const menuScreen = {
   },
 };
 
+// ── Shop item definitions ───────────────────────────────────────────
+
+const SHOP_ITEMS = [
+  { id: 'heal_potion',   name: 'Healing Potion',   cost: 15,  desc: 'Heal all team +20 HP',         icon: '+' },
+  { id: 'whetstone',     name: 'Whetstone',        cost: 25,  desc: '+3 ATK for next combat',       icon: '/' },
+  { id: 'iron_shield',   name: 'Iron Shield Oil',  cost: 25,  desc: '+3 DEF for next combat',       icon: '#' },
+  { id: 'lucky_charm',   name: 'Lucky Charm',      cost: 40,  desc: '+5 LCK for next combat',       icon: '*' },
+  { id: 'enchant_scroll',name: 'Enchant Scroll',   cost: 50,  desc: 'Enchant selected inventory item', icon: '~' },
+  { id: 'reroll_roster', name: 'Refresh Roster',   cost: 30,  desc: 'New recruits at the tavern',   icon: '?' },
+];
+
 // ── TAVERN SCREEN ───────────────────────────────────────────────────
 
 const tavernScreen = {
@@ -416,12 +431,12 @@ const tavernScreen = {
     renderer.bufferWrite(3, 12, renderer.dim('Earned via AI interactions'));
 
     // Tabs
-    const tabs = ['[Party]', '[Recruit]', '[Inventory]', '[Talisman]'];
-    const tabMap = ['party', 'recruit', 'inventory', 'talisman'];
+    const tabs = ['[Party]', '[Recruit]', '[Inventory]', '[Shop]', '[Talisman]', '[Log]'];
+    const tabMap = ['party', 'recruit', 'inventory', 'shop', 'talisman', 'log'];
     let tabStr = '';
     for (let i = 0; i < tabs.length; i++) {
       const active = tabMap[i] === ui.tavernTab;
-      tabStr += (active ? renderer.bold(tabs[i]) : renderer.dim(tabs[i])) + '  ';
+      tabStr += (active ? renderer.bold(tabs[i]) : renderer.dim(tabs[i])) + ' ';
     }
     renderer.bufferWrite(6, 2, tabStr);
 
@@ -494,17 +509,65 @@ const tavernScreen = {
     } else if (ui.tavernTab === 'inventory') {
       const inv = state.inventory ?? [];
       if (inv.length === 0) {
-        renderer.bufferWrite(contentTop, 4, 'Inventory is empty.');
+        renderer.bufferWrite(contentTop, 4, 'Inventory is empty. Find loot in dungeons!');
       } else {
-        for (let i = 0; i < Math.min(inv.length, 12); i++) {
+        const maxShow = Math.min(inv.length, 14);
+        for (let i = 0; i < maxShow; i++) {
           const item = inv[i];
+          const prefix = i === ui.invIndex ? '> ' : '  ';
           const icon = lootIcon(item.slot ?? 'weapon', item.rarity ?? 'common');
-          renderer.bufferWrite(contentTop + i, 4, `${icon} ${item.name ?? 'Unknown'} (${item.rarity ?? '?'}) val:${item.value ?? 0}`);
+          const enchLvl = item.enchantLevel ? renderer.color(` +${item.enchantLevel}`, 'cyan') : '';
+          const line = `${prefix}${icon} ${item.name ?? 'Unknown'} (${item.rarity ?? '?'})${enchLvl} val:${item.value ?? 0}`;
+          renderer.bufferWrite(contentTop + i, 4, i === ui.invIndex ? renderer.bold(line) : line);
         }
-        if (inv.length > 12) {
-          renderer.bufferWrite(contentTop + 12, 4, `... and ${inv.length - 12} more`);
+        if (inv.length > 14) {
+          renderer.bufferWrite(contentTop + 14, 4, renderer.dim(`... +${inv.length - 14} more`));
+        }
+
+        // Selected item detail on right
+        const sel = inv[ui.invIndex];
+        if (sel) {
+          const detCol = Math.max(cols - 32, Math.floor(cols * 0.55));
+          renderer.bufferWrite(contentTop, detCol, renderer.bold(sel.name ?? 'Unknown'));
+          renderer.bufferWrite(contentTop + 1, detCol, `Slot: ${sel.slot ?? '?'}  Rarity: ${sel.rarity ?? '?'}`);
+          renderer.bufferWrite(contentTop + 2, detCol, `Power: ${sel.power ?? 0}  Value: ${sel.value ?? 0}`);
+          if (sel.statBonus) {
+            const statStr = Object.entries(sel.statBonus).map(([k, v]) => `${k}:+${v}`).join(' ');
+            renderer.bufferWrite(contentTop + 3, detCol, `Stats: ${statStr}`);
+          }
+          if (sel.effect) {
+            renderer.bufferWrite(contentTop + 4, detCol, renderer.dim(`Effect: ${sel.effect}`));
+          }
+          const eCost = enchantCost(sel);
+          const canEnchant = (state.crumbs ?? 0) >= eCost && sel.slot !== 'consumable';
+          renderer.bufferWrite(contentTop + 6, detCol, canEnchant
+            ? renderer.color(`[X] Enchant (${eCost} crumbs)`, 'cyan')
+            : renderer.dim(`Enchant: ${eCost} crumbs`));
+          renderer.bufferWrite(contentTop + 7, detCol, '[E] Equip  [S] Sell  [D] Drop');
         }
       }
+    } else if (ui.tavernTab === 'shop') {
+      renderer.bufferWrite(contentTop - 1, 4, renderer.bold('Welcome to the Shop!'));
+      const crumbs = state.crumbs ?? 0;
+      for (let i = 0; i < SHOP_ITEMS.length; i++) {
+        const item = SHOP_ITEMS[i];
+        const prefix = i === ui.shopIndex ? '> ' : '  ';
+        const affordable = crumbs >= item.cost;
+        const costStr = affordable ? renderer.color(`${item.cost}c`, 'green') : renderer.color(`${item.cost}c`, 'red');
+        const line = `${prefix}[${item.icon}] ${item.name}  ${costStr}  ${renderer.dim(item.desc)}`;
+        renderer.bufferWrite(contentTop + i * 2, 4, i === ui.shopIndex ? renderer.bold(line) : line);
+      }
+      renderer.bufferWrite(contentTop + SHOP_ITEMS.length * 2 + 1, 4, renderer.dim('Up/Down to browse, Enter to buy'));
+
+      // Show active buffs on right
+      const buffs = state.shopBuffs ?? {};
+      const buffCol = Math.max(cols - 28, Math.floor(cols * 0.6));
+      renderer.bufferWrite(contentTop, buffCol, renderer.bold('Active Buffs:'));
+      let buffRow = 1;
+      if (buffs.atk) { renderer.bufferWrite(contentTop + buffRow++, buffCol, renderer.color(`  ATK +${buffs.atk}`, 'yellow')); }
+      if (buffs.def) { renderer.bufferWrite(contentTop + buffRow++, buffCol, renderer.color(`  DEF +${buffs.def}`, 'yellow')); }
+      if (buffs.lck) { renderer.bufferWrite(contentTop + buffRow++, buffCol, renderer.color(`  LCK +${buffs.lck}`, 'yellow')); }
+      if (buffRow === 1) { renderer.bufferWrite(contentTop + buffRow, buffCol, renderer.dim('  None')); }
     } else if (ui.tavernTab === 'talisman') {
       const talisman = state.talisman;
       if (!talisman) {
@@ -545,6 +608,27 @@ const tavernScreen = {
           renderer.bufferWrite(promptRow, 4, renderer.color('Talisman is fully upgraded!', 'yellow'));
         }
       }
+    } else if (ui.tavernTab === 'log') {
+      const log = state.adventureLog ?? [];
+      if (log.length === 0) {
+        renderer.bufferWrite(contentTop, 4, 'No adventures yet. Enter a dungeon to begin!');
+      } else {
+        const maxRows = renderer.capabilities.rows - contentTop - 5;
+        const scrollMax = Math.max(0, log.length - maxRows);
+        ui.logScroll = Math.max(0, Math.min(ui.logScroll, scrollMax));
+        const visible = log.slice(log.length - maxRows - ui.logScroll, log.length - ui.logScroll);
+        renderer.bufferWrite(contentTop - 1, 4, renderer.bold('-- Adventure Log --') + renderer.dim(`  (${log.length} entries)`));
+        for (let i = 0; i < visible.length; i++) {
+          const entry = visible[i];
+          const typeColors = { combat: 'red', loot: 'yellow', recruit: 'green', death: 'red', shop: 'cyan', dungeon: 'brightBlack', enchant: 'magenta' };
+          const color = typeColors[entry.type] || 'brightBlack';
+          const tag = `[${(entry.type ?? 'event').toUpperCase().substring(0, 4)}]`;
+          renderer.bufferWrite(contentTop + i, 4, renderer.color(tag, color) + ' ' + truncate(entry.text, cols - 14));
+        }
+        if (scrollMax > 0) {
+          renderer.bufferWrite(contentTop + visible.length, 4, renderer.dim('Use Up/Down to scroll'));
+        }
+      }
     }
 
     // Dungeon auto-start timer
@@ -558,7 +642,7 @@ const tavernScreen = {
       renderer.bufferWrite(timerRow + 1, 4, renderer.dim('Press [E] to enter now'));
     }
 
-    renderer.showStatus('R=recruit I=inventory T=talisman E=dungeon W=save Ctrl-C=quit ?=help');
+    renderer.showStatus('R=recruit I=inv H=shop T=talisman G=log E=dungeon W=save ?=help');
     renderAIBadge(state, renderer);
     renderWorkModeBadge(state, renderer);
     renderSecurityBanner(state, renderer);
@@ -590,40 +674,66 @@ const tavernScreen = {
         break;
       case 'i':
         ui.tavernTab = 'inventory';
+        ui.invIndex = 0;
+        break;
+      case 'h':
+        ui.tavernTab = 'shop';
+        ui.shopIndex = 0;
         break;
       case 't':
         ui.tavernTab = 'talisman';
         break;
+      case 'g':
+        ui.tavernTab = 'log';
+        ui.logScroll = 0;
+        break;
       case 'u':
         if (ui.tavernTab === 'talisman') return 'talisman_upgrade';
         break;
+      case 'x':
+        if (ui.tavernTab === 'inventory') return { action: 'inv_enchant', index: ui.invIndex };
+        break;
       case 'left':
-        { const tabs = ['party', 'recruit', 'inventory', 'talisman'];
+        { const tabs = ['party', 'recruit', 'inventory', 'shop', 'talisman', 'log'];
           const idx = tabs.indexOf(ui.tavernTab);
           ui.tavernTab = tabs[(idx - 1 + tabs.length) % tabs.length]; }
         break;
       case 'right':
-        { const tabs = ['party', 'recruit', 'inventory', 'talisman'];
+        { const tabs = ['party', 'recruit', 'inventory', 'shop', 'talisman', 'log'];
           const idx = tabs.indexOf(ui.tavernTab);
           ui.tavernTab = tabs[(idx + 1) % tabs.length]; }
         break;
       case 'up':
-        ui.menuIndex = Math.max(0, ui.menuIndex - 1);
+        if (ui.tavernTab === 'recruit') ui.menuIndex = Math.max(0, ui.menuIndex - 1);
+        else if (ui.tavernTab === 'inventory') ui.invIndex = Math.max(0, ui.invIndex - 1);
+        else if (ui.tavernTab === 'shop') ui.shopIndex = Math.max(0, ui.shopIndex - 1);
+        else if (ui.tavernTab === 'log') ui.logScroll = Math.min((state.adventureLog ?? []).length, ui.logScroll + 1);
+        else ui.menuIndex = Math.max(0, ui.menuIndex - 1);
         break;
       case 'down':
-        ui.menuIndex++;
+        if (ui.tavernTab === 'recruit') ui.menuIndex++;
+        else if (ui.tavernTab === 'inventory') ui.invIndex = Math.min((state.inventory ?? []).length - 1, ui.invIndex + 1);
+        else if (ui.tavernTab === 'shop') ui.shopIndex = Math.min(SHOP_ITEMS.length - 1, ui.shopIndex + 1);
+        else if (ui.tavernTab === 'log') ui.logScroll = Math.max(0, ui.logScroll - 1);
+        else ui.menuIndex++;
         break;
       case 'enter':
         if (ui.tavernTab === 'recruit') return 'recruit_select';
+        if (ui.tavernTab === 'shop') return { action: 'shop_buy', index: ui.shopIndex };
+        if (ui.tavernTab === 'inventory') return { action: 'inv_equip', index: ui.invIndex };
         break;
-      case 'e': case 'd':
-        if ((state.team ?? []).length > 0) {
-          return 'explore_dungeon';
-        }
+      case 'e':
+        if (ui.tavernTab === 'inventory') return { action: 'inv_equip', index: ui.invIndex };
+        if ((state.team ?? []).length > 0) return 'explore_dungeon';
+        break;
+      case 'd':
+        if (ui.tavernTab === 'inventory') return { action: 'inv_drop', index: ui.invIndex };
+        if ((state.team ?? []).length > 0) return 'explore_dungeon';
         break;
       case 'w':
         return 'save_game';
       case 's':
+        if (ui.tavernTab === 'inventory') return { action: 'inv_sell', index: ui.invIndex };
         await engine.transition(GameState.SETTINGS);
         break;
       case 'escape':
@@ -772,13 +882,25 @@ const dungeonScreen = {
 
 // ── COMBAT SCREEN ───────────────────────────────────────────────────
 
+/** Render a d20 die face as ASCII art. */
+function renderDie(value) {
+  const v = String(value ?? '?').padStart(2);
+  return [
+    '+------+',
+    '| d20  |',
+    `|  ${v}  |`,
+    '+------+',
+  ];
+}
+
 const combatScreen = {
   render(state, renderer) {
     renderer.clear();
     const cols = renderer.capabilities.cols;
+    const rows = renderer.capabilities.rows;
     const combat = state.activeCombat;
 
-    renderer.showHeader(`=== Combat - Round ${combat?.round ?? 1} ===`);
+    renderer.showHeader(`=== Auto-Battle - Round ${combat?.round ?? 1} ===`);
 
     if (!combat) {
       renderer.bufferWrite(3, 4, 'Preparing for battle...');
@@ -786,60 +908,69 @@ const combatScreen = {
       return;
     }
 
-    // Enemies (top portion)
-    const enemies = (combat.combatants ?? []).filter(c => c.side === 'enemy' && c.currentHp > 0);
-    for (let i = 0; i < Math.min(enemies.length, 4); i++) {
+    // Enemies (top portion, compact)
+    const enemies = (combat.combatants ?? []).filter(c => c.side === 'enemy');
+    const halfCols = Math.max(cols - 42, Math.floor(cols * 0.55));
+    for (let i = 0; i < Math.min(enemies.length, 3); i++) {
       const e = enemies[i];
-      const col = 4 + i * Math.floor(cols / 4);
-      renderer.bufferWrite(2, col, renderer.color(e.name, 'red'));
-      renderer.bufferWrite(3, col, hpBar(e.currentHp, e.maxHp, 10));
-      if (e.template) {
-        const art = monsterArt(e.template, []);
-        const artLines = art.split('\n');
-        for (let j = 0; j < Math.min(artLines.length, 4); j++) {
-          renderer.bufferWrite(4 + j, col, artLines[j]);
-        }
-      }
+      const nameColor = e.currentHp > 0 ? 'red' : 'brightBlack';
+      const dead = e.currentHp <= 0 ? ' [DEAD]' : '';
+      renderer.bufferWrite(2 + i * 2, 4, renderer.color(truncate(e.name + dead, halfCols - 6), nameColor));
+      if (e.currentHp > 0) renderer.bufferWrite(3 + i * 2, 6, hpBar(e.currentHp, e.maxHp, 12));
     }
 
-    // Roll bar area
-    const rollRow = 10;
-    if (state.rollBarState) {
-      renderer.bufferWrite(rollRow, 4, renderer.bold('Roll Bar:'));
-      renderer.bufferWrite(rollRow + 1, 4, state.rollBarState.display ?? '[--roll--]');
-    }
-
-    // Team (bottom portion)
+    // Team (bottom portion, compact)
     const team = (combat.combatants ?? []).filter(c => c.side === 'team');
-    const teamRow = 13;
+    const teamRow = 2 + Math.min(enemies.length, 3) * 2 + 1;
+    renderer.bufferWrite(teamRow, 4, renderer.dim('--- Your Team ---'));
     for (let i = 0; i < Math.min(team.length, 4); i++) {
       const m = team[i];
-      const col = 4 + i * Math.floor(cols / 4);
       const nameColor = m.currentHp > 0 ? 'green' : 'brightBlack';
-      renderer.bufferWrite(teamRow, col, renderer.color(m.name, nameColor));
-      renderer.bufferWrite(teamRow + 1, col, hpBar(m.currentHp, m.maxHp, 10));
-      const portrait = buildPortrait(m);
-      for (let j = 0; j < portrait.length; j++) {
-        renderer.bufferWrite(teamRow + 2 + j, col, portrait[j]);
+      const dead = m.currentHp <= 0 ? ' [DEAD]' : '';
+      renderer.bufferWrite(teamRow + 1 + i * 2, 4, renderer.color(truncate(m.name + dead, halfCols - 6), nameColor));
+      if (m.currentHp > 0) renderer.bufferWrite(teamRow + 2 + i * 2, 6, hpBar(m.currentHp, m.maxHp, 12));
+    }
+
+    // Right panel: dice + log
+    const rightCol = Math.max(halfCols + 2, cols - 38);
+    const diceCol = rightCol;
+
+    // Last roll dice display
+    const lastRoll = state._lastCombatRoll;
+    if (lastRoll) {
+      const die = renderDie(lastRoll.raw);
+      for (let i = 0; i < die.length; i++) {
+        renderer.bufferWrite(2 + i, diceCol, die[i]);
+      }
+      const rollInfo = lastRoll.crit ? renderer.color('CRITICAL!', 'yellow') :
+                       lastRoll.fumble ? renderer.color('FUMBLE!', 'red') :
+                       `Roll: ${lastRoll.raw} (+${lastRoll.modifier}) = ${lastRoll.modified}`;
+      renderer.bufferWrite(6, diceCol, rollInfo);
+      if (lastRoll.attacker) {
+        renderer.bufferWrite(7, diceCol, renderer.dim(truncate(`${lastRoll.attacker} -> ${lastRoll.target}`, 36)));
+      }
+      if (lastRoll.damage !== undefined) {
+        renderer.bufferWrite(8, diceCol, lastRoll.damage > 0
+          ? renderer.color(`${lastRoll.damage} damage`, 'red')
+          : renderer.dim('0 damage (blocked)'));
       }
     }
 
-    // Current turn indicator
-    const current = combat.currentTurn?.();
-    if (current) {
-      renderer.bufferWrite(teamRow + 6, 4, `>> ${current.name}'s turn`);
-    }
-
-    // Combat log (right side)
+    // Battle log (right side, below dice)
     const log = combat.log ?? [];
-    const logCol = Math.max(cols - 40, Math.floor(cols / 2));
-    renderer.bufferWrite(2, logCol, renderer.bold('-- Battle Log --'));
-    const recentLog = log.slice(-10);
+    const logStartRow = 10;
+    renderer.bufferWrite(logStartRow, diceCol, renderer.bold('-- Battle Log --'));
+    const maxLogLines = rows - logStartRow - 4;
+    const recentLog = log.slice(-Math.min(maxLogLines, 8));
     for (let i = 0; i < recentLog.length; i++) {
-      renderer.bufferWrite(3 + i, logCol, truncate(recentLog[i], 38));
+      renderer.bufferWrite(logStartRow + 1 + i, diceCol, renderer.dim(truncate(recentLog[i], 36)));
     }
 
-    renderer.showStatus('Space/Enter=roll | A=attack S=special U=item F=flee | ?=help');
+    // Auto-battle indicator
+    const autoRow = rows - 3;
+    renderer.bufferWrite(autoRow, 4, renderer.dim('Auto-battling... Space=speed up  A=instant resolve  F=flee'));
+
+    renderer.showStatus('Space=speed up | A=resolve all | F=flee | ?=help');
     renderAIBadge(state, renderer);
     renderWorkModeBadge(state, renderer);
     renderSecurityBanner(state, renderer);
@@ -847,8 +978,8 @@ const combatScreen = {
     if (ui.helpVisible) {
       const help = renderHelp('COMBAT');
       const helpLines = help.split('\n');
-      const startRow = Math.max(0, Math.floor((renderer.capabilities.rows - helpLines.length) / 2));
-      const startCol = Math.max(0, Math.floor((renderer.capabilities.cols - (helpLines[0]?.length ?? 0)) / 2));
+      const startRow = Math.max(0, Math.floor((rows - helpLines.length) / 2));
+      const startCol = Math.max(0, Math.floor((cols - (helpLines[0]?.length ?? 0)) / 2));
       for (let i = 0; i < helpLines.length; i++) {
         renderer.bufferWrite(startRow + i, startCol, helpLines[i]);
       }
@@ -864,13 +995,9 @@ const combatScreen = {
 
     switch (key) {
       case 'space': case 'enter':
-        return 'roll_stop';
+        return 'combat_speed_up';
       case 'a':
         return 'attack';
-      case 's':
-        return 'special';
-      case 'u':
-        return 'use_item';
       case 'f':
         return 'flee';
     }
@@ -1297,6 +1424,9 @@ export function resetUIState() {
   ui.menuIndex = 0;
   ui.dungeonChoice = 0;
   ui.lootIndex = 0;
+  ui.invIndex = 0;
+  ui.shopIndex = 0;
+  ui.logScroll = 0;
   ui.helpVisible = false;
   ui.leaderboardVisible = false;
   ui.securityLogVisible = false;

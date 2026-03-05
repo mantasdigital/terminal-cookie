@@ -19,7 +19,7 @@ import { createGraveyard } from './graveyard.js';
 import { createTutorial } from './tutorial.js';
 import { generateDungeon, moveToRoom, clearRoom, getAvailableMoves } from './dungeon.js';
 import { generateEnemy, generateRoomEnemies } from './enemies.js';
-import { generateLoot, generateEnemyDrops, equipItem, sellValue } from './loot.js';
+import { generateLoot, generateEnemyDrops, equipItem, sellValue, enchantItem, enchantCost } from './loot.js';
 import { createEventManager } from './events.js';
 import { createStoryManager } from './story.js';
 import { getScreen, getUIState, resetUIState } from './screens.js';
@@ -100,8 +100,9 @@ export async function runGame(options = {}) {
       const resetActive = local.newGameId && local.newGameId !== external.newGameId
         && (Date.now() - local.newGameId) < resetGraceMs;
 
-      // Normal merge — take higher crumbs to avoid losing local earnings
-      if (external.crumbs != null && !resetActive) local.crumbs = Math.max(local.crumbs ?? 0, external.crumbs);
+      // Normal merge — take higher crumbs, but not if we just spent locally
+      const recentSpend = local._lastCrumbSpend && (Date.now() - local._lastCrumbSpend) < 3000;
+      if (external.crumbs != null && !resetActive && !recentSpend) local.crumbs = Math.max(local.crumbs ?? 0, external.crumbs);
       // For team, merge by ID — never lose locally recruited members
       if (external.team && Array.isArray(external.team)) {
         const localIds = new Set((local.team ?? []).map(m => m.id));
@@ -162,6 +163,37 @@ export async function runGame(options = {}) {
   let rollBar = null;
   let activeCombat = null;
   let voiceController = null;
+  let combatAutoTimer = 0; // ms since last auto-attack in combat
+
+  // Adventure log helper
+  function logAdventure(text, type = 'event') {
+    state.adventureLog = state.adventureLog ?? [];
+    state.adventureLog.push({ text, type, time: Date.now() });
+    // Cap at 200 entries
+    if (state.adventureLog.length > 200) state.adventureLog = state.adventureLog.slice(-200);
+  }
+
+  // Apply shop buffs to team for combat
+  function applyShopBuffs() {
+    const buffs = state.shopBuffs ?? {};
+    if (!buffs.atk && !buffs.def && !buffs.lck) return;
+    for (const m of (state.team ?? []).filter(m => m.currentHp > 0)) {
+      if (buffs.atk) m.stats.atk += buffs.atk;
+      if (buffs.def) m.stats.def += buffs.def;
+      if (buffs.lck) m.stats.lck += buffs.lck;
+    }
+  }
+
+  function removeShopBuffs() {
+    const buffs = state.shopBuffs ?? {};
+    if (!buffs.atk && !buffs.def && !buffs.lck) return;
+    for (const m of (state.team ?? [])) {
+      if (buffs.atk) m.stats.atk -= buffs.atk;
+      if (buffs.def) m.stats.def -= buffs.def;
+      if (buffs.lck) m.stats.lck -= buffs.lck;
+    }
+    state.shopBuffs = {};
+  }
 
   function applyTalismanCombatBuffs() {
     const b = getTalismanBonuses(state.talisman?.level ?? 1);
@@ -326,6 +358,7 @@ export async function runGame(options = {}) {
             }
             if (dp) clearRoom(dp, dp.currentRoom);
             removeTalismanCombatBuffs();
+            removeShopBuffs();
             activeCombat = null;
             rollBar = null;
             workModeLog('Auto: combat victory!');
@@ -342,6 +375,7 @@ export async function runGame(options = {}) {
             graveyard.recordWipe(state.team, state.lastDungeonSeed ?? 0);
             economy.activateWipeDiscount();
             removeTalismanCombatBuffs();
+            removeShopBuffs();
             activeCombat = null;
             rollBar = null;
             workModeLog(`Auto: team defeated, salvaged ${salvaged.length} items`);
@@ -449,6 +483,50 @@ export async function runGame(options = {}) {
     }
   }
 
+  /** Handle combat end (victory or defeat) — shared logic for all combat paths. */
+  async function handleCombatEnd(attackResult) {
+    if (attackResult.outcome === 'victory') {
+      state.stats.monstersSlain = (state.stats.monstersSlain ?? 0) + 1;
+      const dp = state.dungeonProgress;
+      const level = dp?.level ?? 1;
+      const defeatedEnemies = activeCombat.combatants.filter(c => c.side === 'enemy');
+      const drops = [];
+      for (const enemy of defeatedEnemies) {
+        drops.push(...generateEnemyDrops({ enemy, level, rng }));
+      }
+      state.pendingLoot = drops;
+      for (const m of (state.team ?? []).filter(t => t.currentHp > 0)) {
+        awardXP(m, level);
+      }
+      if (dp) clearRoom(dp, dp.currentRoom);
+      removeTalismanCombatBuffs();
+      removeShopBuffs();
+      logAdventure(`Victory! Slain enemies, found ${drops.length} loot`, 'combat');
+      activeCombat = null;
+      rollBar = null;
+      state._lastCombatRoll = null;
+      await engine.transition(GameState.LOOT);
+    } else if (attackResult.outcome === 'defeat') {
+      state.stats.deaths = (state.stats.deaths ?? 0) + 1;
+      const dungeonLevel = state.dungeonProgress?.level ?? 1;
+      const penalty = storyManager.applyDeathPenalty(dungeonLevel);
+      const talismanDeathReward = awardDeathReward(state);
+      state.lastTalismanDeathReward = talismanDeathReward;
+      const salvaged = salvageLoot(state, rng);
+      state.lastSalvagedLoot = salvaged;
+      storyManager.addStoryEntry(`Your team has fallen! Lost ${penalty} crumbs.`, 'combat');
+      graveyard.recordWipe(state.team, state.lastDungeonSeed ?? 0);
+      economy.activateWipeDiscount();
+      removeTalismanCombatBuffs();
+      removeShopBuffs();
+      logAdventure(`Defeat! Team wiped, lost ${penalty} crumbs`, 'death');
+      activeCombat = null;
+      rollBar = null;
+      state._lastCombatRoll = null;
+      await engine.transition(GameState.DEATH);
+    }
+  }
+
   /** Start the dungeon auto-timer with a random duration (8-20 seconds). */
   function startDungeonTimer() {
     const totalMs = (rng.int(8, 20)) * 1000;
@@ -495,6 +573,7 @@ export async function runGame(options = {}) {
       }
       cookie.resetSession();
       storyManager.resetForDungeon();
+      logAdventure(`Entered dungeon level ${dungeonLevel} (biome: ${state.dungeonProgress.biome ?? 'cave'})`, 'dungeon');
       await engine.transition(GameState.DUNGEON);
     } catch (err) {
       if (debug) process.stderr.write(`[dungeon] ${err.message}\n`);
@@ -601,6 +680,7 @@ export async function runGame(options = {}) {
           state.team.push(member);
           roster.splice(ui.menuIndex, 1);
           renderer.showNotification(`${member.name} the ${member.race} ${member.class} joins your team!`, 'info');
+          logAdventure(`Recruited ${member.name} the ${member.race} ${member.class} for ${cost} crumbs`, 'recruit');
           tutorial.advance('recruit');
           // Start dungeon auto-timer after first recruit (if not already running)
           if (!dungeonTimer && !state.dungeonProgress) {
@@ -608,83 +688,22 @@ export async function runGame(options = {}) {
           }
         }
       }
-    } else if (result === 'roll_stop' && rollBar) {
-      const val = rollBar.stop();
+    } else if (result === 'roll_stop') {
+      // Legacy roll_stop: treat as speed-up
       if (activeCombat && !activeCombat.isFinished) {
-        const attackResult = activeCombat.attack(val);
-        if (attackResult.outcome === 'victory') {
-          state.stats.monstersSlain = (state.stats.monstersSlain ?? 0) + 1;
-          // Generate loot drops from defeated enemies
-          const dp = state.dungeonProgress;
-          const level = dp?.level ?? 1;
-          const defeatedEnemies = activeCombat.combatants.filter(c => c.side === 'enemy');
-          const drops = [];
-          for (const enemy of defeatedEnemies) {
-            drops.push(...generateEnemyDrops({ enemy, level, rng }));
-          }
-          state.pendingLoot = drops;
-          // Award XP to surviving team
-          for (const m of (state.team ?? []).filter(t => t.currentHp > 0)) {
-            awardXP(m, level);
-          }
-          // Clear room content
-          if (dp) clearRoom(dp, dp.currentRoom);
-          removeTalismanCombatBuffs();
-          activeCombat = null;
-          rollBar = null;
-          await engine.transition(GameState.LOOT);
-        } else if (attackResult.outcome === 'defeat') {
-          state.stats.deaths = (state.stats.deaths ?? 0) + 1;
-          const dungeonLevel = state.dungeonProgress?.level ?? 1;
-          const penalty = storyManager.applyDeathPenalty(dungeonLevel);
-          const talismanDeathReward = awardDeathReward(state);
-          state.lastTalismanDeathReward = talismanDeathReward;
-          const salvaged = salvageLoot(state, rng);
-          state.lastSalvagedLoot = salvaged;
-          storyManager.addStoryEntry(`Your team has fallen! Lost ${penalty} crumbs to the dungeon.`, 'combat');
-          graveyard.recordWipe(state.team, state.lastDungeonSeed ?? 0);
-          economy.activateWipeDiscount();
-          removeTalismanCombatBuffs();
-          await engine.transition(GameState.DEATH);
-        } else {
-          // Next turn — start new roll bar
-          rollBar = createRollBar();
-          rollBar.start();
+        const attackResult = activeCombat.autoAttack();
+        if (attackResult.roll) {
+          state._lastCombatRoll = { ...attackResult.roll, attacker: attackResult.attacker, target: attackResult.target, damage: attackResult.damage ?? attackResult.selfDamage ?? 0, modifier: Math.floor((activeCombat.currentTurn()?.stats?.atk ?? 5) / 4) };
+        }
+        if (attackResult.outcome === 'victory' || attackResult.outcome === 'defeat') {
+          await handleCombatEnd(attackResult);
         }
       }
     } else if (result === 'attack' && activeCombat && !activeCombat.isFinished) {
-      // Auto-attack for keyboard shortcut
-      const attackResult = activeCombat.autoAttack();
-      if (attackResult.outcome === 'victory') {
-        state.stats.monstersSlain = (state.stats.monstersSlain ?? 0) + 1;
-        const dp = state.dungeonProgress;
-        const level = dp?.level ?? 1;
-        const defeatedEnemies = activeCombat.combatants.filter(c => c.side === 'enemy');
-        const allDrops = [];
-        for (const enemy of defeatedEnemies) {
-          allDrops.push(...generateEnemyDrops({ enemy, level, rng }));
-        }
-        state.pendingLoot = allDrops;
-        for (const m of (state.team ?? []).filter(t => t.currentHp > 0)) {
-          awardXP(m, level);
-        }
-        if (dp) clearRoom(dp, dp.currentRoom);
-        removeTalismanCombatBuffs();
-        activeCombat = null;
-        rollBar = null;
-        await engine.transition(GameState.LOOT);
-      } else if (attackResult.outcome === 'defeat') {
-        state.stats.deaths = (state.stats.deaths ?? 0) + 1;
-        const dungeonLevel = state.dungeonProgress?.level ?? 1;
-        const penalty = storyManager.applyDeathPenalty(dungeonLevel);
-        const talismanDeathReward = awardDeathReward(state);
-        state.lastTalismanDeathReward = talismanDeathReward;
-        const salvaged = salvageLoot(state, rng);
-        state.lastSalvagedLoot = salvaged;
-        storyManager.addStoryEntry(`Your team has fallen! Lost ${penalty} crumbs to the dungeon.`, 'combat');
-        removeTalismanCombatBuffs();
-        await engine.transition(GameState.DEATH);
-      }
+      // Instant resolve entire combat
+      const resolution = activeCombat.autoResolveAll();
+      state._lastCombatRoll = null;
+      await handleCombatEnd(resolution);
     } else if (result === 'loot_equip' || result === 'loot_sell' || result === 'loot_discard') {
       const ui = getUIState();
       const loot = state.pendingLoot ?? [];
@@ -746,6 +765,120 @@ export async function runGame(options = {}) {
     } else if (result === 'spin_wheel_done') {
       // Continue without taking the prize
       state.spinWheel = null;
+    } else if (result === 'combat_speed_up') {
+      // Speed up: do one immediate auto-attack
+      if (activeCombat && !activeCombat.isFinished) {
+        const attackResult = activeCombat.autoAttack();
+        if (attackResult.roll) {
+          state._lastCombatRoll = { ...attackResult.roll, attacker: attackResult.attacker, target: attackResult.target, damage: attackResult.damage ?? attackResult.selfDamage ?? 0, modifier: Math.floor((activeCombat.currentTurn()?.stats?.atk ?? 5) / 4) };
+        }
+        if (attackResult.outcome === 'victory' || attackResult.outcome === 'defeat') {
+          await handleCombatEnd(attackResult);
+        }
+      }
+    } else if (result?.action === 'shop_buy') {
+      const SHOP_ITEMS = [
+        { id: 'heal_potion',   cost: 15 },
+        { id: 'whetstone',     cost: 25 },
+        { id: 'iron_shield',   cost: 25 },
+        { id: 'lucky_charm',   cost: 40 },
+        { id: 'enchant_scroll',cost: 50 },
+        { id: 'reroll_roster', cost: 30 },
+      ];
+      const shopItem = SHOP_ITEMS[result.index];
+      if (shopItem && state.crumbs >= shopItem.cost) {
+        state.crumbs -= shopItem.cost;
+        state._lastCrumbSpend = Date.now();
+        if (shopItem.id === 'heal_potion') {
+          for (const m of (state.team ?? []).filter(m => m.currentHp > 0)) {
+            m.currentHp = Math.min(m.maxHp, m.currentHp + 20);
+          }
+          logAdventure('Used Healing Potion: team healed +20 HP', 'shop');
+          renderer.showNotification('Team healed +20 HP each!', 'success');
+        } else if (shopItem.id === 'whetstone') {
+          state.shopBuffs = state.shopBuffs ?? {};
+          state.shopBuffs.atk = (state.shopBuffs.atk ?? 0) + 3;
+          logAdventure('Bought Whetstone: +3 ATK for next combat', 'shop');
+          renderer.showNotification('+3 ATK buff for next combat!', 'success');
+        } else if (shopItem.id === 'iron_shield') {
+          state.shopBuffs = state.shopBuffs ?? {};
+          state.shopBuffs.def = (state.shopBuffs.def ?? 0) + 3;
+          logAdventure('Bought Iron Shield Oil: +3 DEF for next combat', 'shop');
+          renderer.showNotification('+3 DEF buff for next combat!', 'success');
+        } else if (shopItem.id === 'lucky_charm') {
+          state.shopBuffs = state.shopBuffs ?? {};
+          state.shopBuffs.lck = (state.shopBuffs.lck ?? 0) + 5;
+          logAdventure('Bought Lucky Charm: +5 LCK for next combat', 'shop');
+          renderer.showNotification('+5 LCK buff for next combat!', 'success');
+        } else if (shopItem.id === 'enchant_scroll') {
+          const inv = state.inventory ?? [];
+          const equipable = inv.filter(i => i.slot !== 'consumable');
+          if (equipable.length > 0) {
+            const target = equipable[rng.int(0, equipable.length - 1)];
+            enchantItem(target, 1);
+            logAdventure(`Enchanted ${target.name} with scroll (+2 power)`, 'enchant');
+            renderer.showNotification(`Enchanted ${target.name}!`, 'success');
+          } else {
+            renderer.showNotification('No items to enchant! Find loot first.', 'warn');
+            state.crumbs += shopItem.cost; // refund
+          }
+        } else if (shopItem.id === 'reroll_roster') {
+          state.tavernRoster = generateTavernRoster(rng);
+          logAdventure('Refreshed tavern recruit roster', 'shop');
+          renderer.showNotification('New recruits available!', 'success');
+        }
+      } else {
+        renderer.showNotification('Not enough crumbs!', 'warn');
+      }
+    } else if (result?.action === 'inv_enchant') {
+      const inv = state.inventory ?? [];
+      const item = inv[result.index];
+      if (item && item.slot !== 'consumable') {
+        const cost = enchantCost(item);
+        if (state.crumbs >= cost) {
+          state.crumbs -= cost;
+          state._lastCrumbSpend = Date.now();
+          enchantItem(item, 1);
+          logAdventure(`Enchanted ${item.name} for ${cost} crumbs`, 'enchant');
+          renderer.showNotification(`Enchanted ${item.name}! (+2 power)`, 'success');
+        } else {
+          renderer.showNotification(`Need ${cost} crumbs to enchant (have ${state.crumbs})`, 'warn');
+        }
+      }
+    } else if (result?.action === 'inv_equip') {
+      const inv = state.inventory ?? [];
+      const item = inv[result.index];
+      if (item && item.slot !== 'consumable') {
+        // Equip to first team member who benefits or has empty slot
+        const team = state.team ?? [];
+        let bestMember = team.find(m => m.currentHp > 0 && !m.equipment?.[item.slot]);
+        if (!bestMember) bestMember = team.find(m => m.currentHp > 0);
+        if (bestMember) {
+          const prev = equipItem(bestMember, item);
+          inv.splice(result.index, 1);
+          if (prev) inv.push(prev);
+          logAdventure(`Equipped ${item.name} on ${bestMember.name}`, 'loot');
+          renderer.showNotification(`${bestMember.name} equipped ${item.name}!`, 'success');
+        } else {
+          renderer.showNotification('No team members to equip!', 'warn');
+        }
+      }
+    } else if (result?.action === 'inv_sell') {
+      const inv = state.inventory ?? [];
+      const item = inv[result.index];
+      if (item) {
+        const earned = economy.sellItem(item);
+        inv.splice(result.index, 1);
+        logAdventure(`Sold ${item.name} for ${earned} crumbs`, 'shop');
+        renderer.showNotification(`Sold ${item.name} for ${earned} crumbs`, 'info');
+      }
+    } else if (result?.action === 'inv_drop') {
+      const inv = state.inventory ?? [];
+      const item = inv[result.index];
+      if (item) {
+        inv.splice(result.index, 1);
+        renderer.showNotification(`Dropped ${item.name}`, 'info');
+      }
     } else if (result === 'explore_dungeon') {
       await enterDungeon();
     } else if (result === 'dungeon_interact') {
@@ -768,13 +901,15 @@ export async function runGame(options = {}) {
         if (room?.content === 'enemy' && (room.enemies?.length > 0 || room.enemy)) {
           const enemies = room.enemies ?? [room.enemy];
           applyTalismanCombatBuffs();
+          applyShopBuffs();
           activeCombat = createCombat({
             team: state.team,
             enemies,
             rng,
           });
-          rollBar = createRollBar();
-          rollBar.start();
+          combatAutoTimer = 0;
+          rollBar = null;
+          logAdventure(`Combat! Facing ${enemies.map(e => e.name).join(', ')}`, 'combat');
           await engine.transition(GameState.COMBAT);
         } else if (room?.content === 'loot') {
           state.pendingLoot = room.loot ?? [];
@@ -888,8 +1023,11 @@ export async function runGame(options = {}) {
       settings.save();
     } else if (result === 'flee') {
       removeTalismanCombatBuffs();
+      removeShopBuffs();
       activeCombat = null;
       rollBar = null;
+      state._lastCombatRoll = null;
+      logAdventure('Fled from combat!', 'combat');
       try { await engine.transition(GameState.DUNGEON); } catch { /* ignore */ }
     } else if (result === 'save_game') {
       saveGame(slot, engine.getState());
@@ -935,50 +1073,20 @@ export async function runGame(options = {}) {
     // Engine tick (scheduler, etc)
     engine.update(FRAME_MS);
 
-    // Roll bar tick during combat
-    if (rollBar && !rollBar.isStopped) {
-      const { expired } = rollBar.tick();
-      if (expired && activeCombat && !activeCombat.isFinished) {
-        // Auto-roll on timeout
-        const val = rollBar.value;
-        const attackResult = activeCombat.attack(val);
-        if (attackResult.outcome === 'victory') {
-          state.stats.monstersSlain = (state.stats.monstersSlain ?? 0) + 1;
-          const dp = state.dungeonProgress;
-          const level = dp?.level ?? 1;
-          const defeatedEnemies = activeCombat.combatants.filter(c => c.side === 'enemy');
-          const drops = [];
-          for (const enemy of defeatedEnemies) {
-            drops.push(...generateEnemyDrops({ enemy, level, rng }));
-          }
-          state.pendingLoot = drops;
-          for (const m of (state.team ?? []).filter(t => t.currentHp > 0)) {
-            awardXP(m, level);
-          }
-          if (dp) clearRoom(dp, dp.currentRoom);
-          removeTalismanCombatBuffs();
-          activeCombat = null;
-          rollBar = null;
-          await engine.transition(GameState.LOOT);
-        } else if (attackResult.outcome === 'defeat') {
-          state.stats.deaths = (state.stats.deaths ?? 0) + 1;
-          const dungeonLevel = state.dungeonProgress?.level ?? 1;
-          const penalty = storyManager.applyDeathPenalty(dungeonLevel);
-          const talismanDeathReward = awardDeathReward(state);
-          state.lastTalismanDeathReward = talismanDeathReward;
-          const salvaged = salvageLoot(state, rng);
-          state.lastSalvagedLoot = salvaged;
-          storyManager.addStoryEntry(`Your team has fallen! Lost ${penalty} crumbs.`, 'combat');
-          graveyard.recordWipe(state.team, state.lastDungeonSeed ?? 0);
-          economy.activateWipeDiscount();
-          removeTalismanCombatBuffs();
-          activeCombat = null;
-          rollBar = null;
-          await engine.transition(GameState.DEATH);
-        } else {
-          rollBar = createRollBar();
-          rollBar.start();
+    // Auto-combat tick — auto-attack every 600ms
+    if (activeCombat && !activeCombat.isFinished && state.currentState === GameState.COMBAT) {
+      combatAutoTimer += FRAME_MS;
+      if (combatAutoTimer >= 600) {
+        combatAutoTimer = 0;
+        const attackResult = activeCombat.autoAttack();
+        if (attackResult.roll) {
+          const currentTurn = activeCombat.currentTurn();
+          state._lastCombatRoll = { ...attackResult.roll, attacker: attackResult.attacker, target: attackResult.target, damage: attackResult.damage ?? attackResult.selfDamage ?? 0, modifier: Math.floor((currentTurn?.stats?.atk ?? 5) / 4) };
         }
+        if (attackResult.outcome === 'victory' || attackResult.outcome === 'defeat') {
+          await handleCombatEnd(attackResult);
+        }
+        renderCurrentScreen();
       }
     }
 

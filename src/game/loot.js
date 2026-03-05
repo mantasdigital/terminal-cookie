@@ -176,6 +176,40 @@ export function sellValue(item) {
 }
 
 /**
+ * Enchant an item — boost its power and stat bonuses.
+ * @param {object} item - Item to enchant
+ * @param {number} tier - Enchant tier (1-5)
+ * @returns {object} The mutated item
+ */
+export function enchantItem(item, tier = 1) {
+  const boost = tier * 2;
+  item.power = (item.power ?? 0) + boost;
+  item.enchantLevel = (item.enchantLevel ?? 0) + tier;
+  // Boost primary stat bonus
+  if (item.statBonus) {
+    for (const stat of Object.keys(item.statBonus)) {
+      item.statBonus[stat] += tier;
+      break; // only boost primary stat
+    }
+  }
+  item.name = item.name.replace(/^\+\d+ /, '') ; // remove old prefix
+  item.name = `+${item.enchantLevel} ${item.name}`;
+  item.value = Math.round((item.value ?? 1) * 1.3);
+  return item;
+}
+
+/**
+ * Get the crumb cost to enchant an item.
+ * @param {object} item
+ * @returns {number}
+ */
+export function enchantCost(item) {
+  const level = item.enchantLevel ?? 0;
+  const base = Math.max(10, Math.round((item.value ?? 5) * 0.5));
+  return Math.round(base * (1 + level * 0.5));
+}
+
+/**
  * Check if a team member meets the level requirement to equip an item.
  * @param {object} member
  * @param {object} item

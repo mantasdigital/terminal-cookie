@@ -69,6 +69,8 @@ function defaultGameState(seed) {
     totalToolCalls: 0,
     gameMode: 'default',
     talisman: { level: 1 },
+    adventureLog: [],
+    shopBuffs: {},
   };
 }
 
