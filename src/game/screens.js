@@ -12,11 +12,12 @@ import { loadLeaderboard, formatLeaderboardCompact, formatLeaderboardFull } from
 import { readFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { homedir } from 'node:os';
 import { formatCrumbs } from '../ui/format.js';
 
 const __screens_dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__screens_dirname, '..', '..');
-const SESSIONS_PATH = join(PROJECT_ROOT, 'data', 'sessions.json');
+const SESSIONS_PATH = join(homedir(), '.terminal-cookie', 'sessions.json');
 const COOKIE_BIN = join(PROJECT_ROOT, 'bin', 'cookie.js');
 const SESSION_TTL_MS = 300_000;
 

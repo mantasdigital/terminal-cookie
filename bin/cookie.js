@@ -405,7 +405,7 @@ if (flags.mcp) {
     log.debug('MCP server shutting down');
     try {
       // Clean up sessions so badge doesn't show stale connection
-      const sessionsPath = join(PROJECT_ROOT, 'data', 'sessions.json');
+      const sessionsPath = join(CONFIG_DIR, 'sessions.json');
       if (existsSync(sessionsPath)) {
         writeFileSync(sessionsPath, JSON.stringify({ sessions: {} }, null, 2), 'utf-8');
       }

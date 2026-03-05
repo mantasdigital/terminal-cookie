@@ -15,6 +15,7 @@ import { defineTools } from './tools.js';
 import { createPassiveRunner } from './passive-runner.js';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { homedir } from 'os';
 import { writeFileSync, readFileSync, mkdirSync, existsSync, renameSync } from 'fs';
 import { createSessionTracker } from './sessions.js';
 import { COOKIE_REACTIONS } from './reactions.js';
@@ -24,7 +25,7 @@ import { createScanner } from '../security/scanner.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__dirname, '..', '..');
 const SETTINGS_PATH = join(PROJECT_ROOT, 'data', 'settings.json');
-const SESSIONS_PATH = join(PROJECT_ROOT, 'data', 'sessions.json');
+const SESSIONS_PATH = join(homedir(), '.terminal-cookie', 'sessions.json');
 const HOOK_CRUMBS_PATH = join(PROJECT_ROOT, 'saves', 'hook-crumbs.json');
 
 // Single scanner instance shared with tools.js
