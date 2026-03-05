@@ -22,6 +22,7 @@ import { generateEnemy, generateRoomEnemies } from './enemies.js';
 import { generateLoot, generateEnemyDrops, equipItem, sellValue, enchantItem, enchantCost } from './loot.js';
 import { createEventManager } from './events.js';
 import { createStoryManager } from './story.js';
+import { unlockVillage, upgradeBuilding, getBuildingIds, getVillageBonuses, isVillageUnlocked } from './village.js';
 import { getScreen, getUIState, resetUIState } from './screens.js';
 import { classifyPrompt } from '../prompts/classifier.js';
 import { getWidget } from '../prompts/widgets.js';
@@ -134,6 +135,9 @@ export async function runGame(options = {}) {
         local.talisman = local.talisman ?? { level: 1 };
         local.talisman.level = Math.max(local.talisman.level, external.talisman.level ?? 1);
       }
+      if (external.village) {
+        local.village = external.village;
+      }
     },
     label: 'game',
   });
@@ -215,6 +219,42 @@ export async function runGame(options = {}) {
     }
   }
 
+  function applyVillageCombatBuffs() {
+    const vb = getVillageBonuses(state);
+    if (vb.atkBonus > 0 || vb.defBonus > 0) {
+      for (const m of (state.team ?? []).filter(m => m.currentHp > 0)) {
+        m.stats.atk += vb.atkBonus;
+        m.stats.def += vb.defBonus;
+      }
+    }
+  }
+
+  function removeVillageCombatBuffs() {
+    const vb = getVillageBonuses(state);
+    if (vb.atkBonus > 0 || vb.defBonus > 0) {
+      for (const m of (state.team ?? [])) {
+        m.stats.atk -= vb.atkBonus;
+        m.stats.def -= vb.defBonus;
+      }
+    }
+  }
+
+  /** Apply village training ground bonus to a tavern roster */
+  function applyVillageRecruitBonus(roster) {
+    const bonus = getVillageBonuses(state).recruitStatBonus;
+    if (bonus > 0) {
+      for (const m of roster) {
+        m.stats.atk += bonus;
+        m.stats.def += bonus;
+        m.stats.hp += bonus;
+        m.stats.spd += bonus;
+        m.maxHp += bonus * 2;
+        m.currentHp += bonus * 2;
+      }
+    }
+    return roster;
+  }
+
   // ── Dungeon auto-start timer ──────────────────────────────────
   // After first recruit, show a countdown; auto-enter dungeon when it expires.
   let dungeonTimer = null; // { remaining: ms, total: ms } or null
@@ -232,7 +272,7 @@ export async function runGame(options = {}) {
 
   // Generate initial tavern roster if none
   if (!state.tavernRoster || state.tavernRoster.length === 0) {
-    state.tavernRoster = generateTavernRoster(rng);
+    state.tavernRoster = applyVillageRecruitBonus(generateTavernRoster(rng));
   }
 
   // ── Work mode auto-loop ──────────────────────────────────────────
@@ -469,7 +509,7 @@ export async function runGame(options = {}) {
           state.team = [];
           state.dungeonProgress = null;
           // Regenerate tavern roster
-          state.tavernRoster = generateTavernRoster(rng);
+          state.tavernRoster = applyVillageRecruitBonus(generateTavernRoster(rng));
           workModeLog('Auto: recovering from death, new roster generated');
           try { await engine.transition(GameState.TAVERN); } catch { /* ignore */ }
         }
@@ -496,8 +536,14 @@ export async function runGame(options = {}) {
         drops.push(...generateEnemyDrops({ enemy, level, rng }));
       }
       state.pendingLoot = drops;
+      const vbXp = getVillageBonuses(state);
       for (const m of (state.team ?? []).filter(t => t.currentHp > 0)) {
         awardXP(m, level);
+        // Village training ground XP bonus
+        if (vbXp.xpMultiplier > 0) {
+          const bonusXp = Math.floor(10 * level * vbXp.xpMultiplier);
+          m.xp += bonusXp;
+        }
       }
 
       // Permanent death: remove fallen team members after victory
@@ -522,6 +568,7 @@ export async function runGame(options = {}) {
       if (dp) clearRoom(dp, dp.currentRoom);
       removeTalismanCombatBuffs();
       removeShopBuffs();
+      removeVillageCombatBuffs();
       logAdventure(`Victory! Slain enemies, found ${drops.length} loot${fallen.length > 0 ? ` (lost ${fallen.length} ally)` : ''}`, 'combat');
       activeCombat = null;
       rollBar = null;
@@ -540,6 +587,7 @@ export async function runGame(options = {}) {
       economy.activateWipeDiscount();
       removeTalismanCombatBuffs();
       removeShopBuffs();
+      removeVillageCombatBuffs();
       logAdventure(`Defeat! Team wiped, lost ${penalty} crumbs`, 'death');
       activeCombat = null;
       rollBar = null;
@@ -583,7 +631,8 @@ export async function runGame(options = {}) {
           room.content = 'loot';
           const bonuses = settings.getBonuses();
           const talismanLoot = getTalismanBonuses(state.talisman?.level ?? 1).lootQuality;
-          room.loot = [generateLoot({ level: dungeonLevel, rng, qualityBonus: bonuses.lootFindBonus + talismanLoot, usedSignatures })].filter(Boolean);
+          const villageLoot = getVillageBonuses(state).lootQuality;
+          room.loot = [generateLoot({ level: dungeonLevel, rng, qualityBonus: bonuses.lootFindBonus + talismanLoot + villageLoot, usedSignatures })].filter(Boolean);
         } else if (room.type === 'trap') {
           room.content = 'trap';
         } else if (room.type === 'shrine') {
@@ -681,6 +730,23 @@ export async function runGame(options = {}) {
       const boosted = Math.floor(earned * (bonuses.crumbMultiplier + talismanCrumb));
       state.crumbs += (boosted - earned); // add bonus portion
       tutorial.advance('click_cookie');
+    } else if (result === 'village_unlock') {
+      if (unlockVillage(state)) {
+        renderer.showNotification('Village founded! Bakery built for free.', 'success');
+        logAdventure('Founded a village! Bakery built.', 'village');
+      }
+    } else if (result?.action === 'village_build') {
+      const buildingIds = getBuildingIds();
+      const buildingId = buildingIds[result.buildingIndex];
+      if (buildingId) {
+        const res = upgradeBuilding(state, buildingId);
+        if (res.success) {
+          renderer.showNotification(`${buildingId} upgraded to Lv${res.newLevel}! Cost: ${res.cost} crumbs`, 'success');
+          logAdventure(`Village: upgraded ${buildingId} to level ${res.newLevel} for ${res.cost} crumbs`, 'village');
+        } else {
+          renderer.showNotification(res.error || 'Cannot build!', 'warn');
+        }
+      }
     } else if (result === 'talisman_upgrade') {
       const upgraded = upgradeTalisman(state);
       if (upgraded.success) {
@@ -845,7 +911,7 @@ export async function runGame(options = {}) {
             state.crumbs += shopItem.cost; // refund
           }
         } else if (shopItem.id === 'reroll_roster') {
-          state.tavernRoster = generateTavernRoster(rng);
+          state.tavernRoster = applyVillageRecruitBonus(generateTavernRoster(rng));
           logAdventure('Refreshed tavern recruit roster', 'shop');
           renderer.showNotification('New recruits available!', 'success');
         }
@@ -856,7 +922,9 @@ export async function runGame(options = {}) {
       const inv = state.inventory ?? [];
       const item = inv[result.index];
       if (item && item.slot !== 'consumable') {
-        const cost = enchantCost(item);
+        const rawCost = enchantCost(item);
+        const villageDisc = getVillageBonuses(state).enchantDiscount;
+        const cost = Math.max(1, Math.round(rawCost * (1 - villageDisc)));
         if (state.crumbs >= cost) {
           state.crumbs -= cost;
           state._lastCrumbSpend = Date.now();
@@ -932,9 +1000,14 @@ export async function runGame(options = {}) {
       const item = inv[result.index];
       if (item) {
         const earned = economy.sellItem(item);
+        // Village merchant guild sell bonus
+        const sellMul = getVillageBonuses(state).sellMultiplier;
+        const bonus = sellMul > 0 ? Math.max(1, Math.floor(earned * sellMul)) : 0;
+        if (bonus > 0) { state.crumbs += bonus; state.stats.crumbsEarned = (state.stats.crumbsEarned ?? 0) + bonus; }
         inv.splice(result.index, 1);
-        logAdventure(`Sold ${item.name} for ${earned} crumbs`, 'shop');
-        renderer.showNotification(`Sold ${item.name} for ${earned} crumbs`, 'info');
+        const totalEarned = earned + bonus;
+        logAdventure(`Sold ${item.name} for ${totalEarned} crumbs`, 'shop');
+        renderer.showNotification(`Sold ${item.name} for ${totalEarned} crumbs${bonus > 0 ? ` (+${bonus} guild)` : ''}`, 'info');
       }
     } else if (result?.action === 'inv_drop') {
       const inv = state.inventory ?? [];
@@ -966,6 +1039,7 @@ export async function runGame(options = {}) {
           const enemies = room.enemies ?? [room.enemy];
           applyTalismanCombatBuffs();
           applyShopBuffs();
+          applyVillageCombatBuffs();
           activeCombat = createCombat({
             team: state.team,
             enemies,
@@ -1055,6 +1129,17 @@ export async function runGame(options = {}) {
           if (nextId != null) {
             moveToRoom(dp, nextId);
             applyTalismanRegen(state);
+            // Village bonuses per room
+            const vb = getVillageBonuses(state);
+            if (vb.crumbsPerRoom > 0) {
+              state.crumbs += vb.crumbsPerRoom;
+              state.stats.crumbsEarned = (state.stats.crumbsEarned ?? 0) + vb.crumbsPerRoom;
+            }
+            if (vb.healPerRoom > 0) {
+              for (const m of (state.team ?? []).filter(t => t.currentHp > 0)) {
+                m.currentHp = Math.min(m.maxHp, m.currentHp + vb.healPerRoom);
+              }
+            }
             state.stats.roomsCleared = (state.stats.roomsCleared ?? 0) + 1;
           } else {
             // Dead end or dungeon complete — return to tavern
@@ -1088,6 +1173,7 @@ export async function runGame(options = {}) {
     } else if (result === 'flee') {
       removeTalismanCombatBuffs();
       removeShopBuffs();
+      removeVillageCombatBuffs();
       activeCombat = null;
       rollBar = null;
       state._lastCombatRoll = null;
@@ -1107,7 +1193,7 @@ export async function runGame(options = {}) {
       resetUIState();
       // Ensure tavern roster exists when entering tavern (covers new game / load game)
       if (newState === GameState.TAVERN && (!state.tavernRoster || state.tavernRoster.length === 0)) {
-        state.tavernRoster = generateTavernRoster(rng);
+        state.tavernRoster = applyVillageRecruitBonus(generateTavernRoster(rng));
       }
       // Restart dungeon timer when returning to tavern with a team
       if (newState === GameState.TAVERN && (state.team ?? []).length > 0 && !dungeonTimer) {

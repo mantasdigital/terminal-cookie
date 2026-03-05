@@ -20,6 +20,7 @@ const HELP_DATA = {
       ['R',         'Switch to Recruit tab'],
       ['I',         'Switch to Inventory tab'],
       ['H',         'Switch to Shop tab'],
+      ['V',         'Switch to Village tab (9+ team)'],
       ['T',         'Switch to Talisman tab'],
       ['G',         'Switch to Adventure Log tab'],
       ['Left/Right','Switch between tabs'],

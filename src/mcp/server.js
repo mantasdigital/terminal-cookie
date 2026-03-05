@@ -91,6 +91,9 @@ const liveState = createLiveState({
       local.talisman = local.talisman ?? { level: 1 };
       local.talisman.level = Math.max(local.talisman.level, external.talisman.level ?? 1);
     }
+    if (external.village) {
+      local.village = external.village;
+    }
   },
   label: 'mcp',
 });

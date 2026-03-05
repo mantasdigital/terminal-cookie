@@ -16,6 +16,11 @@ import { homedir } from 'node:os';
 import { formatCrumbs } from '../ui/format.js';
 import { getTalismanBonuses, getUpgradeCost, canUpgrade, getMaxLevel, formatTalismanInfo } from './talisman.js';
 import { enchantCost } from './loot.js';
+import {
+  isVillageUnlocked, canUnlockVillage, canBuildOrUpgrade,
+  getBuildingLevel, getBuildingCost, getBuildingDefs, getBuildingIds,
+  getVillageBonuses, getMaxBuildingLevel, getUnlockThreshold,
+} from './village.js';
 
 const __screens_dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__screens_dirname, '..', '..');
@@ -176,6 +181,7 @@ const ui = {
   partySlot: 0,          // equipment slot selection within party member (0=weapon,1=armor,2=accessory)
   equipPicker: false,    // show member picker when equipping from inventory
   equipPickerIdx: 0,     // selected member in equip picker
+  villageIndex: 0,       // village building selection
   helpVisible: false,
   leaderboardVisible: false,
   securityLogVisible: false,
@@ -434,9 +440,14 @@ const tavernScreen = {
     renderer.bufferWrite(2, 12, renderer.bold(`Crumbs: ${formatCrumbs(state.crumbs ?? 0)}`));
     renderer.bufferWrite(3, 12, renderer.dim('Earned via AI interactions'));
 
-    // Tabs
-    const tabs = ['[Party]', '[Recruit]', '[Inventory]', '[Shop]', '[Talisman]', '[Log]'];
-    const tabMap = ['party', 'recruit', 'inventory', 'shop', 'talisman', 'log'];
+    // Tabs — Village only shows if unlocked
+    const hasVillage = isVillageUnlocked(state) || canUnlockVillage(state);
+    const tabs = hasVillage
+      ? ['[Party]', '[Recruit]', '[Inventory]', '[Shop]', '[Village]', '[Talisman]', '[Log]']
+      : ['[Party]', '[Recruit]', '[Inventory]', '[Shop]', '[Talisman]', '[Log]'];
+    const tabMap = hasVillage
+      ? ['party', 'recruit', 'inventory', 'shop', 'village', 'talisman', 'log']
+      : ['party', 'recruit', 'inventory', 'shop', 'talisman', 'log'];
     let tabStr = '';
     for (let i = 0; i < tabs.length; i++) {
       const active = tabMap[i] === ui.tavernTab;
@@ -577,11 +588,14 @@ const tavernScreen = {
           if (sel.effect) {
             renderer.bufferWrite(contentTop + 4, detCol, renderer.dim(`Effect: ${sel.effect}`));
           }
-          const eCost = enchantCost(sel);
+          const rawECost = enchantCost(sel);
+          const vDisc = getVillageBonuses(state).enchantDiscount;
+          const eCost = Math.max(1, Math.round(rawECost * (1 - vDisc)));
           const canEnchant = (state.crumbs ?? 0) >= eCost && sel.slot !== 'consumable';
+          const discLabel = vDisc > 0 ? ` (-${Math.round(vDisc * 100)}%)` : '';
           renderer.bufferWrite(contentTop + 6, detCol, canEnchant
-            ? renderer.color(`[X] Enchant (${eCost} crumbs)`, 'cyan')
-            : renderer.dim(`Enchant: ${eCost} crumbs`));
+            ? renderer.color(`[X] Enchant (${eCost} crumbs${discLabel})`, 'cyan')
+            : renderer.dim(`Enchant: ${eCost} crumbs${discLabel}`));
           renderer.bufferWrite(contentTop + 7, detCol, '[E] Equip to...  [S] Sell  [D] Drop');
         }
 
@@ -673,6 +687,113 @@ const tavernScreen = {
           renderer.bufferWrite(promptRow, 4, renderer.color('Talisman is fully upgraded!', 'yellow'));
         }
       }
+    } else if (ui.tavernTab === 'village') {
+      const alive = (state.team ?? []).filter(m => m.currentHp > 0).length;
+      const unlocked = isVillageUnlocked(state);
+
+      if (!unlocked && canUnlockVillage(state)) {
+        // Show unlock prompt
+        renderer.bufferWrite(contentTop, 4, renderer.bold('Your party is strong enough to found a village!'));
+        renderer.bufferWrite(contentTop + 2, 4, `Team alive: ${alive}/${getUnlockThreshold()} required`);
+        renderer.bufferWrite(contentTop + 4, 4, 'A village provides buildings with powerful bonuses:');
+        renderer.bufferWrite(contentTop + 5, 6, '- Bakery: passive crumbs per dungeon room');
+        renderer.bufferWrite(contentTop + 6, 6, '- Forge: cheaper enchanting, gear crafting');
+        renderer.bufferWrite(contentTop + 7, 6, '- Watchtower: scout ahead, defense bonus');
+        renderer.bufferWrite(contentTop + 8, 6, '- Herbalist: healing, poison resistance');
+        renderer.bufferWrite(contentTop + 9, 6, '- Training Ground: XP boost, better recruits');
+        renderer.bufferWrite(contentTop + 10, 6, '- Merchant Guild: better prices');
+        renderer.bufferWrite(contentTop + 11, 6, '- Archive: enemy intel, loot quality');
+        renderer.bufferWrite(contentTop + 13, 4, renderer.color('Press [Enter] to found your village! (Bakery is free)', 'green'));
+      } else if (!unlocked) {
+        renderer.bufferWrite(contentTop, 4, renderer.dim(`Village locked - need ${getUnlockThreshold()} alive team members (have ${alive})`));
+      } else {
+        // Village is unlocked — show buildings
+        const canBuild = canBuildOrUpgrade(state);
+        const buildingIds = getBuildingIds();
+        const defs = getBuildingDefs();
+        const maxLevel = getMaxBuildingLevel();
+        const bonuses = getVillageBonuses(state);
+
+        renderer.bufferWrite(contentTop - 1, 4, renderer.bold('-- Your Village --') +
+          (canBuild ? renderer.color(' (can build)', 'green') : renderer.dim(` (need ${getUnlockThreshold()}+ alive to build, have ${alive})`)));
+
+        // Building list on left
+        const maxShow = Math.min(buildingIds.length, 10);
+        if (ui.villageIndex >= buildingIds.length) ui.villageIndex = buildingIds.length - 1;
+        if (ui.villageIndex < 0) ui.villageIndex = 0;
+
+        for (let i = 0; i < maxShow; i++) {
+          const id = buildingIds[i];
+          const def = defs[id];
+          const level = getBuildingLevel(state, id);
+          const selected = i === ui.villageIndex;
+          const prefix = selected ? '> ' : '  ';
+          const maxed = level >= maxLevel;
+
+          let line;
+          if (level === 0) {
+            const cost = def.levels[0].cost;
+            const costStr = cost === 0 ? renderer.color('FREE', 'green') : `${cost}c`;
+            line = `${prefix}${def.icon} ${def.name}: ${renderer.dim('Not built')} [${costStr}]`;
+          } else {
+            const lvlStr = maxed ? renderer.color(`Lv${level} MAX`, 'yellow') : `Lv${level}/${maxLevel}`;
+            line = `${prefix}${def.icon} ${def.name}: ${lvlStr}`;
+          }
+          renderer.bufferWrite(contentTop + i * 2, 4, selected ? renderer.bold(line) : line);
+          // Show current bonus
+          if (level > 0) {
+            renderer.bufferWrite(contentTop + i * 2 + 1, 8, renderer.dim(def.levels[level - 1].label));
+          } else {
+            renderer.bufferWrite(contentTop + i * 2 + 1, 8, renderer.dim(def.desc));
+          }
+        }
+
+        // Selected building detail on right
+        const selId = buildingIds[ui.villageIndex];
+        const selDef = defs[selId];
+        const selLevel = getBuildingLevel(state, selId);
+        if (selDef) {
+          const detCol = Math.max(cols - 34, Math.floor(cols * 0.55));
+          // ASCII art
+          const art = selDef.ascii ?? [];
+          for (let a = 0; a < art.length; a++) {
+            renderer.bufferWrite(contentTop + a, detCol, art[a]);
+          }
+          const infoStart = contentTop + art.length + 1;
+          renderer.bufferWrite(infoStart, detCol, renderer.bold(selDef.name));
+          renderer.bufferWrite(infoStart + 1, detCol, renderer.dim(selDef.desc));
+
+          if (selLevel > 0 && selLevel < maxLevel) {
+            const nextCost = selDef.levels[selLevel].cost;
+            const canAfford = (state.crumbs ?? 0) >= nextCost && canBuild;
+            renderer.bufferWrite(infoStart + 3, detCol, 'Next upgrade:');
+            renderer.bufferWrite(infoStart + 4, detCol, `  ${selDef.levels[selLevel].label}`);
+            renderer.bufferWrite(infoStart + 5, detCol, canAfford
+              ? renderer.color(`  [Enter] Upgrade (${nextCost}c)`, 'green')
+              : renderer.dim(`  ${nextCost} crumbs needed`));
+          } else if (selLevel === 0) {
+            const cost = selDef.levels[0].cost;
+            const canAfford = (state.crumbs ?? 0) >= cost && canBuild;
+            renderer.bufferWrite(infoStart + 3, detCol, canAfford
+              ? renderer.color(`[Enter] Build (${cost === 0 ? 'FREE' : cost + 'c'})`, 'green')
+              : renderer.dim(`${cost} crumbs to build`));
+          } else {
+            renderer.bufferWrite(infoStart + 3, detCol, renderer.color('Fully upgraded!', 'yellow'));
+          }
+
+          // Show aggregate bonuses at bottom
+          const bonusRow = infoStart + 7;
+          renderer.bufferWrite(bonusRow, detCol, renderer.dim('Village bonuses:'));
+          let bRow = bonusRow + 1;
+          if (bonuses.crumbsPerRoom > 0) renderer.bufferWrite(bRow++, detCol, `  Crumbs/room: +${bonuses.crumbsPerRoom}`);
+          if (bonuses.defBonus > 0) renderer.bufferWrite(bRow++, detCol, `  DEF: +${bonuses.defBonus}`);
+          if (bonuses.atkBonus > 0) renderer.bufferWrite(bRow++, detCol, `  ATK: +${bonuses.atkBonus}`);
+          if (bonuses.healPerRoom > 0) renderer.bufferWrite(bRow++, detCol, `  Heal/room: +${bonuses.healPerRoom}`);
+          if (bonuses.xpMultiplier > 0) renderer.bufferWrite(bRow++, detCol, `  XP: +${Math.round(bonuses.xpMultiplier * 100)}%`);
+          if (bonuses.enchantDiscount > 0) renderer.bufferWrite(bRow++, detCol, `  Enchant: -${Math.round(bonuses.enchantDiscount * 100)}%`);
+          if (bonuses.lootQuality > 0) renderer.bufferWrite(bRow++, detCol, `  Loot: +${bonuses.lootQuality}`);
+        }
+      }
     } else if (ui.tavernTab === 'log') {
       const log = state.adventureLog ?? [];
       if (log.length === 0) {
@@ -685,7 +806,7 @@ const tavernScreen = {
         renderer.bufferWrite(contentTop - 1, 4, renderer.bold('-- Adventure Log --') + renderer.dim(`  (${log.length} entries)`));
         for (let i = 0; i < visible.length; i++) {
           const entry = visible[i];
-          const typeColors = { combat: 'red', loot: 'yellow', recruit: 'green', death: 'red', shop: 'cyan', dungeon: 'brightBlack', enchant: 'magenta' };
+          const typeColors = { combat: 'red', loot: 'yellow', recruit: 'green', death: 'red', shop: 'cyan', dungeon: 'brightBlack', enchant: 'magenta', village: 'green' };
           const color = typeColors[entry.type] || 'brightBlack';
           const tag = `[${(entry.type ?? 'event').toUpperCase().substring(0, 4)}]`;
           renderer.bufferWrite(contentTop + i, 4, renderer.color(tag, color) + ' ' + truncate(entry.text, cols - 14));
@@ -707,7 +828,7 @@ const tavernScreen = {
       renderer.bufferWrite(timerRow + 1, 4, renderer.dim('Press [E] to enter now'));
     }
 
-    renderer.showStatus('R=recruit I=inv H=shop T=talisman G=log E=dungeon W=save ?=help');
+    renderer.showStatus('R=recruit I=inv H=shop V=village T=talisman G=log E=dungeon ?=help');
     renderAIBadge(state, renderer);
     renderWorkModeBadge(state, renderer);
     renderSecurityBanner(state, renderer);
@@ -762,6 +883,10 @@ const tavernScreen = {
       case 't':
         ui.tavernTab = 'talisman';
         break;
+      case 'v':
+        ui.tavernTab = 'village';
+        ui.villageIndex = 0;
+        break;
       case 'g':
         ui.tavernTab = 'log';
         ui.logScroll = 0;
@@ -779,12 +904,18 @@ const tavernScreen = {
         }
         break;
       case 'left':
-        { const tabs = ['party', 'recruit', 'inventory', 'shop', 'talisman', 'log'];
+        { const hasV = isVillageUnlocked(state) || canUnlockVillage(state);
+          const tabs = hasV
+            ? ['party', 'recruit', 'inventory', 'shop', 'village', 'talisman', 'log']
+            : ['party', 'recruit', 'inventory', 'shop', 'talisman', 'log'];
           const idx = tabs.indexOf(ui.tavernTab);
           ui.tavernTab = tabs[(idx - 1 + tabs.length) % tabs.length]; }
         break;
       case 'right':
-        { const tabs = ['party', 'recruit', 'inventory', 'shop', 'talisman', 'log'];
+        { const hasV = isVillageUnlocked(state) || canUnlockVillage(state);
+          const tabs = hasV
+            ? ['party', 'recruit', 'inventory', 'shop', 'village', 'talisman', 'log']
+            : ['party', 'recruit', 'inventory', 'shop', 'talisman', 'log'];
           const idx = tabs.indexOf(ui.tavernTab);
           ui.tavernTab = tabs[(idx + 1) % tabs.length]; }
         break;
@@ -793,6 +924,7 @@ const tavernScreen = {
         else if (ui.tavernTab === 'recruit') ui.menuIndex = Math.max(0, ui.menuIndex - 1);
         else if (ui.tavernTab === 'inventory') ui.invIndex = Math.max(0, ui.invIndex - 1);
         else if (ui.tavernTab === 'shop') ui.shopIndex = Math.max(0, ui.shopIndex - 1);
+        else if (ui.tavernTab === 'village') ui.villageIndex = Math.max(0, ui.villageIndex - 1);
         else if (ui.tavernTab === 'log') ui.logScroll = Math.min((state.adventureLog ?? []).length, ui.logScroll + 1);
         else ui.menuIndex = Math.max(0, ui.menuIndex - 1);
         break;
@@ -801,12 +933,22 @@ const tavernScreen = {
         else if (ui.tavernTab === 'recruit') ui.menuIndex++;
         else if (ui.tavernTab === 'inventory') ui.invIndex = Math.min((state.inventory ?? []).length - 1, ui.invIndex + 1);
         else if (ui.tavernTab === 'shop') ui.shopIndex = Math.min(SHOP_ITEMS.length - 1, ui.shopIndex + 1);
+        else if (ui.tavernTab === 'village') ui.villageIndex = Math.min(getBuildingIds().length - 1, ui.villageIndex + 1);
         else if (ui.tavernTab === 'log') ui.logScroll = Math.max(0, ui.logScroll - 1);
         else ui.menuIndex++;
         break;
       case 'enter':
         if (ui.tavernTab === 'recruit') return 'recruit_select';
         if (ui.tavernTab === 'shop') return { action: 'shop_buy', index: ui.shopIndex };
+        if (ui.tavernTab === 'village') {
+          if (!isVillageUnlocked(state) && canUnlockVillage(state)) {
+            return 'village_unlock';
+          }
+          if (isVillageUnlocked(state)) {
+            return { action: 'village_build', buildingIndex: ui.villageIndex };
+          }
+          return;
+        }
         if (ui.tavernTab === 'inventory') {
           // Open equip picker if team exists
           if ((state.team ?? []).length > 0 && (state.inventory ?? []).length > 0) {
@@ -1552,6 +1694,7 @@ export function resetUIState() {
   ui.partySlot = 0;
   ui.equipPicker = false;
   ui.equipPickerIdx = 0;
+  ui.villageIndex = 0;
   ui.helpVisible = false;
   ui.leaderboardVisible = false;
   ui.securityLogVisible = false;

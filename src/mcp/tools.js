@@ -12,6 +12,11 @@ import { loadLocalScores, generateSubmissionFile } from '../leaderboard/submit.j
 import { formatCrumbs } from '../ui/format.js';
 import { createStoryManager } from '../game/story.js';
 import { getTalismanBonuses, getUpgradeCost, canUpgrade, upgradeTalisman, getMaxLevel, formatTalismanInfo } from '../game/talisman.js';
+import {
+  isVillageUnlocked, canUnlockVillage, unlockVillage, canBuildOrUpgrade,
+  upgradeBuilding, getBuildingIds, getBuildingDefs, getBuildingLevel,
+  getVillageBonuses, formatVillageInfo,
+} from '../game/village.js';
 
 const redactor = createRedactor();
 
@@ -634,6 +639,63 @@ export function defineTools(options = {}) {
           `=== TALISMAN === ${formatCrumbs(state.crumbs)} crumbs`,
           '',
           ...formatTalismanInfo(state.talisman, state.crumbs),
+        ];
+        return { content: [{ type: 'text', text: lines.join('\n') }] };
+      },
+    },
+
+    {
+      name: 'cookie_village',
+      description: 'View or manage your village. Unlock at 9+ alive team members. Build/upgrade buildings for passive bonuses (crumbs/room, combat stats, enchant discount, XP boost, loot quality, better sell prices). Buildings: bakery, forge, watchtower, herbalist, training, merchant, archive.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          action: {
+            type: 'string',
+            description: 'Action: "view" (default), "unlock", or "build"',
+            enum: ['view', 'unlock', 'build'],
+          },
+          building: {
+            type: 'string',
+            description: 'Building ID to build/upgrade: bakery, forge, watchtower, herbalist, training, merchant, archive',
+          },
+        },
+        additionalProperties: false,
+      },
+      handler(params, ctx) {
+        const { engine } = ctx;
+        const state = engine.getStateRef();
+        const action = params.action || 'view';
+
+        if (action === 'unlock') {
+          if (isVillageUnlocked(state)) {
+            return { content: [{ type: 'text', text: 'Village is already unlocked!' }] };
+          }
+          if (!canUnlockVillage(state)) {
+            const alive = (state.team ?? []).filter(m => m.currentHp > 0).length;
+            return { content: [{ type: 'text', text: `Need 9+ alive team members (have ${alive})` }], isError: true };
+          }
+          unlockVillage(state);
+          return { content: [{ type: 'text', text: 'Village founded! Bakery built for free.\n\n' + formatVillageInfo(state).join('\n') }] };
+        }
+
+        if (action === 'build') {
+          const buildingId = params.building;
+          if (!buildingId) {
+            return { content: [{ type: 'text', text: 'Specify building: bakery, forge, watchtower, herbalist, training, merchant, archive' }], isError: true };
+          }
+          const result = upgradeBuilding(state, buildingId);
+          if (result.success) {
+            return { content: [{ type: 'text', text: `${buildingId} upgraded to Lv${result.newLevel}! Cost: ${result.cost} crumbs\n\n` + formatVillageInfo(state).join('\n') }] };
+          }
+          return { content: [{ type: 'text', text: result.error || 'Cannot build' }], isError: true };
+        }
+
+        // View
+        const lines = [
+          `=== VILLAGE === ${formatCrumbs(state.crumbs)} crumbs`,
+          '',
+          ...formatVillageInfo(state),
         ];
         return { content: [{ type: 'text', text: lines.join('\n') }] };
       },

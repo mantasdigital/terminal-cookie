@@ -71,6 +71,7 @@ function defaultGameState(seed) {
     talisman: { level: 1 },
     adventureLog: [],
     shopBuffs: {},
+    village: null,
   };
 }
 
