@@ -86,21 +86,22 @@ const liveState = createLiveState({
     // Game is authoritative for crumbs. MCP tracks its own earned/spent counters.
     // MCP merge = game's crumbs + MCP's unapplied net delta.
     if (external.crumbs != null) {
-      // Max-merge MCP counters across MCP instances
-      local._mcpEarned = Math.max(local._mcpEarned ?? 0, external._mcpEarned ?? 0);
-      local._mcpSpent = Math.max(local._mcpSpent ?? 0, external._mcpSpent ?? 0);
+      if (external._lastMcpEarnedApplied != null || local._mcpEarned != null) {
+        // CRDT path: game or MCP has counters
+        local._mcpEarned = Math.max(local._mcpEarned ?? 0, external._mcpEarned ?? 0);
+        local._mcpSpent = Math.max(local._mcpSpent ?? 0, external._mcpSpent ?? 0);
 
-      // Compute how much MCP earned/spent that the game hasn't applied yet
-      const gameAppliedEarn = external._lastMcpEarnedApplied ?? 0;
-      const gameAppliedSpend = external._lastMcpSpentApplied ?? 0;
-      const unappliedNet = ((local._mcpEarned ?? 0) - gameAppliedEarn) - ((local._mcpSpent ?? 0) - gameAppliedSpend);
+        const gameAppliedEarn = external._lastMcpEarnedApplied ?? 0;
+        const gameAppliedSpend = external._lastMcpSpentApplied ?? 0;
+        const unappliedNet = ((local._mcpEarned ?? 0) - gameAppliedEarn) - ((local._mcpSpent ?? 0) - gameAppliedSpend);
 
-      // Game's crumbs + our unapplied net = correct MCP-side crumbs
-      local.crumbs = Math.max(0, (external.crumbs ?? 0) + unappliedNet);
-
-      // Sync the applied trackers
-      local._lastMcpEarnedApplied = gameAppliedEarn;
-      local._lastMcpSpentApplied = gameAppliedSpend;
+        local.crumbs = Math.max(0, (external.crumbs ?? 0) + unappliedNet);
+        local._lastMcpEarnedApplied = gameAppliedEarn;
+        local._lastMcpSpentApplied = gameAppliedSpend;
+      } else {
+        // Fallback: neither side has CRDT counters yet — take higher crumbs
+        local.crumbs = Math.max(local.crumbs ?? 0, external.crumbs);
+      }
     }
     if (external.totalToolCalls != null) local.totalToolCalls = Math.max(local.totalToolCalls ?? 0, external.totalToolCalls);
     if (external.team) local.team = external.team;

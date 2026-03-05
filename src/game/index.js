@@ -106,17 +106,25 @@ export async function runGame(options = {}) {
 
       // PN-Counter CRDT merge for crumbs:
       // Game is authoritative for its own crumbs. MCP sends earned/spent deltas.
-      // Game applies: crumbs += mcpEarnDelta - mcpSpendDelta
-      const mcpEarned = external._mcpEarned ?? 0;
-      const mcpSpent = external._mcpSpent ?? 0;
-      const lastAppliedEarn = local._lastMcpEarnedApplied ?? 0;
-      const lastAppliedSpend = local._lastMcpSpentApplied ?? 0;
-      const earnDelta = mcpEarned - lastAppliedEarn;
-      const spendDelta = mcpSpent - lastAppliedSpend;
-      if (earnDelta > 0 || spendDelta > 0) {
-        local.crumbs = Math.max(0, (local.crumbs ?? 0) + earnDelta - spendDelta);
-        local._lastMcpEarnedApplied = mcpEarned;
-        local._lastMcpSpentApplied = mcpSpent;
+      if (external._mcpEarned != null) {
+        // CRDT path: MCP has counters — apply delta
+        const mcpEarned = external._mcpEarned;
+        const mcpSpent = external._mcpSpent ?? 0;
+        const lastAppliedEarn = local._lastMcpEarnedApplied ?? 0;
+        const lastAppliedSpend = local._lastMcpSpentApplied ?? 0;
+        const earnDelta = mcpEarned - lastAppliedEarn;
+        const spendDelta = mcpSpent - lastAppliedSpend;
+        if (earnDelta > 0 || spendDelta > 0) {
+          local.crumbs = Math.max(0, (local.crumbs ?? 0) + earnDelta - spendDelta);
+          local._lastMcpEarnedApplied = mcpEarned;
+          local._lastMcpSpentApplied = mcpSpent;
+        }
+      } else if (external.crumbs != null) {
+        // Fallback: old MCP without CRDT counters — take higher crumbs for earnings
+        const localRecentSpend = local._lastCrumbSpend && (Date.now() - local._lastCrumbSpend) < 10000;
+        if (!localRecentSpend) {
+          local.crumbs = Math.max(local.crumbs ?? 0, external.crumbs);
+        }
       }
       // For team, merge by ID — never lose locally recruited members
       if (external.team && Array.isArray(external.team)) {
