@@ -50,31 +50,9 @@ export function defineTools() {
         const pick = COOKIE_REACTIONS[
           Math.abs(Date.now() + cookie.sessionClicks) % COOKIE_REACTIONS.length
         ];
-        const art = miniCookie();
-        const activeTerminals = sessions ? sessions.activeSessions() : 1;
-
-        const lines = [
-          art,
-          '',
-          `  POWER CLICK! ${pick}`,
-          '',
-          `  +${total} crumbs! (3x power click)`,
-        ];
-
-        const parts = [`${baseEarned * 3} base`];
-        if (settingsBonus > 0) parts.push(`+${settingsBonus} settings`);
-        if (sessionBonus > 0) parts.push(`+${sessionBonus} multi-terminal`);
-        if (parts.length > 1) lines.push(`  (${parts.join(', ')})`);
-
-        lines.push(`  Total: ${cookie.crumbs} crumbs`);
-        lines.push(`  Session clicks: ${cookie.sessionClicks}`);
-
-        if (activeTerminals > 1) {
-          lines.push(`  Terminals mining: ${activeTerminals} (x${sessionMultiplier.toFixed(1)} speed)`);
-        }
 
         return {
-          content: [{ type: 'text', text: lines.join('\n') }],
+          content: [{ type: 'text', text: `+${total} crumbs | Total: ${cookie.crumbs} | ${pick}` }],
         };
       },
     },
@@ -88,20 +66,8 @@ export function defineTools() {
         additionalProperties: false,
       },
       handler(params, ctx) {
-        const frames = explodeCookie();
-        // In MCP, show final frame + trash art
-        const lines = [
-          trashCookie(),
-          '',
-          '  The cookie has been DESTROYED.',
-          '  No crumbs were earned.',
-          '  The cookie gods frown upon you.',
-          '',
-          frames[frames.length - 1],
-        ];
-
         return {
-          content: [{ type: 'text', text: lines.join('\n') }],
+          content: [{ type: 'text', text: 'Cookie destroyed. 0 crumbs.' }],
         };
       },
     },
@@ -115,42 +81,12 @@ export function defineTools() {
         additionalProperties: false,
       },
       handler(params, ctx) {
-        const { engine, settings, scores } = ctx;
+        const { engine } = ctx;
         const state = engine.getState();
-        const bonuses = settings.getBonuses();
-
-        const teamLines = (state.team || []).map((m, i) => {
-          const hp = m.alive ? `${m.currentHp}/${m.maxHp} HP` : 'DEAD';
-          return `  ${i + 1}. ${m.name} [${m.race} ${m.class}] Lv.${m.level} ${hp}`;
-        });
-
-        const lines = [
-          '=== COOKIE STATUS ===',
-          '',
-          `  State:   ${state.currentState}`,
-          `  Crumbs:  ${state.crumbs}`,
-          `  Seed:    ${state.seed || 'N/A'}`,
-          '',
-          `  --- Team (${(state.team || []).length}) ---`,
-          teamLines.length > 0 ? teamLines.join('\n') : '  (empty)',
-          '',
-          `  --- Inventory ---`,
-          `  Items: ${(state.inventory || []).length}`,
-          '',
-          `  --- Bonuses ---`,
-          `  Crumb multiplier: x${bonuses.crumbMultiplier.toFixed(2)}`,
-          `  Loot find bonus:  +${(bonuses.lootFindBonus * 100).toFixed(0)}%`,
-          `  XP multiplier:    x${bonuses.xpMultiplier.toFixed(2)}`,
-          bonuses.titles.length > 0 ? `  Titles: ${bonuses.titles.join(', ')}` : '',
-          '',
-          `  --- Dungeon ---`,
-          state.dungeonProgress ? `  Level: ${state.dungeonProgress.level}, Room: ${state.dungeonProgress.currentRoom}` : '  Not in dungeon',
-          '',
-          '=====================',
-        ];
-
+        const team = (state.team || []).map(m => `${m.name} Lv${m.level} ${m.currentHp}/${m.maxHp}`).join(', ') || 'none';
+        const dg = state.dungeonProgress ? `L${state.dungeonProgress.level} R${state.dungeonProgress.currentRoom}` : 'none';
         return {
-          content: [{ type: 'text', text: lines.filter(l => l !== '').join('\n') }],
+          content: [{ type: 'text', text: `${state.crumbs}crumbs | Team: ${team} | Inv:${(state.inventory||[]).length} | Dng:${dg}` }],
         };
       },
     },
@@ -201,27 +137,8 @@ export function defineTools() {
         state.dungeonProgress = dungeon;
 
         const totalRooms = dungeon.rooms.length;
-        const lines = [
-          `  ===== ENTERING DUNGEON =====`,
-          `  Level: ${level}`,
-          `  Biome: ${dungeon.biomeName}`,
-          `  Rooms: ${totalRooms}`,
-          dungeon.curses.length > 0 ? `  Curses: ${dungeon.curses.join(', ')}` : '',
-          '',
-          `  Your team of ${aliveMembers.length} ventures into the depths...`,
-          '',
-          `  ${aliveMembers.map(m => m.name).join(', ')}`,
-          '',
-          `  Room 1/${totalRooms}: The entrance looms before you.`,
-          `  ${dungeon.biomeDescription || 'Dark corridors stretch in every direction.'}`,
-          '',
-          '  Dungeon will auto-advance in the background.',
-          '  Use cookie_status to check progress, cookie_pending for actions.',
-          '  ============================',
-        ];
-
         return {
-          content: [{ type: 'text', text: lines.filter(l => l !== '').join('\n') }],
+          content: [{ type: 'text', text: `Dungeon L${level} ${dungeon.biomeName} ${totalRooms}rooms | Team:${aliveMembers.length} | Auto-advancing` }],
         };
       },
     },
@@ -252,31 +169,9 @@ export function defineTools() {
         const crit = rawRoll === 20;
         const fumble = rawRoll === 1;
 
-        const bar = rollBar(modified, 20);
-
-        let outcome = 'Normal';
-        if (crit) outcome = 'CRITICAL! Natural 20!';
-        else if (fumble) outcome = 'FUMBLE! Natural 1...';
-        else if (modified >= 15) outcome = 'Great roll!';
-        else if (modified >= 10) outcome = 'Decent roll.';
-        else if (modified >= 5) outcome = 'Below average.';
-        else outcome = 'Poor roll.';
-
-        const lines = [
-          '  === COOKIE ROLL ===',
-          '',
-          `  ${bar}`,
-          '',
-          `  Raw:      ${rawRoll}`,
-          `  Modifier: +${modifier} (LCK ${stat})`,
-          `  Final:    ${modified}`,
-          `  Outcome:  ${outcome}`,
-          '',
-          '  ====================',
-        ];
-
+        const cLabel = crit ? 'CRIT!' : fumble ? 'FUMBLE!' : '';
         return {
-          content: [{ type: 'text', text: lines.join('\n') }],
+          content: [{ type: 'text', text: `Roll:${rawRoll}+${modifier}=${modified} ${cLabel}` }],
         };
       },
     },
@@ -295,30 +190,10 @@ export function defineTools() {
         const inventory = state.inventory || [];
 
         if (inventory.length === 0) {
-          return {
-            content: [{ type: 'text', text: '  === INVENTORY ===\n\n  (empty)\n\n  ==================' }],
-          };
+          return { content: [{ type: 'text', text: 'Inventory: empty' }] };
         }
-
-        const itemLines = inventory.map((item, i) => {
-          const stats = item.stats ? ` (${Object.entries(item.stats).map(([k, v]) => `${k}:${v > 0 ? '+' : ''}${v}`).join(' ')})` : '';
-          const rarity = item.rarity ? `[${item.rarity.toUpperCase()}]` : '';
-          const equipped = item.equipped ? ' *EQUIPPED*' : '';
-          return `  ${i + 1}. ${rarity} ${item.name || 'Unknown Item'}${stats}${equipped}`;
-        });
-
-        const lines = [
-          '  === INVENTORY ===',
-          `  Items: ${inventory.length}`,
-          '',
-          ...itemLines,
-          '',
-          '  ==================',
-        ];
-
-        return {
-          content: [{ type: 'text', text: lines.join('\n') }],
-        };
+        const items = inventory.map((item, i) => `${i+1}.${item.name||'?'}[${(item.rarity||'?')[0]}]`).join(' ');
+        return { content: [{ type: 'text', text: `Inv(${inventory.length}): ${items}` }] };
       },
     },
 
@@ -340,18 +215,10 @@ export function defineTools() {
       },
       async handler(params, ctx) {
         const { engine, saveState } = ctx;
-        const state = engine.getState();
-        const result = saveState(params.slot, state);
-
-        if (result.success) {
-          return {
-            content: [{ type: 'text', text: `  Game saved to slot ${params.slot}.` }],
-          };
-        }
-        return {
-          content: [{ type: 'text', text: `  Save failed: ${result.error}` }],
-          isError: true,
-        };
+        const result = saveState(params.slot, engine.getState());
+        return result.success
+          ? { content: [{ type: 'text', text: `Saved slot ${params.slot}` }] }
+          : { content: [{ type: 'text', text: `Save failed` }], isError: true };
       },
     },
 
@@ -374,26 +241,11 @@ export function defineTools() {
       async handler(params, ctx) {
         const { loadState } = ctx;
         const result = loadState(params.slot);
-
         if (result.success) {
-          const data = result.data;
-          const backup = result.fromBackup ? ' (restored from backup)' : '';
-          const lines = [
-            `  Game loaded from slot ${params.slot}${backup}.`,
-            '',
-            `  State:  ${data.currentState}`,
-            `  Crumbs: ${data.crumbs}`,
-            `  Team:   ${(data.team || []).length} members`,
-            `  Items:  ${(data.inventory || []).length}`,
-          ];
-          return {
-            content: [{ type: 'text', text: lines.join('\n') }],
-          };
+          const d = result.data;
+          return { content: [{ type: 'text', text: `Loaded slot ${params.slot} | ${d.crumbs}crumbs ${(d.team||[]).length}team ${(d.inventory||[]).length}items` }] };
         }
-        return {
-          content: [{ type: 'text', text: `  Load failed: ${result.error}` }],
-          isError: true,
-        };
+        return { content: [{ type: 'text', text: 'Load failed' }], isError: true };
       },
     },
 
@@ -406,10 +258,7 @@ export function defineTools() {
         additionalProperties: false,
       },
       handler(params, ctx) {
-        const { scores } = ctx;
-        return {
-          content: [{ type: 'text', text: scores.formatDisplay() }],
-        };
+        return { content: [{ type: 'text', text: ctx.scores.formatDisplay() }] };
       },
     },
 
@@ -438,23 +287,10 @@ export function defineTools() {
       handler(params, ctx) {
         const { engine, scores } = ctx;
         const state = engine.getStateRef();
-
-        // Award crumbs for responding to prompts
         const crumbReward = 5;
         state.crumbs = (state.crumbs || 0) + crumbReward;
         scores.increment('total_crumbs_earned', crumbReward);
-
-        const lines = [
-          `  Response recorded for prompt "${params.prompt_id}".`,
-          `  Type: ${params.response_type}`,
-          `  +${crumbReward} crumbs earned!`,
-          '',
-          miniCookie(),
-        ];
-
-        return {
-          content: [{ type: 'text', text: lines.join('\n') }],
-        };
+        return { content: [{ type: 'text', text: `+${crumbReward} crumbs | Total: ${state.crumbs}` }] };
       },
     },
 
@@ -480,31 +316,11 @@ export function defineTools() {
           scores.increment('threats_detected', result.findings.length);
         }
 
-        const lines = ['  === SECURITY SCAN RESULTS ===', ''];
-
         if (result.findings.length === 0) {
-          lines.push('  No security issues detected.');
-        } else {
-          for (const finding of result.findings) {
-            lines.push(`  [${finding.risk_level}] ${finding.rule_id}`);
-            lines.push(`  ${finding.description}`);
-            for (const m of finding.matches) {
-              const code = redactor.redact(m.match);
-              lines.push(`    Line ${m.line}, Col ${m.column}: ${code}`);
-            }
-            lines.push(`  Recommendation: ${finding.recommendation}`);
-            lines.push('');
-          }
+          return { content: [{ type: 'text', text: `Scan clean. Risk:${result.highest_risk}` }] };
         }
-
-        lines.push(`  Summary: ${result.summary}`);
-        lines.push(`  Overall Risk: ${result.highest_risk}`);
-        lines.push('');
-        lines.push('  ============================');
-
-        return {
-          content: [{ type: 'text', text: lines.join('\n') }],
-        };
+        const findings = result.findings.map(f => `[${f.risk_level}]${f.rule_id}`).join(' ');
+        return { content: [{ type: 'text', text: `${result.findings.length} issues: ${findings} | Risk:${result.highest_risk}` }] };
       },
     },
 
@@ -533,24 +349,12 @@ export function defineTools() {
       },
       handler(params, ctx) {
         const { vault } = ctx;
-        if (!vault || !vault.isUnlocked()) {
-          return {
-            content: [{ type: 'text', text: '  Vault is locked. Unlock it first with your master password.' }],
-            isError: true,
-          };
-        }
-
+        if (!vault || !vault.isUnlocked()) return { content: [{ type: 'text', text: 'Vault locked' }], isError: true };
         try {
           vault.store(params.label, params.value, params.type);
-          const redacted = redactor.redact(params.value);
-          return {
-            content: [{ type: 'text', text: `  Stored "${params.label}" (${params.type}): ${redacted}` }],
-          };
+          return { content: [{ type: 'text', text: `Stored "${params.label}"` }] };
         } catch (err) {
-          return {
-            content: [{ type: 'text', text: `  Vault store failed: ${err.message}` }],
-            isError: true,
-          };
+          return { content: [{ type: 'text', text: 'Store failed' }], isError: true };
         }
       },
     },
@@ -571,42 +375,13 @@ export function defineTools() {
       },
       handler(params, ctx) {
         const { vault } = ctx;
-        if (!vault || !vault.isUnlocked()) {
-          return {
-            content: [{ type: 'text', text: '  Vault is locked. Unlock it first with your master password.' }],
-            isError: true,
-          };
-        }
-
+        if (!vault || !vault.isUnlocked()) return { content: [{ type: 'text', text: 'Vault locked' }], isError: true };
         try {
           const entry = vault.retrieve(params.label);
-          if (!entry) {
-            return {
-              content: [{ type: 'text', text: `  Entry "${params.label}" not found.` }],
-              isError: true,
-            };
-          }
-
-          const redacted = redactor.redact(entry.value);
-          const lines = [
-            `  === VAULT ENTRY ===`,
-            `  Label:   ${entry.label}`,
-            `  Type:    ${entry.type}`,
-            `  Value:   ${redacted}`,
-            `  Stored:  ${entry.storedAt}`,
-            '',
-            '  (Value is redacted. Handle with care.)',
-            '  ====================',
-          ];
-
-          return {
-            content: [{ type: 'text', text: lines.join('\n') }],
-          };
+          if (!entry) return { content: [{ type: 'text', text: 'Not found' }], isError: true };
+          return { content: [{ type: 'text', text: `${entry.label}(${entry.type}): ${redactor.redact(entry.value)}` }] };
         } catch (err) {
-          return {
-            content: [{ type: 'text', text: `  Vault retrieve failed: ${err.message}` }],
-            isError: true,
-          };
+          return { content: [{ type: 'text', text: 'Retrieve failed' }], isError: true };
         }
       },
     },
@@ -632,36 +407,14 @@ export function defineTools() {
 
         const classification = classifyPrompt(text);
         const wordCount = text.split(/\s+/).filter(w => w.length > 0).length;
-
-        // Crumbs based on complexity
         let crumbReward = Math.max(1, Math.floor(wordCount / 5));
         if (classification.confidence > 0.7) crumbReward += 3;
         if (classification.type === 'code_review') crumbReward += 5;
         if (classification.type === 'permission') crumbReward += 2;
-
         state.crumbs += crumbReward;
         state.stats.crumbsEarned = (state.stats.crumbsEarned || 0) + crumbReward;
         scores.increment('total_crumbs_earned', crumbReward);
-
-        // Cookie-themed response
-        const cookieWords = ['crumbly', 'buttery', 'crispy', 'golden', 'freshly-baked', 'sugar-coated'];
-        const adj = cookieWords[Math.abs(text.length) % cookieWords.length];
-
-        const lines = [
-          `  === COOKIE INTERCEPT ===`,
-          `  Type: ${classification.type} (${(classification.confidence * 100).toFixed(0)}% confidence)`,
-          `  Words: ${wordCount}`,
-          `  +${crumbReward} crumbs earned!`,
-          '',
-          `  The Cookie Oracle says: "A ${adj} prompt indeed."`,
-          '',
-          miniCookie(),
-          '  ========================',
-        ];
-
-        return {
-          content: [{ type: 'text', text: lines.join('\n') }],
-        };
+        return { content: [{ type: 'text', text: `+${crumbReward}crumbs | ${classification.type} | Total:${state.crumbs}` }] };
       },
     },
 
@@ -702,25 +455,10 @@ export function defineTools() {
           return { content: [{ type: 'text', text: lines.join('\n') }] };
         }
 
-        // List mode
         const pending = state.pendingActions || [];
-        if (pending.length === 0) {
-          return { content: [{ type: 'text', text: '  No pending actions.' }] };
-        }
-
-        const lines = [
-          `  === PENDING ACTIONS (${pending.length}) ===`,
-          '',
-        ];
-        for (const action of pending) {
-          lines.push(`  [${action.id}] ${action.type}: ${action.description}`);
-          lines.push(`    Choices: ${action.choices.join(', ')}`);
-          lines.push('');
-        }
-        lines.push('  Use cookie_pending with action_id + choice to resolve.');
-        lines.push('  ==============================');
-
-        return { content: [{ type: 'text', text: lines.join('\n') }] };
+        if (pending.length === 0) return { content: [{ type: 'text', text: 'No pending actions' }] };
+        const acts = pending.map(a => `[${a.id}]${a.type}:${a.choices.join('/')}`).join(' | ');
+        return { content: [{ type: 'text', text: `${pending.length} pending: ${acts}` }] };
       },
     },
 
@@ -766,15 +504,7 @@ export function defineTools() {
           state.passiveConfig.autoSell = params.auto_sell;
         }
 
-        const lines = [
-          '  === DUNGEON CONFIG ===',
-          `  Tick interval: ${state.passiveConfig.tickIntervalMs / 1000}s`,
-          `  Auto-loot:     ${state.passiveConfig.autoLoot ? 'ON' : 'OFF'}`,
-          `  Auto-sell:     ${state.passiveConfig.autoSell ? 'ON' : 'OFF'}`,
-          '  ======================',
-        ];
-
-        return { content: [{ type: 'text', text: lines.join('\n') }] };
+        return { content: [{ type: 'text', text: `Tick:${state.passiveConfig.tickIntervalMs/1000}s Loot:${state.passiveConfig.autoLoot?'on':'off'} Sell:${state.passiveConfig.autoSell?'on':'off'}` }] };
       },
     },
 
@@ -810,51 +540,28 @@ export function defineTools() {
 
         if (action === 'refresh') {
           state._tavernRoster = generateTavernRoster(rng);
-          return { content: [{ type: 'text', text: '  Tavern roster refreshed! Use cookie_tavern to view.' }] };
+          return { content: [{ type: 'text', text: 'Roster refreshed' }] };
         }
 
         if (action === 'recruit') {
           const idx = (params.index || 1) - 1;
           const roster = state._tavernRoster;
-          if (idx < 0 || idx >= roster.length) {
-            return { content: [{ type: 'text', text: `  Invalid index. Roster has ${roster.length} recruits.` }], isError: true };
-          }
+          if (idx < 0 || idx >= roster.length) return { content: [{ type: 'text', text: 'Invalid index' }], isError: true };
           const recruit = roster[idx];
-          if (state.crumbs < recruit.cost) {
-            return { content: [{ type: 'text', text: `  Not enough crumbs! Need ${recruit.cost}, have ${state.crumbs}.` }], isError: true };
-          }
+          if (state.crumbs < recruit.cost) return { content: [{ type: 'text', text: `Need ${recruit.cost}, have ${state.crumbs}` }], isError: true };
           state.crumbs -= recruit.cost;
           state.team.push(recruit);
           roster.splice(idx, 1);
-
-          const lines = [
-            `  Recruited ${recruit.name}!`,
-            `  ${recruit.race} ${recruit.class} | HP: ${recruit.maxHp} | ATK: ${recruit.stats.atk} | DEF: ${recruit.stats.def}`,
-            `  Cost: ${recruit.cost} crumbs | Remaining: ${state.crumbs}`,
-          ];
-          return { content: [{ type: 'text', text: lines.join('\n') }] };
+          return { content: [{ type: 'text', text: `+${recruit.name} ${recruit.race} ${recruit.class} | ${state.crumbs}crumbs left` }] };
         }
 
-        // View
         const roster = state._tavernRoster;
-        const lines = [
-          '  === THE CRUMBY TAVERN ===',
-          `  Your crumbs: ${state.crumbs}`,
-          '',
-        ];
-
+        const lines = [`=== THE CRUMBY TAVERN === ${state.crumbs} crumbs | Team: ${state.team.length}`, ''];
         roster.forEach((m, i) => {
-          lines.push(`  ${i + 1}. ${m.name} [${m.race} ${m.class}] - ${m.personality}`);
+          lines.push(`  ${i + 1}. ${m.name} [${m.race} ${m.class}] ${m.personality}`);
           lines.push(`     HP:${m.maxHp} ATK:${m.stats.atk} DEF:${m.stats.def} SPD:${m.stats.spd} LCK:${m.stats.lck}`);
-          lines.push(`     Abilities: ${m.abilities.join(', ')}`);
           lines.push(`     Cost: ${m.cost} crumbs`);
-          lines.push('');
         });
-
-        lines.push(`  Team size: ${state.team.length}`);
-        lines.push('  Use cookie_tavern with action "recruit" and index to hire.');
-        lines.push('  ==========================');
-
         return { content: [{ type: 'text', text: lines.join('\n') }] };
       },
     },
@@ -901,21 +608,9 @@ export function defineTools() {
         }
 
         const previous = equipItem(member, item);
-        // Remove from inventory
         state.inventory.splice(itemIdx, 1);
-        // Add previous item back if any
         if (previous) state.inventory.push(previous);
-
-        const lines = [
-          `  ${member.name} equipped ${item.name} [${item.rarity}]!`,
-          `  Slot: ${item.slot}`,
-          `  Stats: ${Object.entries(item.statBonus || {}).map(([k, v]) => `${k}:+${v}`).join(' ')}`,
-        ];
-        if (previous) {
-          lines.push(`  Unequipped: ${previous.name}`);
-        }
-
-        return { content: [{ type: 'text', text: lines.join('\n') }] };
+        return { content: [{ type: 'text', text: `${member.name}+${item.name}[${item.rarity}]${previous ? ' -'+previous.name : ''}` }] };
       },
     },
 
@@ -932,49 +627,16 @@ export function defineTools() {
         const state = engine.getState();
 
         const lines = [
-          '  === TERMINAL COOKIE HELP ===',
+          `=== TERMINAL COOKIE === ${state.crumbs} crumbs`,
           '',
-          '  Every interaction auto-clicks the cookie and earns crumbs!',
+          'Game: click status explore roll inventory tavern equip respond',
+          'Dungeon: pending dungeon_config intercept',
+          'Save: save load scores leaderboard submit_score',
+          'Security: security_scan vault_store vault_retrieve',
           '',
-          '  Game Commands:',
-          '    cookie_click     - Power-click for 3x bonus crumbs',
-          '    cookie_trash     - Destroy a cookie (no reward)',
-          '    cookie_status    - View team, crumbs, state',
-          '    cookie_explore   - Enter a dungeon (level required)',
-          '    cookie_roll      - Roll a d20',
-          '    cookie_inventory - View loot and equipment',
-          '    cookie_respond   - Answer an AI prompt',
-          '',
-          '  Passive Mode:',
-          '    cookie_intercept     - Filter prompt text for crumbs',
-          '    cookie_pending       - View/resolve pending actions',
-          '    cookie_dungeon_config - Configure tick interval, auto-loot',
-          '    cookie_tavern        - Recruit team members',
-          '    cookie_equip         - Equip items to team members',
-          '',
-          '  Save/Load:',
-          '    cookie_save      - Save game (slot 1-3)',
-          '    cookie_load      - Load game (slot 1-3)',
-          '    cookie_scores    - View high scores',
-          '',
-          '  Leaderboard:',
-          '    cookie_leaderboard   - View the community leaderboard',
-          '    cookie_submit_score  - Submit your score to the leaderboard',
-          '',
-          '  Security:',
-          '    security_scan    - Scan code for risks',
-          '    vault_store      - Store secret in vault',
-          '    vault_retrieve   - Retrieve secret from vault',
-          '',
-          `  Current State: ${state.currentState}`,
-          `  Crumbs: ${state.crumbs}`,
-          '',
-          '  ============================',
+          'Every interaction earns crumbs! Selections earn bonus.',
         ];
-
-        return {
-          content: [{ type: 'text', text: lines.join('\n') }],
-        };
+        return { content: [{ type: 'text', text: lines.join('\n') }] };
       },
     },
 
@@ -988,9 +650,7 @@ export function defineTools() {
       },
       handler(params, ctx) {
         const lb = loadLeaderboard();
-        return {
-          content: [{ type: 'text', text: formatLeaderboardFull(lb.entries) }],
-        };
+        return { content: [{ type: 'text', text: formatLeaderboardFull(lb.entries) }] };
       },
     },
 
@@ -1023,36 +683,9 @@ export function defineTools() {
 
         try {
           const { id, path, entry } = generateSubmissionFile(scores, params.name, params.org || null);
-          const lines = [
-            '  === SCORE SUBMITTED ===',
-            '',
-            `  ID:       ${id}`,
-            `  Name:     ${entry.name}`,
-            entry.org ? `  Org:      ${entry.org}` : '',
-            `  Dungeons: ${entry.dungeons_cleared}`,
-            `  Level:    ${entry.highest_level}`,
-            `  Clicks:   ${entry.total_clicks}`,
-            `  Crumbs:   ${entry.total_crumbs_earned}`,
-            '',
-            `  File: ${path}`,
-            '',
-            '  To complete submission:',
-            '    1. Create a branch: git checkout -b leaderboard/submit-' + id,
-            '    2. Commit: git add data/submissions/ && git commit -m "leaderboard: submit score"',
-            '    3. Push: git push -u origin leaderboard/submit-' + id,
-            '    4. Open a PR for review',
-            '',
-            '  ========================',
-          ];
-
-          return {
-            content: [{ type: 'text', text: lines.filter(l => l !== '').join('\n') }],
-          };
+          return { content: [{ type: 'text', text: `Submitted ${entry.name} D${entry.dungeons_cleared} L${entry.highest_level} | File:${path}` }] };
         } catch (err) {
-          return {
-            content: [{ type: 'text', text: `  Submission failed: ${err.message}` }],
-            isError: true,
-          };
+          return { content: [{ type: 'text', text: 'Submit failed' }], isError: true };
         }
       },
     },

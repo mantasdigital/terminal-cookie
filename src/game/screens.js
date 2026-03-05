@@ -156,7 +156,7 @@ const menuScreen = {
       renderer.bufferWrite(aiRow + 3, 0, renderer.centerText(renderer.dim('Step 2: Tell Claude: "Click the cookie"'), cols));
     }
 
-    renderer.showStatus('Arrow keys to navigate | Enter to select | L=leaderboard | ?=help');
+    renderer.showStatus('Arrows=navigate Enter=select L=leaderboard Q=quit ?=help');
     renderAIBadge(state, renderer);
 
     // Full leaderboard overlay
@@ -299,7 +299,18 @@ const tavernScreen = {
       }
     }
 
-    renderer.showStatus('C=cookie R=recruit I=inventory E=dungeon S=settings ?=help');
+    // Dungeon auto-start timer
+    if (state.dungeonTimer && state.dungeonTimer.remaining > 0) {
+      const secs = Math.ceil(state.dungeonTimer.remaining / 1000);
+      const barWidth = 20;
+      const filled = Math.round((state.dungeonTimer.remaining / state.dungeonTimer.total) * barWidth);
+      const timerBar = '[' + '='.repeat(filled) + ' '.repeat(barWidth - filled) + ']';
+      const timerRow = renderer.capabilities.rows - 4;
+      renderer.bufferWrite(timerRow, 4, renderer.bold('Dungeon starts in: ') + renderer.color(`${secs}s`, 'yellow') + ' ' + timerBar);
+      renderer.bufferWrite(timerRow + 1, 4, renderer.dim('Press [E] to enter now'));
+    }
+
+    renderer.showStatus('C=cookie R=recruit I=inventory E=dungeon W=save Ctrl-C=quit ?=help');
     renderAIBadge(state, renderer);
     if (ui.helpVisible) {
       const help = renderHelp('TAVERN');
@@ -354,6 +365,8 @@ const tavernScreen = {
           return 'explore_dungeon';
         }
         break;
+      case 'w':
+        return 'save_game';
       case 's':
         await engine.transition(GameState.SETTINGS);
         break;
@@ -435,7 +448,7 @@ const dungeonScreen = {
       renderer.bufferWrite(partyRow, col, `${m.name} ${hpBar(m.currentHp, m.maxHp, 8)}`);
     }
 
-    renderer.showStatus('Arrows=navigate Enter=interact M=map I=inventory Esc=retreat ?=help');
+    renderer.showStatus('Arrows=navigate Enter=interact W=save Esc=retreat ?=help');
     renderAIBadge(state, renderer);
     if (ui.helpVisible) {
       const help = renderHelp('DUNGEON');
@@ -465,6 +478,8 @@ const dungeonScreen = {
         break;
       case 'enter':
         return 'dungeon_interact';
+      case 'w':
+        return 'save_game';
       case 'escape':
         await engine.transition(GameState.TAVERN);
         break;

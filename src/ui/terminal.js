@@ -79,7 +79,9 @@ export function createRenderer(capabilities) {
   let inAlternateScreen = false;
 
   // Screen buffer: array of row strings
+  // Differential rendering: keep previous buffer to only update changed lines
   let buffer = [];
+  let prevBuffer = [];
   let bufferDirty = false;
 
   function initBuffer() {
@@ -87,12 +89,17 @@ export function createRenderer(capabilities) {
     bufferDirty = false;
   }
   initBuffer();
+  prevBuffer = [...buffer];
 
   /** Enter the alternate screen buffer (prevents scrollback pollution). */
   function enterAltScreen() {
     if (useAnsi && !inAlternateScreen) {
       rawWrite(`${ESC}?1049h`);
+      // Full clear on alt screen entry so we start fresh
+      rawWrite(`${ESC}2J${ESC}H`);
       inAlternateScreen = true;
+      // Reset prev buffer so first render writes everything
+      prevBuffer = new Array(caps.rows).fill('');
     }
   }
 
@@ -111,11 +118,8 @@ export function createRenderer(capabilities) {
   }
 
   function clear() {
-    if (useAnsi) {
-      rawWrite(`${ESC}2J${ESC}H`);
-    } else {
-      rawWrite('\n'.repeat(caps.rows));
-    }
+    // Only reset the buffer — don't write to stdout.
+    // render() will diff against prevBuffer and update only changed lines.
     initBuffer();
   }
 
@@ -201,25 +205,36 @@ export function createRenderer(capabilities) {
 
   function render() {
     if (!bufferDirty) return;
-    hideCursor();
-    for (let r = 0; r < buffer.length; r++) {
-      if (buffer[r] !== '') {
-        moveTo(r, 0);
-        if (useAnsi) rawWrite(`${ESC}2K`);
-        rawWrite(buffer[r]);
+    // Differential render: only update lines that changed since last frame
+    let anyChange = false;
+    let output = '';
+    const maxRows = Math.max(buffer.length, prevBuffer.length);
+    for (let r = 0; r < maxRows; r++) {
+      const cur = r < buffer.length ? buffer[r] : '';
+      const prev = r < prevBuffer.length ? prevBuffer[r] : '';
+      if (cur !== prev) {
+        anyChange = true;
+        output += `${ESC}${r + 1};1H`; // moveTo
+        if (useAnsi) output += `${ESC}2K`; // clear line
+        output += cur;
       }
     }
-    showCursor();
+    if (anyChange) {
+      hideCursor();
+      rawWrite(output);
+      showCursor();
+    }
+    prevBuffer = [...buffer];
     bufferDirty = false;
   }
 
   function showHeader(text) {
     const padded = centerText(text, caps.cols);
-    writeLine(0, useAnsi ? bold(color(padded, 'brightYellow')) : padded);
+    bufferWrite(0, 0, useAnsi ? bold(color(padded, 'brightYellow')) : padded);
   }
 
   function showStatus(text) {
-    writeLine(caps.rows - 1, useAnsi ? dim(color(text, 'white')) : text);
+    bufferWrite(caps.rows - 1, 0, useAnsi ? dim(color(text, 'white')) : text);
   }
 
   function showNotification(text, level) {
@@ -229,7 +244,7 @@ export function createRenderer(capabilities) {
     const sym = colorBlindSafe ? (symbolMap[level] || '') + ' ' : '';
     const row = caps.rows - 2;
     const msg = sym + text;
-    writeLine(row, useAnsi ? color(msg, fg) : msg);
+    bufferWrite(row, 0, useAnsi ? color(msg, fg) : msg);
   }
 
   function centerText(text, width) {
@@ -242,6 +257,9 @@ export function createRenderer(capabilities) {
   function updateCapabilities(newCaps) {
     caps = { ...caps, ...newCaps };
     initBuffer();
+    // Force full redraw after resize
+    prevBuffer = new Array(caps.rows).fill('');
+    if (useAnsi) rawWrite(`${ESC}2J${ESC}H`);
   }
 
   return {

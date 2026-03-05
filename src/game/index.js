@@ -81,19 +81,35 @@ export async function runGame(options = {}) {
     setState: (external) => {
       // Merge MCP server changes into local state
       const local = engine.getStateRef();
-      // Sync crumbs, team, inventory, stats, dungeon from external source
-      if (external.crumbs != null) local.crumbs = external.crumbs;
-      if (external.team) local.team = external.team;
-      if (external.inventory) local.inventory = external.inventory;
+      // For crumbs, take the higher value to avoid losing local earnings
+      if (external.crumbs != null) local.crumbs = Math.max(local.crumbs ?? 0, external.crumbs);
+      // For team, merge by ID — never lose locally recruited members
+      if (external.team && Array.isArray(external.team)) {
+        const localIds = new Set((local.team ?? []).map(m => m.id));
+        for (const m of external.team) {
+          if (!localIds.has(m.id)) {
+            local.team = local.team ?? [];
+            local.team.push(m);
+          }
+        }
+      }
+      if (external.inventory) {
+        // Merge inventories by ID
+        const localInvIds = new Set((local.inventory ?? []).map(i => i.id));
+        for (const item of external.inventory) {
+          if (item.id && !localInvIds.has(item.id)) {
+            local.inventory = local.inventory ?? [];
+            local.inventory.push(item);
+          }
+        }
+      }
       if (external.stats) Object.assign(local.stats, external.stats);
-      if (external.dungeonProgress !== undefined) local.dungeonProgress = external.dungeonProgress;
+      if (external.dungeonProgress !== undefined && !local.dungeonProgress) {
+        local.dungeonProgress = external.dungeonProgress;
+      }
       if (external.pendingActions) local.pendingActions = external.pendingActions;
       if (external.passiveLog) local.passiveLog = external.passiveLog;
-      if (external.totalToolCalls != null) local.totalToolCalls = external.totalToolCalls;
-      // Re-sync the subsystem state reference
-      state.crumbs = local.crumbs;
-      state.team = local.team;
-      state.inventory = local.inventory;
+      if (external.totalToolCalls != null) local.totalToolCalls = Math.max(local.totalToolCalls ?? 0, external.totalToolCalls);
     },
     label: 'game',
   });
@@ -112,7 +128,7 @@ export async function runGame(options = {}) {
   });
 
   // ── Game subsystems ─────────────────────────────────────────────
-  const state = engine.getState();
+  const state = engine.getStateRef();
   const rng = createRNG(seed);
   const cookie = createCookieHandler(state);
   const economy = createEconomy(state);
@@ -122,6 +138,10 @@ export async function runGame(options = {}) {
   let rollBar = null;
   let activeCombat = null;
   let voiceController = null;
+
+  // ── Dungeon auto-start timer ──────────────────────────────────
+  // After first recruit, show a countdown; auto-enter dungeon when it expires.
+  let dungeonTimer = null; // { remaining: ms, total: ms } or null
 
   // Initialize voice controller if enabled
   if (settings.get('voice.enabled')) {
@@ -139,17 +159,60 @@ export async function runGame(options = {}) {
     state.tavernRoster = generateTavernRoster(rng);
   }
 
+  /** Start the dungeon auto-timer with a random duration (8-20 seconds). */
+  function startDungeonTimer() {
+    const totalMs = (rng.int(8, 20)) * 1000;
+    dungeonTimer = { remaining: totalMs, total: totalMs };
+  }
+
+  /** Generate dungeon and transition to DUNGEON state. */
+  async function enterDungeon() {
+    dungeonTimer = null;
+    const dungeonLevel = (state.stats.dungeonsCleared ?? 0) + 1;
+    const dungeonSeed = rng.int(1, 999999);
+    try {
+      const dungeon = generateDungeon({ seed: dungeonSeed, level: dungeonLevel, rng });
+      state.dungeonProgress = {
+        ...dungeon,
+        currentRoom: dungeon.rooms[0]?.id ?? 0,
+        dungeonSeed,
+        level: dungeonLevel,
+      };
+      state.lastDungeonSeed = dungeonSeed;
+      const usedSignatures = new Set();
+      for (const room of state.dungeonProgress.rooms) {
+        if (room.type === 'monster' || room.type === 'boss') {
+          room.content = 'enemy';
+          const enemies = generateRoomEnemies({ level: dungeonLevel, rng, isBoss: room.type === 'boss' });
+          room.enemy = enemies[0] ?? generateEnemy({ level: dungeonLevel, rng });
+          room.enemies = enemies;
+        } else if (room.type === 'loot') {
+          room.content = 'loot';
+          const bonuses = settings.getBonuses();
+          room.loot = [generateLoot({ level: dungeonLevel, rng, qualityBonus: bonuses.lootFindBonus, usedSignatures })].filter(Boolean);
+        } else if (room.type === 'trap') {
+          room.content = 'trap';
+        } else if (room.type === 'shrine') {
+          room.content = 'shrine';
+        }
+      }
+      cookie.resetSession();
+      await engine.transition(GameState.DUNGEON);
+    } catch (err) {
+      if (debug) process.stderr.write(`[dungeon] ${err.message}\n`);
+    }
+  }
+
   // ── Rendering ───────────────────────────────────────────────────
 
   function getEnrichedState() {
-    const s = engine.getState();
-    s.tavernRoster = state.tavernRoster;
+    // state is the direct engine ref, so just enrich with transient UI data
+    const s = { ...state };
     s.settings = settings.getAll();
     s.bonuses = settings.getBonuses();
     s.activeCombat = activeCombat;
     s.rollBarState = rollBar ? { display: rollBar.render() } : null;
-    s.pendingLoot = state.pendingLoot ?? [];
-    s.recoveredLoot = state.recoveredLoot ?? [];
+    s.dungeonTimer = dungeonTimer;
     s.graveyardRunAvailable = state.lastDungeonSeed != null && graveyard.hasGrave(state.lastDungeonSeed);
     return s;
   }
@@ -182,6 +245,14 @@ export async function runGame(options = {}) {
       return;
     }
 
+    // Every input action earns passive crumbs (selections earn more)
+    const isSelection = result === 'recruit_select' || result === 'loot_equip' || result === 'loot_sell'
+      || result === 'explore_dungeon' || result === 'dungeon_interact' || result === 'attack'
+      || result === 'roll_stop';
+    const passiveEarn = isSelection ? rng.int(2, 5) : 1;
+    state.crumbs += passiveEarn;
+    state.stats.crumbsEarned = (state.stats.crumbsEarned ?? 0) + passiveEarn;
+
     // Handle action results from screens
     if (result === 'cookie_click') {
       const bonuses = settings.getBonuses();
@@ -203,6 +274,10 @@ export async function runGame(options = {}) {
           roster.splice(ui.menuIndex, 1);
           renderer.showNotification(`${member.name} the ${member.race} ${member.class} joins your team!`, 'info');
           tutorial.advance('recruit');
+          // Start dungeon auto-timer after first recruit (if not already running)
+          if (!dungeonTimer && !state.dungeonProgress) {
+            startDungeonTimer();
+          }
         }
       }
     } else if (result === 'roll_stop' && rollBar) {
@@ -279,41 +354,7 @@ export async function runGame(options = {}) {
         if (ui.lootIndex >= loot.length) ui.lootIndex = Math.max(0, loot.length - 1);
       }
     } else if (result === 'explore_dungeon') {
-      // Generate dungeon and enter
-      const dungeonLevel = (state.stats.dungeonsCleared ?? 0) + 1;
-      const dungeonSeed = rng.int(1, 999999);
-      try {
-        const dungeon = generateDungeon({ seed: dungeonSeed, level: dungeonLevel, rng });
-        state.dungeonProgress = {
-          ...dungeon,
-          currentRoom: dungeon.rooms[0]?.id ?? 0,
-          dungeonSeed,
-          level: dungeonLevel,
-        };
-        state.lastDungeonSeed = dungeonSeed;
-        // Populate rooms with enemies and loot
-        const usedSignatures = new Set();
-        for (const room of state.dungeonProgress.rooms) {
-          if (room.type === 'monster' || room.type === 'boss') {
-            room.content = 'enemy';
-            const enemies = generateRoomEnemies({ level: dungeonLevel, rng, isBoss: room.type === 'boss' });
-            room.enemy = enemies[0] ?? generateEnemy({ level: dungeonLevel, rng });
-            room.enemies = enemies;
-          } else if (room.type === 'loot') {
-            room.content = 'loot';
-            const bonuses = settings.getBonuses();
-            room.loot = [generateLoot({ level: dungeonLevel, rng, qualityBonus: bonuses.lootFindBonus, usedSignatures })].filter(Boolean);
-          } else if (room.type === 'trap') {
-            room.content = 'trap';
-          } else if (room.type === 'shrine') {
-            room.content = 'shrine';
-          }
-        }
-        cookie.resetSession();
-        await engine.transition(GameState.DUNGEON);
-      } catch (err) {
-        if (debug) process.stderr.write(`[dungeon] ${err.message}\n`);
-      }
+      await enterDungeon();
     } else if (result === 'dungeon_interact') {
       // Interact with current room
       const dp = state.dungeonProgress;
@@ -396,12 +437,26 @@ export async function runGame(options = {}) {
       activeCombat = null;
       rollBar = null;
       try { await engine.transition(GameState.DUNGEON); } catch { /* ignore */ }
+    } else if (result === 'save_game') {
+      saveGame(slot, engine.getState());
+      renderer.showNotification('Game saved!', 'success');
+    } else if (result === 'save_and_quit') {
+      saveGame(slot, engine.getState());
+      await engine.shutdown();
     }
 
     // Reset UI state on screen transition
     const newState = engine.getState().currentState;
     if (newState !== prevState) {
       resetUIState();
+      // Restart dungeon timer when returning to tavern with a team
+      if (newState === GameState.TAVERN && (state.team ?? []).length > 0 && !state.dungeonProgress && !dungeonTimer) {
+        startDungeonTimer();
+      }
+      // Clear timer when leaving tavern
+      if (prevState === GameState.TAVERN && newState !== GameState.TAVERN) {
+        dungeonTimer = null;
+      }
     }
 
     // Immediate render after input
@@ -413,7 +468,7 @@ export async function runGame(options = {}) {
   let loopTimer = null;
   let lastAutosave = Date.now();
 
-  function gameLoop() {
+  async function gameLoop() {
     if (!engine.running) {
       cleanup();
       return;
@@ -429,6 +484,14 @@ export async function runGame(options = {}) {
         // Auto-roll on timeout
         const val = rollBar.value;
         activeCombat.attack(val);
+      }
+    }
+
+    // Dungeon auto-start timer tick
+    if (dungeonTimer && state.currentState === GameState.TAVERN) {
+      dungeonTimer.remaining -= FRAME_MS;
+      if (dungeonTimer.remaining <= 0 && (state.team ?? []).length > 0) {
+        await enterDungeon();
       }
     }
 
@@ -467,6 +530,8 @@ export async function runGame(options = {}) {
 
   input.onKey(handleKey);
   input.emitter.on('quit', async () => {
+    // Save before quitting
+    saveGame(slot, engine.getState());
     await engine.shutdown();
     cleanup();
     process.exit(0);
