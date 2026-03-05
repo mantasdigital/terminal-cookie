@@ -241,18 +241,64 @@ if (flags.leaderboard) {
 if (flags.submitScore) {
   const { createInterface } = await import('node:readline');
   const { loadLocalScores, generateSubmissionFile, isGitAvailable, isGhAvailable, createSubmitBranch, getInstructions } = await import(join(PROJECT_ROOT, 'src', 'leaderboard', 'submit.js'));
-
-  const scores = loadLocalScores();
-  if (!scores) {
-    process.stderr.write('No local scores found in saves/scores.json.\nPlay some games first to build up stats!\n');
-    process.exit(1);
-  }
+  const { listSlots, loadGame } = await import(join(PROJECT_ROOT, 'src', 'save', 'state.js'));
 
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   const ask = (q) => new Promise(resolve => rl.question(q, resolve));
 
+  // Show save slots and let user pick which one to submit
+  const slots = listSlots();
+  const populated = slots.filter(s => s.exists);
+  if (populated.length === 0) {
+    process.stderr.write('No save files found. Play some games first!\n');
+    process.exit(1);
+  }
+
   process.stdout.write('\n=== Submit Score to Leaderboard ===\n\n');
-  process.stdout.write(`Your stats:\n`);
+  process.stdout.write('Choose a save slot to submit:\n\n');
+  for (const s of slots) {
+    if (s.exists) {
+      const mode = s.gameMode ? ` [${s.gameMode}]` : '';
+      const team = s.teamSize > 0 ? ` Team:${s.teamSize}` : '';
+      process.stdout.write(`  ${s.slot}) ${s.crumbs ?? 0} crumbs${team}${mode}\n`);
+    } else {
+      process.stdout.write(`  ${s.slot}) (empty)\n`);
+    }
+  }
+  process.stdout.write('\n');
+
+  const slotChoice = await ask('Slot number (1-3): ');
+  const slotNum = parseInt(slotChoice, 10);
+  if (isNaN(slotNum) || slotNum < 1 || slotNum > 3) {
+    process.stderr.write('Invalid slot number.\n');
+    rl.close();
+    process.exit(1);
+  }
+  const chosenSlot = slots.find(s => s.slot === slotNum);
+  if (!chosenSlot?.exists) {
+    process.stderr.write('That slot is empty.\n');
+    rl.close();
+    process.exit(1);
+  }
+
+  // Load stats from the chosen save slot
+  const saveData = loadGame(slotNum);
+  if (!saveData.success) {
+    process.stderr.write('Failed to load save data from that slot.\n');
+    rl.close();
+    process.exit(1);
+  }
+
+  // Also load global scores for aggregate stats
+  const scores = loadLocalScores() ?? {};
+  // Merge save-specific data into scores for submission
+  const slotData = saveData.data;
+  const stats = slotData.stats ?? {};
+  scores.dungeons_cleared = stats.dungeonsCleared ?? scores.dungeons_cleared ?? 0;
+  scores.highest_crumbs = Math.max(slotData.crumbs ?? 0, scores.highest_crumbs ?? 0);
+  scores.monsters_killed = stats.monstersSlain ?? scores.monsters_killed ?? 0;
+
+  process.stdout.write(`\nSlot ${slotNum} stats:\n`);
   process.stdout.write(`  Dungeons cleared: ${scores.dungeons_cleared ?? 0}\n`);
   process.stdout.write(`  Highest level:    ${scores.highest_level ?? 0}\n`);
   process.stdout.write(`  Total clicks:     ${scores.total_clicks ?? 0}\n`);

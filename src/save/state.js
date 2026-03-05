@@ -169,7 +169,8 @@ export function listSlots() {
           version: parsed.version || 0,
           crumbs: parsed.crumbs ?? 0,
           teamSize: parsed.team?.length ?? 0,
-          currentState: parsed.currentState || 'unknown'
+          currentState: parsed.currentState || 'unknown',
+          gameMode: parsed.gameMode || 'default',
         });
       } catch {
         slots.push({ slot: i, exists: true, savedAt: 'corrupted' });

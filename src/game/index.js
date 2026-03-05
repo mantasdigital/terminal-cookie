@@ -50,7 +50,7 @@ export { getWidget } from '../prompts/widgets.js';
  * @returns {Promise<void>} Resolves when game exits
  */
 export async function runGame(options = {}) {
-  const slot = options.slot ?? 1;
+  let slot = options.slot ?? 1;
   const debug = options.debug ?? false;
 
   // ── Settings ────────────────────────────────────────────────────
@@ -1342,6 +1342,52 @@ export async function runGame(options = {}) {
       dungeonTimer = null;
       saveGame(slot, engine.getState());
       await engine.transition(GameState.MENU);
+    } else if (result?.action === 'new_game_slot') {
+      // Save current game before switching slots
+      saveGame(slot, engine.getState());
+      // Switch to chosen slot and start fresh
+      slot = result.slot;
+      engine.resetForNewGame();
+      const st = engine.getStateRef();
+      st.gameMode = result.mode;
+      st.currentState = GameState.MENU;
+      activeCombat = null;
+      rollBar = null;
+      dungeonTimer = null;
+      workModePaused = false;
+      if (result.mode === 'work') {
+        st.passiveConfig = st.passiveConfig ?? {};
+        st.passiveConfig.autoLoot = true;
+        st.passiveConfig.autoSell = true;
+      }
+      await engine.transition(GameState.TAVERN);
+    } else if (result?.action === 'load_game_slot') {
+      // Save current game before switching
+      saveGame(slot, engine.getState());
+      // Load the chosen slot
+      slot = result.slot;
+      const loaded = loadGame(slot);
+      if (loaded.success && loaded.data) {
+        const staleKeys = ['securityAlerts', 'securityLog', '_tavernRoster', 'activeNPC', 'skillModifiers'];
+        for (const key of staleKeys) delete state[key];
+        for (const key of Object.keys(state)) delete state[key];
+        Object.assign(state, loaded.data);
+        activeCombat = null;
+        rollBar = null;
+        dungeonTimer = null;
+        workModePaused = false;
+        if (state.gameMode === 'work') {
+          state.passiveConfig = state.passiveConfig ?? {};
+          state.passiveConfig.autoLoot = true;
+          state.passiveConfig.autoSell = true;
+        }
+        if (!state.tavernRoster || state.tavernRoster.length === 0) {
+          state.tavernRoster = applyVillageRecruitBonus(generateTavernRoster(rng));
+        }
+        await engine.transition(GameState.TAVERN);
+      } else {
+        renderer.showNotification('Failed to load save!', 'warn');
+      }
     }
 
     // Reset UI state on screen transition

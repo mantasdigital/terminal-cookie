@@ -16,6 +16,7 @@ import { homedir } from 'node:os';
 import { formatCrumbs } from '../ui/format.js';
 import { getTalismanBonuses, getUpgradeCost, canUpgrade, getMaxLevel, formatTalismanInfo } from './talisman.js';
 import { enchantCost } from './loot.js';
+import { listSlots } from '../save/state.js';
 import {
   isVillageUnlocked, canUnlockVillage, canBuildOrUpgrade,
   getBuildingLevel, getBuildingCost, getBuildingDefs, getBuildingIds,
@@ -189,6 +190,10 @@ const ui = {
   notificationTimeout: null,
   modeSelectVisible: false,
   modeSelection: 0, // 0=default, 1=work
+  slotPickerVisible: false,
+  slotPickerMode: 'new', // 'new' or 'load'
+  slotPickerIndex: 0,
+  slotPickerData: [],  // populated by listSlots()
 };
 
 function notify(renderer, msg, level = 'info') {
@@ -351,22 +356,83 @@ const menuScreen = {
       renderer.bufferWrite(helpRow, Math.floor((cols - helpText.length) / 2), renderer.dim(helpText));
     }
 
+    // Slot picker overlay
+    if (ui.slotPickerVisible) {
+      const rows = renderer.capabilities.rows;
+      const startRow = Math.max(2, Math.floor(rows / 2) - 5);
+      const boxWidth = 44;
+      const boxLeft = Math.max(0, Math.floor((cols - boxWidth) / 2));
+
+      // Clear area
+      for (let r = startRow - 1; r < startRow + 10; r++) {
+        renderer.bufferWrite(r, boxLeft - 2, ' '.repeat(boxWidth + 4));
+      }
+
+      const isNew = ui.slotPickerMode === 'new';
+      const titleText = isNew ? '=== Choose Save Slot ===' : '=== Load Save Slot ===';
+      renderer.bufferWrite(startRow, Math.floor((cols - titleText.length) / 2), renderer.bold(titleText));
+
+      const slots = ui.slotPickerData;
+      for (let i = 0; i < slots.length; i++) {
+        const s = slots[i];
+        const selected = i === ui.slotPickerIndex;
+        const prefix = selected ? ' > ' : '   ';
+        let label;
+        if (s.exists) {
+          const mode = s.gameMode ? ` [${s.gameMode}]` : '';
+          const team = s.teamSize > 0 ? ` Team:${s.teamSize}` : '';
+          label = `Slot ${s.slot}: ${formatCrumbs(s.crumbs)} crumbs${team}${mode}`;
+        } else {
+          label = `Slot ${s.slot}: (empty)`;
+        }
+        const line = prefix + label;
+        renderer.bufferWrite(startRow + 2 + i * 2, boxLeft, selected ? renderer.bold(line) : line);
+        if (s.exists && s.savedAt && s.savedAt !== 'corrupted') {
+          const dateStr = new Date(s.savedAt).toLocaleString();
+          renderer.bufferWrite(startRow + 3 + i * 2, boxLeft + 5, renderer.dim(dateStr));
+        }
+      }
+
+      const helpRow = startRow + 2 + slots.length * 2 + 1;
+      const helpText = isNew ? 'Up/Down=select  Enter=confirm  Esc=back' : 'Up/Down=select  Enter=load  Esc=back';
+      renderer.bufferWrite(helpRow, Math.floor((cols - helpText.length) / 2), renderer.dim(helpText));
+    }
+
     renderWorkModeBadge(state, renderer);
     renderer.render();
   },
 
   async handleInput(key, engine) {
+    // Slot picker overlay intercepts all keys when visible
+    if (ui.slotPickerVisible) {
+      const slots = ui.slotPickerData;
+      if (key === 'up') ui.slotPickerIndex = Math.max(0, ui.slotPickerIndex - 1);
+      else if (key === 'down') ui.slotPickerIndex = Math.min(slots.length - 1, ui.slotPickerIndex + 1);
+      else if (key === 'enter') {
+        const chosen = slots[ui.slotPickerIndex];
+        if (ui.slotPickerMode === 'load' && !chosen.exists) return; // can't load empty
+        ui.slotPickerVisible = false;
+        if (ui.slotPickerMode === 'new') {
+          return { action: 'new_game_slot', slot: chosen.slot, mode: ui.modeSelection === 0 ? 'default' : 'work' };
+        } else {
+          return { action: 'load_game_slot', slot: chosen.slot };
+        }
+      } else if (key === 'escape') {
+        ui.slotPickerVisible = false;
+      }
+      return;
+    }
+
     // Mode selection overlay intercepts all keys
     if (ui.modeSelectVisible) {
       if (key === 'left' || key === 'right') {
         ui.modeSelection = ui.modeSelection === 0 ? 1 : 0;
       } else if (key === 'enter') {
-        engine.resetForNewGame();
-        const state = engine.getStateRef();
-        state.gameMode = ui.modeSelection === 0 ? 'default' : 'work';
-        state.currentState = GameState.MENU; // needed for valid transition
         ui.modeSelectVisible = false;
-        await engine.transition(GameState.TAVERN);
+        ui.slotPickerVisible = true;
+        ui.slotPickerMode = 'new';
+        ui.slotPickerIndex = 0;
+        ui.slotPickerData = listSlots();
       } else if (key === 'escape') {
         ui.modeSelectVisible = false;
       }
@@ -388,7 +454,10 @@ const menuScreen = {
           ui.modeSelection = 0;
           break;
         case 1: // Load Game
-          await engine.transition(GameState.TAVERN);
+          ui.slotPickerVisible = true;
+          ui.slotPickerMode = 'load';
+          ui.slotPickerIndex = 0;
+          ui.slotPickerData = listSlots();
           break;
         case 2: // Leaderboard
           ui.leaderboardVisible = !ui.leaderboardVisible;
