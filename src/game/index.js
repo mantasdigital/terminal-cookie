@@ -175,6 +175,22 @@ export async function runGame(options = {}) {
       if (external.village) {
         local.village = external.village;
       }
+      // Merge securityAlerts: add new alerts from MCP, preserve local dismissed state
+      if (external.securityAlerts && Array.isArray(external.securityAlerts)) {
+        local.securityAlerts = local.securityAlerts ?? [];
+        for (const extAlert of external.securityAlerts) {
+          const exists = local.securityAlerts.find(a =>
+            a.tool === extAlert.tool && Math.abs((a.time ?? 0) - (extAlert.time ?? 0)) < 2000
+          );
+          if (!exists) {
+            local.securityAlerts.push(extAlert);
+          }
+        }
+        // Cap at 50
+        if (local.securityAlerts.length > 50) {
+          local.securityAlerts = local.securityAlerts.slice(-50);
+        }
+      }
     },
     label: 'game',
   });
@@ -214,9 +230,13 @@ export async function runGame(options = {}) {
   function startCutscene(frames, afterState, afterAction) {
     if (!frames || frames.length === 0) {
       // No cutscene — go directly to afterState
-      if (afterAction) afterAction();
+      if (typeof afterAction === 'function') afterAction();
       if (afterState) engine.transition(afterState).catch(() => {});
       return;
+    }
+    // If a cutscene is already active, end it first to avoid losing callbacks
+    if (state._cutscene) {
+      endCutscene();
     }
     // Store non-serializable data outside state
     cutsceneAfterState = afterState ?? null;
@@ -248,7 +268,7 @@ export async function runGame(options = {}) {
     cutsceneTimer = 0;
     cutsceneAfterState = null;
     cutsceneAfterAction = null;
-    if (afterAction) afterAction();
+    if (typeof afterAction === 'function') afterAction();
     if (afterState) engine.transition(afterState).catch(() => {});
   }
 
@@ -1789,6 +1809,12 @@ export async function runGame(options = {}) {
       // Switch to chosen slot and start fresh
       slot = result.slot;
       engine.resetForNewGame();
+      // Clear transient cutscene state
+      cutsceneAfterState = null;
+      cutsceneAfterAction = null;
+      cutsceneTimer = 0;
+      activeCombat = null;
+      rollBar = null;
       const st = engine.getStateRef();
       st.gameMode = result.mode;
       st.currentState = GameState.MENU;
@@ -1813,7 +1839,11 @@ export async function runGame(options = {}) {
       slot = result.slot;
       const loaded = loadGame(slot);
       if (loaded.success && loaded.data) {
-        const staleKeys = ['securityAlerts', 'securityLog', '_tavernRoster', 'activeNPC', 'skillModifiers'];
+        const staleKeys = ['securityAlerts', 'securityLog', '_tavernRoster', 'activeNPC', 'skillModifiers', '_cutscene'];
+        // Clear transient cutscene state on load
+        cutsceneAfterState = null;
+        cutsceneAfterAction = null;
+        cutsceneTimer = 0;
         for (const key of staleKeys) delete state[key];
         for (const key of Object.keys(state)) delete state[key];
         Object.assign(state, loaded.data);

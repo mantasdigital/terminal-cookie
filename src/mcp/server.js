@@ -286,6 +286,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               tool: name,
               findings: highRisk.map(f => ({ rule: f.rule_id, risk: f.risk_level })),
               summary: `${highRisk.length} security issue(s) in ${name}: ${highRisk.map(f => f.rule_id).join(', ')}`,
+              dismissed: false,
             };
 
             gameState.securityAlerts.push(alert);
