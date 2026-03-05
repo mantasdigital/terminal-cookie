@@ -7,7 +7,7 @@
  * own writes.
  */
 
-import { readFileSync, writeFileSync, statSync, mkdirSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, appendFileSync, statSync, mkdirSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -29,6 +29,15 @@ export function createLiveState({ getState, setState, label = 'unknown', skipIni
   let lastMtimeMs = 0;
   let lastWriteMs = 0;
   let pollHandle = null;
+
+  // Temporary debug log — writes to saves/live-debug.log
+  const DEBUG_LOG = join(SAVES_DIR, 'live-debug.log');
+  function _debugLog(msg) {
+    try {
+      const ts = new Date().toISOString();
+      appendFileSync(DEBUG_LOG, `[${ts}] [${label}:${pid}] ${msg}\n`);
+    } catch { /* ignore */ }
+  }
 
   function ensureDir() {
     if (!existsSync(SAVES_DIR)) {
@@ -67,7 +76,7 @@ export function createLiveState({ getState, setState, label = 'unknown', skipIni
    * Returns true if external state was loaded.
    */
   function poll() {
-    if (!existsSync(LIVE_PATH)) return false;
+    if (!existsSync(LIVE_PATH)) { _debugLog('poll: file not found'); return false; }
 
     try {
       const stat = statSync(LIVE_PATH);
@@ -84,11 +93,13 @@ export function createLiveState({ getState, setState, label = 'unknown', skipIni
       }
 
       // External change detected — merge it
+      _debugLog(`poll: external change from ${data._live?.writerLabel}(${data._live?.writerPid}), crumbs=${data.crumbs}`);
       const { _live, _tavernRoster, ...stateData } = data;
       setState(stateData);
       lastMtimeMs = stat.mtimeMs;
       return true;
-    } catch {
+    } catch (err) {
+      _debugLog(`poll: error: ${err.message}`);
       return false;
     }
   }
@@ -97,15 +108,18 @@ export function createLiveState({ getState, setState, label = 'unknown', skipIni
    * Start polling for external changes and writing state periodically.
    */
   function start() {
-    if (pollHandle) return;
+    if (pollHandle) { _debugLog('start: already running, skipping'); return; }
+    _debugLog(`start: skipInitialPoll=${skipInitialPoll}, LIVE_PATH=${LIVE_PATH}`);
 
     // Poll first to pick up any external changes (e.g. hook crumbs)
     // before writing our state, so we don't overwrite them.
     // Skip initial poll on new games to avoid loading stale crumbs.
     if (!skipInitialPoll) {
-      poll();
+      const pollResult = poll();
+      _debugLog(`start: initial poll returned ${pollResult}`);
     }
     write();
+    _debugLog(`start: initial write done, crumbs=${getState().crumbs}`);
 
     pollHandle = setInterval(() => {
       // Check for external changes first
@@ -116,6 +130,7 @@ export function createLiveState({ getState, setState, label = 'unknown', skipIni
         write();
       }
     }, POLL_INTERVAL_MS);
+    _debugLog('start: interval set');
   }
 
   /**
