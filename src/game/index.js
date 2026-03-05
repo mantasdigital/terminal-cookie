@@ -11,7 +11,7 @@ import { createResizeHandler } from '../ui/resize.js';
 import { saveGame, loadGame, listSlots } from '../save/state.js';
 import { createSettings } from '../config/settings.js';
 import { createCookieHandler } from './cookie.js';
-import { generateTavernRoster, awardXP } from './team.js';
+import { generateTavernRoster, awardXP, CLASSES } from './team.js';
 import { createEconomy } from './economy.js';
 import { createCombat } from './combat.js';
 import { createRollBar } from './roll-bar.js';
@@ -744,15 +744,28 @@ export async function runGame(options = {}) {
     const roster = state.tavernRoster ?? [];
     if (roster.length === 0) return;
 
-    // Find affordable members, sort by highest total stats
+    // Find affordable members, sort by chosen strategy
+    const sortMode = settings.get('game.recruitSort') ?? 'totalStats';
     const affordable = roster
-      .map((m, i) => ({
-        m, i,
-        cost: economy.recruitCost(m),
-        total: m.stats.hp + m.stats.atk + m.stats.def + m.stats.spd + m.stats.lck,
-      }))
+      .map((m, i) => {
+        const total = m.stats.hp + m.stats.atk + m.stats.def + m.stats.spd + m.stats.lck;
+        const cost = economy.recruitCost(m);
+        const primary = CLASSES[m.class]?.primary ?? 'atk';
+        return { m, i, cost, total, primary, primaryVal: m.stats[primary] ?? 0 };
+      })
       .filter(x => state.crumbs >= x.cost)
-      .sort((a, b) => b.total - a.total);
+      .sort((a, b) => {
+        switch (sortMode) {
+          case 'atk': return b.m.stats.atk - a.m.stats.atk;
+          case 'def': return b.m.stats.def - a.m.stats.def;
+          case 'hp': return b.m.stats.hp - a.m.stats.hp;
+          case 'spd': return b.m.stats.spd - a.m.stats.spd;
+          case 'lck': return b.m.stats.lck - a.m.stats.lck;
+          case 'primary': return b.primaryVal - a.primaryVal;
+          case 'efficiency': return (b.total / b.cost) - (a.total / a.cost);
+          default: return b.total - a.total; // totalStats
+        }
+      });
 
     if (affordable.length === 0) return;
 
@@ -788,23 +801,57 @@ export async function runGame(options = {}) {
     const inv = state.inventory ?? [];
     if (team.length === 0) return;
 
-    // Auto-equip best items from inventory to team members
+    // Auto-equip items from inventory using chosen strategy
+    const equipMode = settings.get('game.equipStrategy') ?? 'power';
+    const RARITY_ORDER = { Common: 0, Uncommon: 1, Rare: 2, Epic: 3, Legendary: 4 };
+
     for (const slot of ['weapon', 'armor', 'accessory']) {
-      // Gather all equippable items for this slot, sorted by power descending
       const slotItems = inv
         .map((item, i) => ({ item, i }))
         .filter(x => x.item.slot === slot)
-        .sort((a, b) => (b.item.power ?? 0) - (a.item.power ?? 0));
+        .sort((a, b) => {
+          switch (equipMode) {
+            case 'rarity': {
+              const rd = (RARITY_ORDER[b.item.rarity] ?? 0) - (RARITY_ORDER[a.item.rarity] ?? 0);
+              return rd !== 0 ? rd : (b.item.power ?? 0) - (a.item.power ?? 0);
+            }
+            case 'primaryStat': {
+              // Sum of all stat bonuses relevant to the slot
+              const aSum = Object.values(a.item.statBonus ?? {}).reduce((s, v) => s + v, 0);
+              const bSum = Object.values(b.item.statBonus ?? {}).reduce((s, v) => s + v, 0);
+              return bSum - aSum;
+            }
+            case 'value':
+              return (b.item.value ?? 0) - (a.item.value ?? 0);
+            case 'teamNeed': {
+              // Score by how much the item's primary stat helps the team's weakest area
+              const teamAvg = stat => {
+                const vals = team.filter(m => m.alive).map(m => m.stats[stat] ?? 0);
+                return vals.length > 0 ? vals.reduce((s, v) => s + v, 0) / vals.length : 0;
+              };
+              const aScore = Object.entries(a.item.statBonus ?? {})
+                .reduce((s, [stat, val]) => s + val * (1 / Math.max(1, teamAvg(stat))), 0);
+              const bScore = Object.entries(b.item.statBonus ?? {})
+                .reduce((s, [stat, val]) => s + val * (1 / Math.max(1, teamAvg(stat))), 0);
+              return bScore - aScore;
+            }
+            default: // power
+              return (b.item.power ?? 0) - (a.item.power ?? 0);
+          }
+        });
 
-      for (const { item, i: invIdx } of slotItems) {
-        // Find a team member who would benefit
+      for (const { item } of slotItems) {
         const alive = team.filter(m => m.alive && m.currentHp > 0 && canEquip(m, item));
-        // Prefer member with empty slot, then member with weaker item
         let bestMember = alive.find(m => !m.equipment?.[slot]);
         if (!bestMember) {
           bestMember = alive.find(m => {
             const current = m.equipment?.[slot];
-            return current && (item.power ?? 0) > (current.power ?? 0);
+            if (!current) return true;
+            // Compare using same strategy
+            if (equipMode === 'rarity') {
+              return (RARITY_ORDER[item.rarity] ?? 0) > (RARITY_ORDER[current.rarity] ?? 0);
+            }
+            return (item.power ?? 0) > (current.power ?? 0);
           });
         }
         if (bestMember) {
@@ -1559,6 +1606,12 @@ export async function runGame(options = {}) {
           }
         }
       }
+    } else if (typeof result === 'object' && result?.action === 'cycle_setting') {
+      const current = settings.get(result.key) ?? result.options[0];
+      const idx = result.options.indexOf(current);
+      const nextIdx = (idx + result.dir + result.options.length) % result.options.length;
+      settings.set(result.key, result.options[nextIdx]);
+      settings.save();
     } else if (typeof result === 'object' && result?.action === 'toggle_setting') {
       const current = settings.get(result.key);
       settings.set(result.key, !current);

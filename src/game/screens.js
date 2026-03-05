@@ -218,6 +218,7 @@ const ui = {
   notificationTimeout: null,
   modeSelectVisible: false,
   modeSelection: 0, // 0=default, 1=work
+  settingsFrom: null, // track which screen opened settings
   slotPickerVisible: false,
   slotPickerMode: 'new', // 'new' or 'load'
   slotPickerIndex: 0,
@@ -491,6 +492,7 @@ const menuScreen = {
           ui.leaderboardVisible = !ui.leaderboardVisible;
           break;
         case 3: // Settings
+          ui.settingsFrom = 'MENU';
           await engine.transition(GameState.SETTINGS);
           break;
         case 4: // Quit
@@ -503,6 +505,7 @@ const menuScreen = {
     } else if (key === 'l') {
       ui.leaderboardVisible = !ui.leaderboardVisible;
     } else if (key === 's') {
+      ui.settingsFrom = 'MENU';
       await engine.transition(GameState.SETTINGS);
     } else if (key === 'q' || key === 'escape') {
       await engine.shutdown();
@@ -1146,6 +1149,7 @@ const tavernScreen = {
         return 'save_game';
       case 's':
         if (ui.tavernTab === 'inventory') return { action: 'inv_sell', index: ui.invIndex };
+        ui.settingsFrom = 'TAVERN';
         await engine.transition(GameState.SETTINGS);
         break;
       case 'escape':
@@ -1829,7 +1833,11 @@ const SETTINGS_LAYOUT = [
   { section: 'Voice', key: 'voice.inputWords.choice2', label: 'Voice Word: Choice 2', bonus: '' },
   { section: 'Game', key: 'game.autoDungeon', label: 'Auto-Dungeon', bonus: 'Auto-play dungeons' },
   { section: 'Game', key: 'game.autoRecruit', label: 'Auto-Recruit', bonus: 'Recruit best affordable' },
+  { section: 'Game', key: 'game.recruitSort', label: 'Recruit Sort', bonus: 'Left/Right to cycle', type: 'cycle',
+    options: ['totalStats', 'atk', 'def', 'hp', 'spd', 'lck', 'primary', 'efficiency'] },
   { section: 'Game', key: 'game.autoEquip', label: 'Auto-Equip', bonus: 'Equip gear & use potions' },
+  { section: 'Game', key: 'game.equipStrategy', label: 'Equip Strategy', bonus: 'Left/Right to cycle', type: 'cycle',
+    options: ['power', 'rarity', 'primaryStat', 'teamNeed', 'value'] },
   { section: 'Game', key: 'game.colorBlindMode', label: 'Color-Blind Mode', bonus: '+2% loot find' },
   { section: 'Game', key: 'game.compactMode', label: 'Compact Mode', bonus: '' },
   { section: 'Game', key: 'game.showAIStatus', label: 'Show AI Status', bonus: '' },
@@ -1862,10 +1870,19 @@ const settingsScreen = {
       const parts = s.key.split('.');
       let val = settings;
       for (const p of parts) val = val?.[p];
-      const enabled = !!val;
 
       const prefix = i === ui.settingIndex ? '> ' : '  ';
-      const toggle = enabled ? renderer.color('[ON] ', 'green') : renderer.color('[OFF]', 'brightBlack');
+      let toggle;
+      if (s.type === 'cycle' && s.options) {
+        const current = val ?? s.options[0];
+        toggle = renderer.color(`[${current}]`, 'cyan');
+        // Pad to keep alignment
+        const pad = Math.max(0, 14 - current.length);
+        toggle += ' '.repeat(pad);
+      } else {
+        const enabled = !!val;
+        toggle = enabled ? renderer.color('[ON] ', 'green') : renderer.color('[OFF]', 'brightBlack');
+      }
       const bonus = s.bonus ? renderer.dim(` ${s.bonus}`) : '';
       const line = `${prefix}${toggle} ${s.label}${bonus}`;
       renderer.bufferWrite(row, 4, line);
@@ -1903,15 +1920,22 @@ const settingsScreen = {
       case 'down':
         ui.settingIndex = Math.min(SETTINGS_LAYOUT.length - 1, ui.settingIndex + 1);
         break;
-      case 'enter': case 'space': case 'left': case 'right':
-        return { action: 'toggle_setting', key: SETTINGS_LAYOUT[ui.settingIndex]?.key };
+      case 'enter': case 'space': case 'left': case 'right': {
+        const s = SETTINGS_LAYOUT[ui.settingIndex];
+        if (!s) break;
+        if (s.type === 'cycle' && s.options) {
+          const dir = (key === 'left') ? -1 : 1;
+          return { action: 'cycle_setting', key: s.key, options: s.options, dir };
+        }
+        return { action: 'toggle_setting', key: s.key };
+      }
       case 'r':
         return 'reset_settings';
       case 'escape':
-        { const state = engine.getState();
-          const from = state.currentState;
-          // Go back to wherever we came from
-          try { await engine.transition(GameState.TAVERN); } catch {
+        { // Return to where settings was opened from
+          const target = ui.settingsFrom === 'MENU' ? GameState.MENU : GameState.TAVERN;
+          ui.settingsFrom = null;
+          try { await engine.transition(target); } catch {
             try { await engine.transition(GameState.MENU); } catch { /* stay */ }
           }
         }
