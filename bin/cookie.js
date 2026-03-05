@@ -359,6 +359,19 @@ if (flags.mcp) {
   // NOTE: Do NOT write to stdout here — MCP uses stdio for JSON-RPC.
   // Any non-protocol text on stdout corrupts the handshake.
   process.stderr.write('Terminal Cookie MCP server starting...\n');
+
+  // Graceful shutdown when parent process closes stdin or sends signals
+  function mcpShutdown() {
+    log.debug('MCP server shutting down');
+    process.exit(0);
+  }
+  process.on('SIGINT', mcpShutdown);
+  process.on('SIGTERM', mcpShutdown);
+  process.on('SIGHUP', mcpShutdown);
+  // When the parent closes the stdio pipe, exit cleanly
+  process.stdin.on('end', mcpShutdown);
+  process.stdin.on('close', mcpShutdown);
+
   try {
     await import(join(PROJECT_ROOT, 'src', 'mcp', 'server.js'));
   } catch (err) {
@@ -429,6 +442,7 @@ if (flags.mcp) {
 
   process.on('SIGINT', gracefulShutdown);
   process.on('SIGTERM', gracefulShutdown);
+  process.on('SIGHUP', gracefulShutdown);
 
   // Start the game
   try {
