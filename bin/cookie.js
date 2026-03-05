@@ -132,7 +132,7 @@ function hooksInstalled() {
   try {
     const settings = JSON.parse(readFileSync(CLAUDE_SETTINGS, 'utf-8'));
     if (!settings.hooks) return false;
-    for (const event of ['UserPromptSubmit', 'Stop']) {
+    for (const event of ['UserPromptSubmit', 'Stop', 'PreToolUse', 'PostToolUse']) {
       const handlers = settings.hooks[event];
       if (!Array.isArray(handlers)) return false;
       const found = handlers.some(
@@ -171,7 +171,7 @@ function installHooks({ silent = false } = {}) {
   };
 
   let changed = false;
-  for (const event of ['UserPromptSubmit', 'Stop']) {
+  for (const event of ['UserPromptSubmit', 'Stop', 'PreToolUse', 'PostToolUse']) {
     if (!settings.hooks[event]) {
       settings.hooks[event] = [];
     }
