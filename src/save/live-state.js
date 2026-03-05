@@ -99,7 +99,9 @@ export function createLiveState({ getState, setState, label = 'unknown' }) {
   function start() {
     if (pollHandle) return;
 
-    // Initial write so the other side can discover us
+    // Poll first to pick up any external changes (e.g. hook crumbs)
+    // before writing our state, so we don't overwrite them.
+    poll();
     write();
 
     pollHandle = setInterval(() => {

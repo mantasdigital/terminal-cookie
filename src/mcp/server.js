@@ -15,7 +15,7 @@ import { defineTools } from './tools.js';
 import { createPassiveRunner } from './passive-runner.js';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { writeFileSync, readFileSync, mkdirSync, existsSync } from 'fs';
+import { writeFileSync, readFileSync, mkdirSync, existsSync, renameSync } from 'fs';
 import { createSessionTracker } from './sessions.js';
 import { COOKIE_REACTIONS } from './reactions.js';
 import { createLiveState } from '../save/live-state.js';
@@ -25,8 +25,32 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__dirname, '..', '..');
 const SETTINGS_PATH = join(PROJECT_ROOT, 'data', 'settings.json');
 const SESSIONS_PATH = join(PROJECT_ROOT, 'data', 'sessions.json');
+const HOOK_CRUMBS_PATH = join(PROJECT_ROOT, 'saves', 'hook-crumbs.json');
 
+// Single scanner instance shared with tools.js
 const aiScanner = createScanner();
+
+// Track hook crumbs already drained so MCP never writes to the hook file
+let lastDrainedHookCrumbs = 0;
+
+/**
+ * Read hook-crumbs.json and add any new crumbs earned by hooks since last drain.
+ * MCP only reads this file, never writes — avoids race conditions with hooks.
+ */
+function drainHookCrumbs(gameState) {
+  try {
+    if (!existsSync(HOOK_CRUMBS_PATH)) return 0;
+    const data = JSON.parse(readFileSync(HOOK_CRUMBS_PATH, 'utf-8'));
+    const total = data.total || 0;
+    const delta = total - lastDrainedHookCrumbs;
+    lastDrainedHookCrumbs = total;
+    if (delta > 0) {
+      gameState.crumbs += delta;
+      gameState.stats.crumbsEarned = (gameState.stats.crumbsEarned || 0) + delta;
+    }
+    return delta;
+  } catch { return 0; }
+}
 
 // Initialize game systems
 const engine = createEngine();
@@ -87,7 +111,12 @@ const toolContext = {
   loadState(slot) {
     const result = loadGame(slot);
     if (result.success && result.data) {
-      // Reload engine with loaded state
+      // Clear stale keys from current state that aren't in the save,
+      // then load the save data cleanly
+      const staleKeys = ['securityAlerts', 'securityLog', '_tavernRoster', 'activeNPC', 'skillModifiers'];
+      for (const key of staleKeys) {
+        delete gameState[key];
+      }
       Object.assign(gameState, result.data);
     }
     return result;
@@ -97,15 +126,15 @@ const toolContext = {
   },
 };
 
-// Define tools
-const tools = defineTools();
+// Define tools (pass shared scanner to avoid loading rules twice)
+const tools = defineTools({ scanner: aiScanner });
 const toolMap = new Map(tools.map(t => [t.name, t]));
 
 // Create MCP server
 const server = new Server(
   {
     name: 'terminal-cookie',
-    version: '0.2.0',
+    version: '0.1.0',
   },
   {
     capabilities: {
@@ -148,6 +177,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       // Drain background events that happened since last tool call
       const backgroundEvents = passiveRunner.drain();
+
+      // Drain crumbs earned by Claude Code hooks (messages, selections, etc.)
+      const hookCrumbs = drainHookCrumbs(gameState);
 
       // === AUTO COOKIE CLICK on every tool call ===
       // Every interaction with Claude is a cookie click — you don't need to
@@ -244,8 +276,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const bonusParts = [];
         if (settingsBonus > 0) bonusParts.push(`+${settingsBonus} bonus`);
         if (sessionBonus > 0) bonusParts.push(`+${sessionBonus} multi-terminal`);
+        if (hookCrumbs > 0) bonusParts.push(`+${hookCrumbs} hooks`);
         const breakdown = bonusParts.length > 0 ? ` (${earned} + ${bonusParts.join(' + ')})` : '';
-        appendParts.push(`  +${totalAutoClick} crumbs${breakdown} | ${reaction}`);
+        const totalWithHooks = totalAutoClick + hookCrumbs;
+        appendParts.push(`  +${totalWithHooks} crumbs${breakdown} | ${reaction}`);
         appendParts.push(statusText);
       }
 
@@ -294,12 +328,17 @@ async function main() {
   // Autosave every 60s to a dedicated auto-save file (doesn't overwrite manual saves)
   const AUTOSAVE_DIR = join(PROJECT_ROOT, 'saves');
   const AUTOSAVE_PATH = join(AUTOSAVE_DIR, 'autosave.json');
+  const AUTOSAVE_TMP = AUTOSAVE_PATH + '.tmp';
   autosaveHandle = setInterval(() => {
     engine.mutex.withLock(() => {
       try {
         if (!existsSync(AUTOSAVE_DIR)) mkdirSync(AUTOSAVE_DIR, { recursive: true });
         const data = { ...engine.getStateRef(), savedAt: new Date().toISOString(), _autosave: true };
-        writeFileSync(AUTOSAVE_PATH, JSON.stringify(data, null, 2), 'utf-8');
+        // Drain any hook crumbs before saving
+        drainHookCrumbs(engine.getStateRef());
+        // Atomic write: write to temp, then rename
+        writeFileSync(AUTOSAVE_TMP, JSON.stringify(data, null, 2), 'utf-8');
+        renameSync(AUTOSAVE_TMP, AUTOSAVE_PATH);
       } catch {
         // best-effort autosave
       }

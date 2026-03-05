@@ -1,7 +1,6 @@
 // src/mcp/tools.js — MCP tool definitions with strict schemas
 
 import { masterCookie, miniCookie, trashCookie, explodeCookie, titleScreen, rollBar } from '../ui/ascii.js';
-import { createScanner } from '../security/scanner.js';
 import { createRedactor } from '../security/redactor.js';
 import { classifyPrompt } from '../prompts/classifier.js';
 import { generateTavernRoster } from '../game/team.js';
@@ -13,14 +12,16 @@ import { loadLocalScores, generateSubmissionFile } from '../leaderboard/submit.j
 import { formatCrumbs } from '../ui/format.js';
 import { createStoryManager } from '../game/story.js';
 
-const scanner = createScanner();
 const redactor = createRedactor();
 
 /**
  * All tool definitions for the MCP server.
  * Each tool has: name, description, inputSchema, handler(params, context)
+ * @param {object} [options]
+ * @param {object} [options.scanner] - Shared scanner instance (avoids duplicate rule loading)
  */
-export function defineTools() {
+export function defineTools(options = {}) {
+  const scanner = options.scanner || null;
   return [
     {
       name: 'cookie_click',
@@ -34,16 +35,18 @@ export function defineTools() {
         const { engine, cookie, scores, settings, sessions } = ctx;
         const state = engine.getStateRef();
 
-        // Power click gives 3x the normal click rate
-        const baseEarned = cookie.click();
-        const powerBonus = baseEarned * 2; // 2x extra on top of the 1x from click()
+        // Power click adds 2x extra on top of the auto-click that already happened
+        // in server.js (which gave 1x). Total = 3x the normal click rate.
+        const rate = cookie.currentRate();
+        const powerBonus = Math.floor(rate * 2);
         state.crumbs += powerBonus;
+        state.stats.crumbsEarned = (state.stats.crumbsEarned || 0) + powerBonus;
 
         const bonuses = settings.getBonuses();
-        const settingsBonus = Math.floor(baseEarned * 3 * (bonuses.crumbMultiplier - 1));
+        const settingsBonus = Math.floor(powerBonus * (bonuses.crumbMultiplier - 1));
         const sessionMultiplier = sessions ? sessions.multiplier() : 1.0;
-        const sessionBonus = Math.floor(baseEarned * 3 * (sessionMultiplier - 1));
-        const total = baseEarned * 3 + settingsBonus + sessionBonus;
+        const sessionBonus = Math.floor(powerBonus * (sessionMultiplier - 1));
+        const total = powerBonus + settingsBonus + sessionBonus;
 
         state.crumbs += settingsBonus + sessionBonus;
         scores.recordClick(total);
@@ -316,6 +319,9 @@ export function defineTools() {
       },
       handler(params, ctx) {
         const { scores } = ctx;
+        if (!scanner) {
+          return { content: [{ type: 'text', text: 'Scanner not available' }], isError: true };
+        }
         const result = scanner.scan(params.code);
 
         if (result.findings.length > 0) {

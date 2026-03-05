@@ -172,28 +172,20 @@ if (flags.setupHooks) {
 
 if (flags.mine) {
   // Silent cookie mine — called by Claude Code hooks on every interaction.
-  // Reads live.json, adds crumbs, writes back. Fast and silent (no stdout).
-  // UserPromptSubmit (sending messages) = 5 crumbs
-  // Stop (AI finishes responding) = 3 crumbs
-  // Choice selections (yes/no/remember) trigger both hooks = 8 total
-  const LIVE_PATH = join(PROJECT_ROOT, 'saves', 'live.json');
+  // Writes to a dedicated hook-crumbs.json counter that the MCP server drains.
+  // This avoids race conditions with the MCP server's live.json writes.
   const SAVES_DIR = join(PROJECT_ROOT, 'saves');
+  const HOOK_PATH = join(SAVES_DIR, 'hook-crumbs.json');
+  const crumbsEarned = 5;
   try {
     mkdirSync(SAVES_DIR, { recursive: true });
-    let data = {};
-    if (existsSync(LIVE_PATH)) {
-      data = JSON.parse(readFileSync(LIVE_PATH, 'utf-8'));
+    let hookData = { total: 0 };
+    if (existsSync(HOOK_PATH)) {
+      try { hookData = JSON.parse(readFileSync(HOOK_PATH, 'utf-8')); } catch { hookData = { total: 0 }; }
     }
-    const crumbsEarned = 5;
-    data.crumbs = (data.crumbs || 0) + crumbsEarned;
-    if (!data.stats) data.stats = {};
-    data.stats.crumbsEarned = (data.stats.crumbsEarned || 0) + crumbsEarned;
-    data._live = {
-      writerPid: process.pid,
-      writerLabel: 'hook',
-      writtenAt: Date.now(),
-    };
-    writeFileSync(LIVE_PATH, JSON.stringify(data, null, 2), 'utf-8');
+    hookData.total = (hookData.total || 0) + crumbsEarned;
+    hookData.lastWrite = Date.now();
+    writeFileSync(HOOK_PATH, JSON.stringify(hookData), 'utf-8');
   } catch {
     // Silent fail — hooks must not break the user's workflow
   }

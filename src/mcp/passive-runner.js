@@ -77,6 +77,9 @@ export function createPassiveRunner({ engine, rng, settings, scores, sessions })
       case 'loot':
         handleLootRoom(dungeon, room);
         break;
+      case 'miniboss':
+        handleMinibossRoom(dungeon, room);
+        break;
       case 'npc':
         handleNPCRoom(dungeon, room);
         break;
@@ -192,6 +195,83 @@ export function createPassiveRunner({ engine, rng, settings, scores, sessions })
     log(`Room ${room.id}: BOSS encountered! ${enemies[0].name} blocks your path.`);
   }
 
+  function handleMinibossRoom(dungeon, room) {
+    const enemies = generateRoomEnemies({
+      biome: dungeon.biome,
+      level: dungeon.level,
+      rng,
+      roomType: 'monster',
+    });
+
+    // Minibosses are tougher: buff stats by 50%
+    for (const e of enemies) {
+      e.stats.hp = Math.round(e.stats.hp * 1.5);
+      e.maxHp = e.stats.hp;
+      e.currentHp = e.stats.hp;
+      e.stats.atk = Math.round(e.stats.atk * 1.3);
+      e.stats.def = Math.round(e.stats.def * 1.2);
+    }
+
+    const aliveTeam = state.team.filter(m => m.alive && m.currentHp > 0);
+    if (aliveTeam.length === 0) {
+      log(`Room ${room.id}: A miniboss blocks the path but your team is dead!`);
+      return;
+    }
+
+    const combat = createCombat({ team: aliveTeam, enemies, rng });
+    const result = combat.autoResolveAll();
+
+    const survivorIds = new Set();
+    for (const c of combat.combatants) {
+      if (c.side === 'team') {
+        survivorIds.add(c.id);
+        const member = state.team.find(m => m.id === c.id);
+        if (member) {
+          member.currentHp = c.currentHp;
+          if (c.currentHp <= 0) member.alive = false;
+        }
+      }
+    }
+    for (const m of aliveTeam) {
+      if (!survivorIds.has(m.id)) {
+        m.currentHp = 0;
+        m.alive = false;
+      }
+    }
+
+    if (result.outcome === 'victory') {
+      const slain = enemies.length;
+      state.stats.monstersSlain = (state.stats.monstersSlain || 0) + slain;
+      scores.increment('monsters_slain', slain);
+
+      for (const member of state.team.filter(m => m.alive)) {
+        awardXP(member, dungeon.level);
+      }
+
+      // Miniboss guaranteed loot
+      const item = generateLoot({ level: dungeon.level, rng, minRarity: 'Rare' });
+      if (item) {
+        if (state.passiveConfig.autoLoot) {
+          if (state.passiveConfig.autoSell) {
+            const value = sellValue(item);
+            state.crumbs += value;
+            log(`Room ${room.id}: Miniboss defeated! Auto-sold ${item.name} for ${value} crumbs.`);
+          } else {
+            state.inventory.push(item);
+            log(`Room ${room.id}: Miniboss defeated! Looted ${item.name} [${item.rarity}]`);
+          }
+        } else {
+          queuePending('loot', `Miniboss drop: ${item.name}`, ['take', 'sell', 'leave'], { items: [item] });
+          log(`Room ${room.id}: Miniboss defeated! Loot awaits.`);
+        }
+      } else {
+        log(`Room ${room.id}: Miniboss defeated in ${result.rounds} rounds!`);
+      }
+    } else {
+      log(`Room ${room.id}: Defeated by the miniboss...`);
+    }
+  }
+
   function handleTrapRoom(dungeon, room) {
     const aliveTeam = state.team.filter(m => m.alive && m.currentHp > 0);
     if (aliveTeam.length === 0) return;
@@ -276,6 +356,7 @@ export function createPassiveRunner({ engine, rng, settings, scores, sessions })
       const crumbReward = dungeon.level * 50;
       state.crumbs += crumbReward;
       state.stats.runs = (state.stats.runs || 0) + 1;
+      scores.recordDungeonClear(dungeon.level);
       log(`Dungeon complete! +${crumbReward} crumbs.`);
       state.dungeonProgress = null;
       return;
@@ -288,6 +369,8 @@ export function createPassiveRunner({ engine, rng, settings, scores, sessions })
       dungeon.completed = true;
       const crumbReward = dungeon.level * 30;
       state.crumbs += crumbReward;
+      state.stats.runs = (state.stats.runs || 0) + 1;
+      scores.recordDungeonClear(dungeon.level);
       log(`Dead end reached. Dungeon cleared! +${crumbReward} crumbs.`);
       state.dungeonProgress = null;
       return;

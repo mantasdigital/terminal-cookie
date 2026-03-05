@@ -30,7 +30,7 @@ let nextItemId = 1;
  * @param {Set<string>} [options.usedSignatures] - Track duplicates in this dungeon
  * @returns {object|null} Loot item, or null if duplicate couldn't be avoided
  */
-export function generateLoot({ level, rng, slot, minRarity, qualityBonus = 0, usedSignatures }) {
+export function generateLoot({ level, rng, slot, minRarity, qualityBonus = 0, usedSignatures, _depth = 0 }) {
   const data = loadLootData();
 
   // Pick slot
@@ -71,8 +71,9 @@ export function generateLoot({ level, rng, slot, minRarity, qualityBonus = 0, us
   const signature = `${name}|${power}|${itemSlot}`;
   if (usedSignatures) {
     if (usedSignatures.has(signature)) {
-      // Try once more with different picks
-      return generateLoot({ level, rng, slot: itemSlot, minRarity: minRarity, qualityBonus, usedSignatures });
+      // Try once more with different picks, but cap recursion depth
+      if (_depth >= 5) return null;
+      return generateLoot({ level, rng, slot: itemSlot, minRarity: minRarity, qualityBonus, usedSignatures, _depth: _depth + 1 });
     }
     usedSignatures.add(signature);
   }

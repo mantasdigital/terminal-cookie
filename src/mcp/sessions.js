@@ -9,6 +9,7 @@ import { dirname } from 'path';
 import { randomBytes } from 'crypto';
 
 const SESSION_TTL_MS = 300_000; // 5 min inactivity = session expired
+let exitHandlerRegistered = false;
 
 /**
  * Create a session tracker that persists to a shared JSON file.
@@ -82,8 +83,11 @@ export function createSessionTracker(filePath) {
     save(data);
   }
 
-  // Clean up on exit
-  process.on('exit', deregister);
+  // Clean up on exit (only register once)
+  if (!exitHandlerRegistered) {
+    process.on('exit', deregister);
+    exitHandlerRegistered = true;
+  }
 
   // Register immediately
   heartbeat();

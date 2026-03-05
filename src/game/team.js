@@ -31,6 +31,8 @@ const FIRST_NAMES = [
   'Wren', 'Yarrow', 'Zinc', 'Basil', 'Clay', 'Drift', 'Echo', 'Flint',
 ];
 
+let nextMemberId = 1;
+
 const PORTRAIT_PARTS = {
   Human:  { head: ' O ', body: '/|\\', legs: '/ \\' },
   Dwarf:  { head: '{O}', body: '[+]', legs: ' | ' },
@@ -70,7 +72,7 @@ export function generateMember(rng) {
   const cost = totalStats * 2;
 
   return {
-    id: rng.int(10000, 99999),
+    id: nextMemberId++,
     name,
     race,
     class: cls,
