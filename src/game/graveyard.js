@@ -11,13 +11,12 @@ const GRAVEYARD_RUN_WINDOW = 3;
  * @returns {object} Graveyard instance
  */
 export function createGraveyard(gameState) {
-  // Persistent graveyard state
-  if (!gameState.graveyard) {
-    gameState.graveyard = {
-      /** @type {Array<{ seed: number, equipment: object[], runsRemaining: number }>} */
-      graves: [],
-    };
+  function ensureState() {
+    if (!gameState.graveyard) {
+      gameState.graveyard = { graves: [] };
+    }
   }
+  ensureState();
 
   const graveyard = {
     /**
@@ -26,6 +25,7 @@ export function createGraveyard(gameState) {
      * @param {number} dungeonSeed - Seed of the dungeon where they died
      */
     recordWipe(deadTeam, dungeonSeed) {
+      ensureState();
       const equipment = [];
       for (const member of deadTeam) {
         const eq = member.equipment ?? {};
@@ -57,6 +57,7 @@ export function createGraveyard(gameState) {
      * @returns {object[]} Recovered items
      */
     attemptRecovery(dungeonSeed, rng, luckStat = 5) {
+      ensureState();
       const graveIdx = gameState.graveyard.graves.findIndex(
         (g) => g.seed === dungeonSeed && g.runsRemaining > 0
       );
@@ -81,6 +82,7 @@ export function createGraveyard(gameState) {
      * Decrement run counters on all graves. Call after each dungeon run.
      */
     ageGraves() {
+      ensureState();
       for (const grave of gameState.graveyard.graves) {
         grave.runsRemaining--;
       }
@@ -95,6 +97,7 @@ export function createGraveyard(gameState) {
      * @returns {boolean}
      */
     hasGrave(dungeonSeed) {
+      ensureState();
       return gameState.graveyard.graves.some(
         (g) => g.seed === dungeonSeed && g.runsRemaining > 0
       );
@@ -102,6 +105,7 @@ export function createGraveyard(gameState) {
 
     /** @returns {number} Number of active graves */
     get activeGraves() {
+      ensureState();
       return gameState.graveyard.graves.length;
     },
   };
