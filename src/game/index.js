@@ -79,6 +79,7 @@ export async function runGame(options = {}) {
   // ── Live state bridge (syncs with MCP server) ─────────────────
   const liveState = createLiveState({
     getState: () => engine.getState(),
+    skipInitialPoll: options.newGame === true,
     setState: (external) => {
       // Merge MCP server changes into local state
       const local = engine.getStateRef();
@@ -272,8 +273,12 @@ export async function runGame(options = {}) {
             state.stats.monstersSlain = (state.stats.monstersSlain ?? 0) + 1;
             const dp = state.dungeonProgress;
             const level = dp?.level ?? 1;
-            const bonuses = settings.getBonuses();
-            state.pendingLoot = generateEnemyDrops({ level, rng, qualityBonus: bonuses.lootFindBonus });
+            const defeatedEnemies = activeCombat.combatants.filter(c => c.side === 'enemy');
+            const drops = [];
+            for (const enemy of defeatedEnemies) {
+              drops.push(...generateEnemyDrops({ enemy, level, rng }));
+            }
+            state.pendingLoot = drops;
             for (const m of (state.team ?? []).filter(t => t.currentHp > 0)) {
               awardXP(m, level);
             }
@@ -293,6 +298,27 @@ export async function runGame(options = {}) {
             rollBar = null;
             workModeLog('Auto: team defeated');
             await engine.transition(GameState.DEATH);
+          } else if (attackResult.error) {
+            // Combat stuck — force recovery
+            activeCombat = null;
+            rollBar = null;
+            workModeLog('Auto: combat error, recovering');
+            if (state.dungeonProgress) {
+              try { await engine.transition(GameState.DUNGEON); } catch { /* ignore */ }
+            } else {
+              try { await engine.transition(GameState.TAVERN); } catch { /* ignore */ }
+            }
+          }
+        } else {
+          // No active combat but stuck in COMBAT state — recover
+          activeCombat = null;
+          rollBar = null;
+          if (state.dungeonProgress) {
+            try { await engine.transition(GameState.DUNGEON); } catch {
+              try { await engine.transition(GameState.TAVERN); } catch { /* stuck */ }
+            }
+          } else {
+            try { await engine.transition(GameState.TAVERN); } catch { /* stuck */ }
           }
         }
         return;
@@ -400,8 +426,9 @@ export async function runGame(options = {}) {
           const isBoss = room.type === 'boss' || room.type === 'miniboss';
           // Scale enemy level by room depth for progressive difficulty
           const roomLevel = dungeonLevel + Math.floor(room.depth * 0.3);
-          const enemies = generateRoomEnemies({ level: roomLevel, rng, isBoss });
-          room.enemy = enemies[0] ?? generateEnemy({ level: roomLevel, rng });
+          const biome = state.dungeonProgress.biome ?? 'cave';
+          const enemies = generateRoomEnemies({ biome, level: roomLevel, rng, roomType: isBoss ? 'boss' : 'monster' });
+          room.enemy = enemies[0] ?? generateEnemy({ biome, level: roomLevel, rng });
           room.enemies = enemies;
         } else if (room.type === 'loot') {
           room.content = 'loot';
@@ -531,8 +558,11 @@ export async function runGame(options = {}) {
           // Generate loot drops from defeated enemies
           const dp = state.dungeonProgress;
           const level = dp?.level ?? 1;
-          const bonuses = settings.getBonuses();
-          const drops = generateEnemyDrops({ level, rng, qualityBonus: bonuses.lootFindBonus });
+          const defeatedEnemies = activeCombat.combatants.filter(c => c.side === 'enemy');
+          const drops = [];
+          for (const enemy of defeatedEnemies) {
+            drops.push(...generateEnemyDrops({ enemy, level, rng }));
+          }
           state.pendingLoot = drops;
           // Award XP to surviving team
           for (const m of (state.team ?? []).filter(t => t.currentHp > 0)) {
@@ -564,8 +594,12 @@ export async function runGame(options = {}) {
         state.stats.monstersSlain = (state.stats.monstersSlain ?? 0) + 1;
         const dp = state.dungeonProgress;
         const level = dp?.level ?? 1;
-        const bonuses = settings.getBonuses();
-        state.pendingLoot = generateEnemyDrops({ level, rng, qualityBonus: bonuses.lootFindBonus });
+        const defeatedEnemies = activeCombat.combatants.filter(c => c.side === 'enemy');
+        const allDrops = [];
+        for (const enemy of defeatedEnemies) {
+          allDrops.push(...generateEnemyDrops({ enemy, level, rng }));
+        }
+        state.pendingLoot = allDrops;
         for (const m of (state.team ?? []).filter(t => t.currentHp > 0)) {
           awardXP(m, level);
         }

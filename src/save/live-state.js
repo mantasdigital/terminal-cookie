@@ -24,7 +24,7 @@ const POLL_INTERVAL_MS = 1000;
  * @param {string}   [options.label]   - Process label for logging ('game' or 'mcp')
  * @returns {object} Bridge instance
  */
-export function createLiveState({ getState, setState, label = 'unknown' }) {
+export function createLiveState({ getState, setState, label = 'unknown', skipInitialPoll = false }) {
   const pid = process.pid;
   let lastMtimeMs = 0;
   let lastWriteMs = 0;
@@ -101,7 +101,10 @@ export function createLiveState({ getState, setState, label = 'unknown' }) {
 
     // Poll first to pick up any external changes (e.g. hook crumbs)
     // before writing our state, so we don't overwrite them.
-    poll();
+    // Skip initial poll on new games to avoid loading stale crumbs.
+    if (!skipInitialPoll) {
+      poll();
+    }
     write();
 
     pollHandle = setInterval(() => {
