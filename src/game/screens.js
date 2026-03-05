@@ -12,6 +12,7 @@ import { loadLeaderboard, formatLeaderboardCompact, formatLeaderboardFull } from
 import { readFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { formatCrumbs } from '../ui/format.js';
 
 const __screens_dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__screens_dirname, '..', '..');
@@ -77,6 +78,66 @@ function renderAIBadge(state, renderer) {
   renderer.bufferWrite(0, Math.max(0, cols - badgeLen - 1), badge);
 }
 
+/**
+ * Render security alert banner at the top of the screen.
+ * Auto-dismisses alerts older than 15 seconds.
+ */
+function renderSecurityBanner(state, renderer) {
+  if (!state.securityAlerts || state.securityAlerts.length === 0) return;
+
+  const now = Date.now();
+  // Auto-dismiss alerts older than 15 seconds
+  // Note: we filter but don't mutate state here (render is read-only)
+  const active = state.securityAlerts.filter(a => now - a.time < 15000);
+  if (active.length === 0) return;
+
+  const latest = active[active.length - 1];
+  const cols = renderer.capabilities.cols;
+  const banner = `[!] SECURITY: ${latest.summary}`;
+  renderer.bufferWrite(1, 0, renderer.color(banner.substring(0, cols), 'red'));
+}
+
+/**
+ * Render security log overlay (toggled with ! key).
+ * Shows the last 20 entries from state.securityLog.
+ */
+function renderSecurityLogOverlay(state, renderer) {
+  if (!ui.securityLogVisible) return;
+
+  const log = state.securityLog ?? [];
+  const cols = renderer.capabilities.cols;
+  const rows = renderer.capabilities.rows;
+  const maxEntries = Math.min(log.length, 20);
+  const height = maxEntries + 4;
+  const width = Math.min(cols - 4, 70);
+  const startRow = Math.max(0, Math.floor((rows - height) / 2));
+  const startCol = Math.max(0, Math.floor((cols - width) / 2));
+
+  // Border
+  const border = '+' + '-'.repeat(width - 2) + '+';
+  renderer.bufferWrite(startRow, startCol, border);
+  const title = '| SECURITY LOG (press ! to close)';
+  renderer.bufferWrite(startRow + 1, startCol, title + ' '.repeat(Math.max(0, width - title.length - 1)) + '|');
+
+  if (log.length === 0) {
+    const empty = '|  No security events recorded.';
+    renderer.bufferWrite(startRow + 2, startCol, empty + ' '.repeat(Math.max(0, width - empty.length - 1)) + '|');
+  } else {
+    const recent = log.slice(-maxEntries);
+    for (let i = 0; i < recent.length; i++) {
+      const entry = recent[i];
+      const time = new Date(entry.time).toLocaleTimeString();
+      const line = `|  [${time}] ${entry.summary}`;
+      const trimmed = line.substring(0, width - 1);
+      renderer.bufferWrite(startRow + 2 + i, startCol,
+        renderer.color(trimmed + ' '.repeat(Math.max(0, width - trimmed.length - 1)) + '|', 'red'));
+    }
+  }
+
+  const bottomRow = startRow + 2 + Math.max(maxEntries, 1);
+  renderer.bufferWrite(bottomRow, startCol, border);
+}
+
 // ── Shared helpers ──────────────────────────────────────────────────
 
 function hpBar(current, max, width = 20) {
@@ -99,13 +160,34 @@ const ui = {
   settingIndex: 0,
   helpVisible: false,
   leaderboardVisible: false,
+  securityLogVisible: false,
   notification: '',
   notificationTimeout: null,
+  modeSelectVisible: false,
+  modeSelection: 0, // 0=default, 1=work
 };
 
 function notify(renderer, msg, level = 'info') {
   renderer.showNotification(msg, level);
   ui.notification = msg;
+}
+
+/**
+ * Render work mode badge on all screens when in work mode.
+ */
+function renderWorkModeBadge(state, renderer) {
+  if (state.gameMode !== 'work') return;
+  renderer.bufferWrite(0, 2, renderer.color(' WORK MODE ', 'yellow'));
+
+  // Show last 5 passive log entries near bottom
+  const log = state.passiveLog ?? [];
+  const recent = log.slice(-5);
+  const rows = renderer.capabilities.rows;
+  const startRow = Math.max(0, rows - 7);
+  for (let i = 0; i < recent.length; i++) {
+    const entry = typeof recent[i] === 'string' ? recent[i] : recent[i]?.message ?? '';
+    renderer.bufferWrite(startRow + i, 2, renderer.dim(truncate(entry, renderer.capabilities.cols - 4)));
+  }
 }
 
 // ── MENU SCREEN ─────────────────────────────────────────────────────
@@ -158,6 +240,8 @@ const menuScreen = {
 
     renderer.showStatus('Arrows=navigate Enter=select L=leaderboard Q=quit ?=help');
     renderAIBadge(state, renderer);
+    renderSecurityBanner(state, renderer);
+    renderSecurityLogOverlay(state, renderer);
 
     // Full leaderboard overlay
     if (ui.leaderboardVisible) {
@@ -179,10 +263,89 @@ const menuScreen = {
         renderer.bufferWrite(startRow + i, startCol, helpLines[i]);
       }
     }
+
+    // Mode selection overlay
+    if (ui.modeSelectVisible) {
+      const rows = renderer.capabilities.rows;
+      const midCol = Math.floor(cols / 2);
+      const startRow = Math.max(2, Math.floor(rows / 2) - 6);
+
+      // Clear center area
+      for (let r = startRow - 1; r < startRow + 12; r++) {
+        renderer.bufferWrite(r, 0, ' '.repeat(cols));
+      }
+
+      const titleText = '=== Choose Your Mode ===';
+      renderer.bufferWrite(startRow, Math.floor((cols - titleText.length) / 2), renderer.bold(titleText));
+
+      const dividerCol = midCol;
+      const leftCol = Math.max(2, midCol - 24);
+      const rightCol = midCol + 3;
+
+      const leftLines = [
+        'DEFAULT MODE',
+        '',
+        'You make all choices',
+        'Full dungeon crawler',
+        'Manual recruiting',
+        'Control every action',
+      ];
+      const rightLines = [
+        'WORK MODE',
+        '',
+        'Game plays itself',
+        'Focus on your coding',
+        'Auto-recruit & fight',
+        'Never blocks for input',
+      ];
+
+      const isLeft = ui.modeSelection === 0;
+      for (let i = 0; i < leftLines.length; i++) {
+        const row = startRow + 2 + i;
+        const leftText = isLeft ? renderer.bold(leftLines[i]) : renderer.dim(leftLines[i]);
+        const rightText = !isLeft ? renderer.bold(rightLines[i]) : renderer.dim(rightLines[i]);
+        renderer.bufferWrite(row, leftCol, leftText);
+        if (i > 0) renderer.bufferWrite(row, dividerCol, '|');
+        renderer.bufferWrite(row, rightCol, rightText);
+      }
+
+      // Selection markers
+      const markerRow = startRow + 2;
+      if (isLeft) {
+        renderer.bufferWrite(markerRow, leftCol - 3, renderer.bold('>>'));
+        renderer.bufferWrite(markerRow, leftCol + 14, renderer.bold('<<'));
+      } else {
+        renderer.bufferWrite(markerRow, rightCol - 3, renderer.bold('>>'));
+        renderer.bufferWrite(markerRow, rightCol + 11, renderer.bold('<<'));
+      }
+
+      const helpRow = startRow + 9;
+      const helpText = 'Left/Right=choose  Enter=confirm  Esc=back';
+      renderer.bufferWrite(helpRow, Math.floor((cols - helpText.length) / 2), renderer.dim(helpText));
+    }
+
+    renderWorkModeBadge(state, renderer);
     renderer.render();
   },
 
   async handleInput(key, engine) {
+    // Mode selection overlay intercepts all keys
+    if (ui.modeSelectVisible) {
+      if (key === 'left' || key === 'right') {
+        ui.modeSelection = ui.modeSelection === 0 ? 1 : 0;
+      } else if (key === 'enter') {
+        const state = engine.getStateRef();
+        state.gameMode = ui.modeSelection === 0 ? 'default' : 'work';
+        ui.modeSelectVisible = false;
+        await engine.transition(GameState.TAVERN);
+      } else if (key === 'escape') {
+        ui.modeSelectVisible = false;
+      }
+      return;
+    }
+
+    if (key === '!') { ui.securityLogVisible = !ui.securityLogVisible; return; }
+    if (ui.securityLogVisible) { if (key === 'escape') ui.securityLogVisible = false; return; }
     if (key === '?') { ui.helpVisible = !ui.helpVisible; return; }
     if (ui.helpVisible) { if (key === 'escape') ui.helpVisible = false; return; }
     if (ui.leaderboardVisible) { if (key === 'escape' || key === 'l') ui.leaderboardVisible = false; return; }
@@ -192,7 +355,8 @@ const menuScreen = {
     else if (key === 'enter' || key === 'space') {
       switch (ui.menuIndex) {
         case 0: // New Game
-          await engine.transition(GameState.TAVERN);
+          ui.modeSelectVisible = true;
+          ui.modeSelection = 0;
           break;
         case 1: // Load Game
           await engine.transition(GameState.TAVERN);
@@ -208,7 +372,8 @@ const menuScreen = {
           break;
       }
     } else if (key === 'n') {
-      await engine.transition(GameState.TAVERN);
+      ui.modeSelectVisible = true;
+      ui.modeSelection = 0;
     } else if (key === 'l') {
       ui.leaderboardVisible = !ui.leaderboardVisible;
     } else if (key === 's') {
@@ -233,7 +398,7 @@ const tavernScreen = {
     for (let i = 0; i < cookieArt.length; i++) {
       renderer.bufferWrite(2 + i, 2, cookieArt[i]);
     }
-    renderer.bufferWrite(2, 12, renderer.bold(`Crumbs: ${state.crumbs ?? 0}`));
+    renderer.bufferWrite(2, 12, renderer.bold(`Crumbs: ${formatCrumbs(state.crumbs ?? 0)}`));
     renderer.bufferWrite(3, 12, '[C] Click cookie');
 
     // Tabs
@@ -312,6 +477,9 @@ const tavernScreen = {
 
     renderer.showStatus('C=cookie R=recruit I=inventory E=dungeon W=save Ctrl-C=quit ?=help');
     renderAIBadge(state, renderer);
+    renderWorkModeBadge(state, renderer);
+    renderSecurityBanner(state, renderer);
+    renderSecurityLogOverlay(state, renderer);
     if (ui.helpVisible) {
       const help = renderHelp('TAVERN');
       const helpLines = help.split('\n');
@@ -325,6 +493,8 @@ const tavernScreen = {
   },
 
   async handleInput(key, engine) {
+    if (key === '!') { ui.securityLogVisible = !ui.securityLogVisible; return; }
+    if (ui.securityLogVisible) { if (key === 'escape') ui.securityLogVisible = false; return; }
     if (key === '?') { ui.helpVisible = !ui.helpVisible; return; }
     if (ui.helpVisible) { if (key === 'escape') ui.helpVisible = false; return; }
 
@@ -425,6 +595,23 @@ const dungeonScreen = {
         renderer.bufferWrite(5, roomCol, renderer.color('A trap!', 'red'));
       } else if (room.content === 'shrine') {
         renderer.bufferWrite(5, roomCol, renderer.color('A mysterious shrine...', 'cyan'));
+      } else if (room.content === 'npc') {
+        renderer.bufferWrite(5, roomCol, renderer.color('A mysterious figure...', 'magenta'));
+        if (state.activeNPC) {
+          renderer.bufferWrite(6, roomCol, renderer.bold(state.activeNPC.name));
+          renderer.bufferWrite(7, roomCol, truncate(`"${state.activeNPC.dialogue}"`, cols - roomCol - 2));
+        }
+      }
+
+      // Story log — latest 3 entries
+      const storyLog = state.storyLog || [];
+      const recentStory = storyLog.slice(-3);
+      if (recentStory.length > 0) {
+        const storyRow = 10;
+        renderer.bufferWrite(storyRow, roomCol, renderer.dim('-- Story --'));
+        for (let i = 0; i < recentStory.length; i++) {
+          renderer.bufferWrite(storyRow + 1 + i, roomCol, renderer.dim(truncate(recentStory[i].text, cols - roomCol - 2)));
+        }
       }
 
       // Fork options
@@ -439,9 +626,17 @@ const dungeonScreen = {
       }
     }
 
-    // Party summary along bottom
+    // Active skill modifiers
     const team = state.team ?? [];
     const partyRow = renderer.capabilities.rows - 4;
+    const mods = state.skillModifiers || [];
+    if (mods.length > 0) {
+      const modRow = partyRow - 2;
+      const modStr = mods.map(m => `${m.stat}${m.amount > 0 ? '+' : ''}${m.amount}(${m.duration === -1 ? 'perm' : m.duration + 'r'})`).join(' ');
+      renderer.bufferWrite(modRow, 2, renderer.dim('Mods: ' + truncate(modStr, cols - 6)));
+    }
+
+    // Party summary along bottom
     for (let i = 0; i < Math.min(team.length, 4); i++) {
       const m = team[i];
       const col = i * Math.floor(cols / 4);
@@ -450,6 +645,9 @@ const dungeonScreen = {
 
     renderer.showStatus('Arrows=navigate Enter=interact W=save Esc=retreat ?=help');
     renderAIBadge(state, renderer);
+    renderWorkModeBadge(state, renderer);
+    renderSecurityBanner(state, renderer);
+    renderSecurityLogOverlay(state, renderer);
     if (ui.helpVisible) {
       const help = renderHelp('DUNGEON');
       const helpLines = help.split('\n');
@@ -463,6 +661,8 @@ const dungeonScreen = {
   },
 
   async handleInput(key, engine) {
+    if (key === '!') { ui.securityLogVisible = !ui.securityLogVisible; return; }
+    if (ui.securityLogVisible) { if (key === 'escape') ui.securityLogVisible = false; return; }
     if (key === '?') { ui.helpVisible = !ui.helpVisible; return; }
     if (ui.helpVisible) { if (key === 'escape') ui.helpVisible = false; return; }
 
@@ -558,6 +758,9 @@ const combatScreen = {
 
     renderer.showStatus('Space/Enter=roll | A=attack S=special U=item F=flee | ?=help');
     renderAIBadge(state, renderer);
+    renderWorkModeBadge(state, renderer);
+    renderSecurityBanner(state, renderer);
+    renderSecurityLogOverlay(state, renderer);
     if (ui.helpVisible) {
       const help = renderHelp('COMBAT');
       const helpLines = help.split('\n');
@@ -571,6 +774,8 @@ const combatScreen = {
   },
 
   async handleInput(key, engine) {
+    if (key === '!') { ui.securityLogVisible = !ui.securityLogVisible; return; }
+    if (ui.securityLogVisible) { if (key === 'escape') ui.securityLogVisible = false; return; }
     if (key === '?') { ui.helpVisible = !ui.helpVisible; return; }
     if (ui.helpVisible) { if (key === 'escape') ui.helpVisible = false; return; }
 
@@ -629,6 +834,7 @@ const lootScreen = {
 
     renderer.showStatus('Up/Down=select E=equip S=sell D=discard Enter=continue');
     renderAIBadge(state, renderer);
+    renderWorkModeBadge(state, renderer);
     renderer.render();
   },
 
@@ -690,10 +896,16 @@ const deathScreen = {
     // Death summary
     const summaryRow = 14;
     renderer.bufferWrite(summaryRow, 4, renderer.bold('Run Summary:'));
-    renderer.bufferWrite(summaryRow + 1, 6, `Crumbs earned:  ${stats.crumbsEarned ?? 0}`);
+    renderer.bufferWrite(summaryRow + 1, 6, `Crumbs earned:  ${formatCrumbs(stats.crumbsEarned ?? 0)}`);
     renderer.bufferWrite(summaryRow + 2, 6, `Monsters slain: ${stats.monstersSlain ?? 0}`);
     renderer.bufferWrite(summaryRow + 3, 6, `Rooms cleared:  ${stats.roomsCleared ?? 0}`);
     renderer.bufferWrite(summaryRow + 4, 6, `Total deaths:   ${stats.deaths ?? 0}`);
+
+    // Death penalty display
+    const penalty = state.lastDeathPenalty ?? 0;
+    if (penalty > 0) {
+      renderer.bufferWrite(summaryRow + 5, 6, renderer.color(`Crumbs lost:    ${penalty} (death penalty)`, 'red'));
+    }
 
     // Recovered loot
     const recovered = state.recoveredLoot ?? [];
@@ -716,10 +928,15 @@ const deathScreen = {
 
     renderer.showStatus('Press Enter to continue');
     renderAIBadge(state, renderer);
+    renderWorkModeBadge(state, renderer);
+    renderSecurityBanner(state, renderer);
+    renderSecurityLogOverlay(state, renderer);
     renderer.render();
   },
 
   async handleInput(key, engine) {
+    if (key === '!') { ui.securityLogVisible = !ui.securityLogVisible; return; }
+    if (ui.securityLogVisible) { if (key === 'escape') ui.securityLogVisible = false; return; }
     switch (key) {
       case 'enter':
         await engine.transition(GameState.TAVERN);
@@ -740,8 +957,11 @@ const SETTINGS_LAYOUT = [
   { section: 'Security', key: 'security.vaultEnabled', label: 'Enable Vault', bonus: '+10% crumbs' },
   { section: 'Security', key: 'security.autoRedact', label: 'Auto-Redact', bonus: '+5% loot find' },
   { section: 'Security', key: 'security.encryptedClipboard', label: 'Encrypted Clipboard', bonus: '+5% XP' },
+  { section: 'Security', key: 'security.aiMonitor', label: 'AI Activity Monitor', bonus: '+5% crumbs' },
   { section: 'Voice', key: 'voice.enabled', label: 'Voice Control', bonus: '' },
   { section: 'Voice', key: 'voice.feedbackSound', label: 'Voice Feedback Sound', bonus: '' },
+  { section: 'Voice', key: 'voice.inputWords.choice1', label: 'Voice Word: Choice 1', bonus: '' },
+  { section: 'Voice', key: 'voice.inputWords.choice2', label: 'Voice Word: Choice 2', bonus: '' },
   { section: 'Game', key: 'game.colorBlindMode', label: 'Color-Blind Mode', bonus: '+2% loot find' },
   { section: 'Game', key: 'game.compactMode', label: 'Compact Mode', bonus: '' },
   { section: 'Game', key: 'game.showAIStatus', label: 'Show AI Status', bonus: '' },
@@ -798,10 +1018,15 @@ const settingsScreen = {
 
     renderer.showStatus('Up/Down=navigate Enter=toggle R=reset Esc=back ?=help');
     renderAIBadge(state, renderer);
+    renderWorkModeBadge(state, renderer);
+    renderSecurityBanner(state, renderer);
+    renderSecurityLogOverlay(state, renderer);
     renderer.render();
   },
 
   async handleInput(key, engine) {
+    if (key === '!') { ui.securityLogVisible = !ui.securityLogVisible; return; }
+    if (ui.securityLogVisible) { if (key === 'escape') ui.securityLogVisible = false; return; }
     switch (key) {
       case 'up':
         ui.settingIndex = Math.max(0, ui.settingIndex - 1);
@@ -860,6 +1085,7 @@ const helpScreen = {
 
     renderer.showStatus('Esc=back');
     renderAIBadge(state, renderer);
+    renderWorkModeBadge(state, renderer);
     renderer.render();
   },
 
@@ -907,6 +1133,9 @@ export function resetUIState() {
   ui.lootIndex = 0;
   ui.helpVisible = false;
   ui.leaderboardVisible = false;
+  ui.securityLogVisible = false;
+  ui.modeSelectVisible = false;
+  ui.modeSelection = 0;
 }
 
 export { screens };

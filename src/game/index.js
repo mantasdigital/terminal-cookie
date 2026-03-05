@@ -21,6 +21,7 @@ import { generateDungeon, moveToRoom, clearRoom, getAvailableMoves } from './dun
 import { generateEnemy, generateRoomEnemies } from './enemies.js';
 import { generateLoot, generateEnemyDrops, equipItem, sellValue } from './loot.js';
 import { createEventManager } from './events.js';
+import { createStoryManager } from './story.js';
 import { getScreen, getUIState, resetUIState } from './screens.js';
 import { classifyPrompt } from '../prompts/classifier.js';
 import { getWidget } from '../prompts/widgets.js';
@@ -135,6 +136,7 @@ export async function runGame(options = {}) {
   const graveyard = createGraveyard(state);
   const tutorial = createTutorial(state);
   const eventManager = createEventManager();
+  const storyManager = createStoryManager(state);
   let rollBar = null;
   let activeCombat = null;
   let voiceController = null;
@@ -157,6 +159,195 @@ export async function runGame(options = {}) {
   // Generate initial tavern roster if none
   if (!state.tavernRoster || state.tavernRoster.length === 0) {
     state.tavernRoster = generateTavernRoster(rng);
+  }
+
+  // ── Work mode auto-loop ──────────────────────────────────────────
+  let workModeLastCookieClick = 0;
+  let workModeLastRecruit = 0;
+  let workModeLastRoomAdvance = 0;
+  let workModeLastDeathRecover = 0;
+  let workModeLastLootAction = 0;
+
+  function isWorkMode() { return state.gameMode === 'work'; }
+
+  function workModeLog(msg) {
+    state.passiveLog = state.passiveLog ?? [];
+    state.passiveLog.push({ message: msg, time: Date.now() });
+    if (state.passiveLog.length > 50) state.passiveLog.splice(0, state.passiveLog.length - 50);
+  }
+
+  async function workModeTick() {
+    const now = Date.now();
+    const currentState = state.currentState;
+
+    try {
+      if (currentState === GameState.MENU) {
+        await engine.transition(GameState.TAVERN);
+        workModeLog('Auto: entering tavern');
+        return;
+      }
+
+      if (currentState === GameState.SETTINGS || currentState === GameState.HELP) {
+        try { await engine.transition(GameState.TAVERN); } catch {
+          try { await engine.transition(GameState.MENU); } catch { /* stay */ }
+        }
+        return;
+      }
+
+      if (currentState === GameState.TAVERN) {
+        // Auto cookie click every 2s
+        if (now - workModeLastCookieClick >= 2000) {
+          workModeLastCookieClick = now;
+          const bonuses = settings.getBonuses();
+          const earned = cookie.click();
+          const boosted = Math.floor(earned * bonuses.crumbMultiplier);
+          state.crumbs += (boosted - earned);
+        }
+
+        // Auto recruit cheapest affordable every 3s
+        if (now - workModeLastRecruit >= 3000) {
+          workModeLastRecruit = now;
+          const roster = state.tavernRoster ?? [];
+          if (roster.length > 0) {
+            // Find cheapest affordable
+            const affordable = roster
+              .map((m, i) => ({ m, i, cost: economy.recruitCost(m) }))
+              .filter(x => state.crumbs >= x.cost)
+              .sort((a, b) => a.cost - b.cost);
+            if (affordable.length > 0) {
+              const { m: member, i: idx } = affordable[0];
+              if (economy.tryRecruit(member)) {
+                state.team = state.team ?? [];
+                state.team.push(member);
+                roster.splice(idx, 1);
+                workModeLog(`Auto: recruited ${member.name} the ${member.class}`);
+                if (!dungeonTimer && !state.dungeonProgress) {
+                  startDungeonTimer();
+                }
+              }
+            }
+          }
+        }
+
+        // Auto enter dungeon immediately if team and no dungeon in progress
+        if ((state.team ?? []).length > 0 && !state.dungeonProgress && !dungeonTimer) {
+          await enterDungeon();
+          workModeLog('Auto: entering dungeon');
+        }
+        return;
+      }
+
+      if (currentState === GameState.DUNGEON) {
+        // Simulate enter key to interact every 2s
+        if (now - workModeLastRoomAdvance >= 2000) {
+          workModeLastRoomAdvance = now;
+          // Set a random fork choice before interacting
+          const dp = state.dungeonProgress;
+          if (dp) {
+            const room = dp.rooms?.find(r => r.id === dp.currentRoom);
+            const conns = room?.connections ?? [];
+            if (conns.length > 1) {
+              const uiState = getUIState();
+              uiState.dungeonChoice = rng.int(0, conns.length - 1);
+            }
+            // Check if dungeon has no more connections (end of dungeon)
+            if (conns.length === 0 && !room?.content) {
+              state.dungeonProgress = null;
+              state.stats.dungeonsCleared = (state.stats.dungeonsCleared ?? 0) + 1;
+              workModeLog('Auto: dungeon cleared!');
+              try { await engine.transition(GameState.TAVERN); } catch { /* ignore */ }
+              return;
+            }
+          }
+          await handleKey({ key: 'enter' });
+        }
+        return;
+      }
+
+      if (currentState === GameState.COMBAT) {
+        // Auto-attack every tick
+        if (activeCombat && !activeCombat.isFinished) {
+          const attackResult = activeCombat.autoAttack();
+          if (attackResult.outcome === 'victory') {
+            state.stats.monstersSlain = (state.stats.monstersSlain ?? 0) + 1;
+            const dp = state.dungeonProgress;
+            const level = dp?.level ?? 1;
+            const bonuses = settings.getBonuses();
+            state.pendingLoot = generateEnemyDrops({ level, rng, qualityBonus: bonuses.lootFindBonus });
+            for (const m of (state.team ?? []).filter(t => t.currentHp > 0)) {
+              awardXP(m, level);
+            }
+            if (dp) clearRoom(dp, dp.currentRoom);
+            activeCombat = null;
+            rollBar = null;
+            workModeLog('Auto: combat victory!');
+            await engine.transition(GameState.LOOT);
+          } else if (attackResult.outcome === 'defeat') {
+            state.stats.deaths = (state.stats.deaths ?? 0) + 1;
+            const dungeonLevel = state.dungeonProgress?.level ?? 1;
+            const penalty = storyManager.applyDeathPenalty(dungeonLevel);
+            storyManager.addStoryEntry(`Your team has fallen! Lost ${penalty} crumbs.`, 'combat');
+            graveyard.recordWipe(state.team, state.lastDungeonSeed ?? 0);
+            economy.activateWipeDiscount();
+            activeCombat = null;
+            rollBar = null;
+            workModeLog('Auto: team defeated');
+            await engine.transition(GameState.DEATH);
+          }
+        }
+        return;
+      }
+
+      if (currentState === GameState.LOOT) {
+        if (now - workModeLastLootAction >= 500) {
+          workModeLastLootAction = now;
+          const loot = state.pendingLoot ?? [];
+          if (loot.length > 0) {
+            const item = loot[0];
+            const slot = item.slot ?? 'weapon';
+            // Try equip to first team member with empty matching slot
+            const member = (state.team ?? []).find(m => m.currentHp > 0 && !m.equipment?.[slot]);
+            if (member) {
+              member.equipment = member.equipment ?? {};
+              member.equipment[slot] = item;
+              workModeLog(`Auto: equipped ${item.name} on ${member.name}`);
+            } else {
+              economy.sellItem(item);
+              workModeLog(`Auto: sold ${item.name}`);
+            }
+            loot.splice(0, 1);
+          } else {
+            // All loot handled, continue
+            if (state.dungeonProgress) {
+              try { await engine.transition(GameState.DUNGEON); } catch { /* ignore */ }
+            } else {
+              try { await engine.transition(GameState.TAVERN); } catch { /* ignore */ }
+            }
+          }
+        }
+        return;
+      }
+
+      if (currentState === GameState.DEATH) {
+        if (now - workModeLastDeathRecover >= 2000) {
+          workModeLastDeathRecover = now;
+          // Clear team and recover
+          state.team = [];
+          state.dungeonProgress = null;
+          // Regenerate tavern roster
+          state.tavernRoster = generateTavernRoster(rng);
+          workModeLog('Auto: recovering from death, new roster generated');
+          try { await engine.transition(GameState.TAVERN); } catch { /* ignore */ }
+        }
+        return;
+      }
+    } catch (err) {
+      if (debug) process.stderr.write(`[workmode] ${err.message}\n`);
+      // Fallback: try to get back to tavern
+      try { await engine.transition(GameState.TAVERN); } catch {
+        try { await engine.transition(GameState.MENU); } catch { /* stuck */ }
+      }
+    }
   }
 
   /** Start the dungeon auto-timer with a random duration (8-20 seconds). */
@@ -194,9 +385,12 @@ export async function runGame(options = {}) {
           room.content = 'trap';
         } else if (room.type === 'shrine') {
           room.content = 'shrine';
+        } else if (room.type === 'npc') {
+          room.content = 'npc';
         }
       }
       cookie.resetSession();
+      storyManager.resetForDungeon();
       await engine.transition(GameState.DUNGEON);
     } catch (err) {
       if (debug) process.stderr.write(`[dungeon] ${err.message}\n`);
@@ -214,6 +408,10 @@ export async function runGame(options = {}) {
     s.rollBarState = rollBar ? { display: rollBar.render() } : null;
     s.dungeonTimer = dungeonTimer;
     s.graveyardRunAvailable = state.lastDungeonSeed != null && graveyard.hasGrave(state.lastDungeonSeed);
+    s.storyLog = state.storyLog;
+    s.skillModifiers = state.skillModifiers;
+    s.activeNPC = state.activeNPC;
+    s.lastDeathPenalty = state.lastDeathPenalty;
     return s;
   }
 
@@ -249,9 +447,33 @@ export async function runGame(options = {}) {
     const isSelection = result === 'recruit_select' || result === 'loot_equip' || result === 'loot_sell'
       || result === 'explore_dungeon' || result === 'dungeon_interact' || result === 'attack'
       || result === 'roll_stop';
-    const passiveEarn = isSelection ? rng.int(2, 5) : 1;
+    const passiveEarn = isSelection ? rng.int(2, 5) * 0.001 : 0.001;
     state.crumbs += passiveEarn;
     state.stats.crumbsEarned = (state.stats.crumbsEarned ?? 0) + passiveEarn;
+
+    // Handle voice select_1/select_2 shortcuts
+    if (event.key === '1' || event.key === 'select_1') {
+      const s = engine.getState();
+      if (s.currentState === GameState.TAVERN) {
+        const ui = getUIState();
+        ui.menuIndex = 0;
+        // Will be handled as recruit_select below
+      } else if (s.currentState === GameState.DUNGEON) {
+        const ui = getUIState();
+        ui.dungeonChoice = 0;
+      } else if (s.currentState === GameState.LOOT) {
+        return; // equip handled by 'e' key
+      }
+    } else if (event.key === '2' || event.key === 'select_2') {
+      const s = engine.getState();
+      if (s.currentState === GameState.TAVERN) {
+        const ui = getUIState();
+        ui.menuIndex = 1;
+      } else if (s.currentState === GameState.DUNGEON) {
+        const ui = getUIState();
+        ui.dungeonChoice = 1;
+      }
+    }
 
     // Handle action results from screens
     if (result === 'cookie_click') {
@@ -303,6 +525,9 @@ export async function runGame(options = {}) {
           await engine.transition(GameState.LOOT);
         } else if (attackResult.outcome === 'defeat') {
           state.stats.deaths = (state.stats.deaths ?? 0) + 1;
+          const dungeonLevel = state.dungeonProgress?.level ?? 1;
+          const penalty = storyManager.applyDeathPenalty(dungeonLevel);
+          storyManager.addStoryEntry(`Your team has fallen! Lost ${penalty} crumbs to the dungeon.`, 'combat');
           graveyard.recordWipe(state.team, state.lastDungeonSeed ?? 0);
           economy.activateWipeDiscount();
           await engine.transition(GameState.DEATH);
@@ -330,6 +555,9 @@ export async function runGame(options = {}) {
         await engine.transition(GameState.LOOT);
       } else if (attackResult.outcome === 'defeat') {
         state.stats.deaths = (state.stats.deaths ?? 0) + 1;
+        const dungeonLevel = state.dungeonProgress?.level ?? 1;
+        const penalty = storyManager.applyDeathPenalty(dungeonLevel);
+        storyManager.addStoryEntry(`Your team has fallen! Lost ${penalty} crumbs to the dungeon.`, 'combat');
         await engine.transition(GameState.DEATH);
       }
     } else if (result === 'loot_equip' || result === 'loot_sell' || result === 'loot_discard') {
@@ -391,6 +619,41 @@ export async function runGame(options = {}) {
           for (const m of (state.team ?? [])) {
             m.currentHp = m.maxHp;
           }
+          clearRoom(dp, dp.currentRoom);
+        } else if (room?.content === 'npc') {
+          // NPC encounter — load NPC data and set active
+          try {
+            const { readFileSync } = await import('fs');
+            const { dirname: dn, join: jn } = await import('path');
+            const { fileURLToPath: furl } = await import('url');
+            const dd = dn(furl(import.meta.url));
+            const npcsPath = jn(dd, '..', '..', 'data', 'npcs.json');
+            const npcs = JSON.parse(readFileSync(npcsPath, 'utf-8'));
+            const biome = state.dungeonProgress?.biome ?? 'cave';
+            const eligible = npcs.filter(n => n.biome === biome || n.biome === 'any');
+            if (eligible.length > 0) {
+              const npc = eligible[rng.int(0, eligible.length - 1)];
+              storyManager.setActiveNPC(npc);
+              storyManager.addStoryEntry(`You encounter ${npc.name}: "${npc.dialogue}"`, 'npc');
+              // Auto-resolve first offer for now (full NPC interaction via MCP tools)
+              const offer = npc.offers[0];
+              if (offer?.effect?.action === 'buff') {
+                storyManager.applySkillModifier({
+                  stat: offer.effect.stat,
+                  amount: offer.effect.amount,
+                  duration: offer.effect.duration || 3,
+                  source: npc.name,
+                });
+              } else if (offer?.effect?.action === 'heal') {
+                for (const m of (state.team ?? []).filter(t => t.currentHp > 0)) {
+                  m.currentHp = Math.min(m.maxHp, m.currentHp + (offer.effect.amount || 20));
+                }
+              }
+              if (offer?.cost > 0) {
+                state.crumbs = Math.max(0, state.crumbs - offer.cost);
+              }
+            }
+          } catch { /* NPC data unavailable */ }
           clearRoom(dp, dp.currentRoom);
         } else if (room?.content === 'trap') {
           // Trap: damage random team member
@@ -495,6 +758,11 @@ export async function runGame(options = {}) {
       }
     }
 
+    // Work mode auto-loop
+    if (isWorkMode()) {
+      await workModeTick();
+    }
+
     // Autosave
     const now = Date.now();
     if (now - lastAutosave >= AUTOSAVE_INTERVAL_MS) {
@@ -522,6 +790,12 @@ export async function runGame(options = {}) {
 
   // Start everything
   await engine.start();
+
+  // Activate work mode passive settings on load
+  if (state.gameMode === 'work') {
+    state.passiveConfig.autoLoot = true;
+    state.passiveConfig.autoSell = true;
+  }
 
   // Show tutorial if needed
   if (tutorial.shouldShow() && !options.newGame) {

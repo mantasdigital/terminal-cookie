@@ -67,6 +67,7 @@ function defaultGameState(seed) {
     pendingActions: [],
     passiveLog: [],
     totalToolCalls: 0,
+    gameMode: 'default',
   };
 }
 

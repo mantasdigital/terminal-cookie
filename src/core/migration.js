@@ -4,7 +4,7 @@
  */
 
 /** Current save format version. */
-export const CURRENT_VERSION = 2;
+export const CURRENT_VERSION = 3;
 
 /** @type {Map<string, {toVersion: number, fn: function}>} */
 const migrations = new Map();
@@ -93,3 +93,10 @@ registerMigration(1, 2, (data) => {
     totalToolCalls: data.totalToolCalls ?? 0,
   };
 });
+
+/** v2 → v3: add game mode field (default/work). */
+registerMigration(2, 3, (data) => ({
+  ...data,
+  version: 3,
+  gameMode: data.gameMode ?? 'default',
+}));
