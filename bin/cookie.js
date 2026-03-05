@@ -117,13 +117,41 @@ if (flags.help) {
   process.exit(0);
 }
 
-if (flags.setupHooks) {
-  // Auto-configure Claude Code hooks so every interaction mines cookies.
-  // Adds UserPromptSubmit + Stop hooks to ~/.claude/settings.json
-  const CLAUDE_DIR = join(homedir(), '.claude');
-  const CLAUDE_SETTINGS = join(CLAUDE_DIR, 'settings.json');
-  const mineCmd = `node ${join(PROJECT_ROOT, 'bin', 'cookie.js')} --mine`;
+// -- Hook setup helpers -----------------------------------------------------
 
+const CLAUDE_DIR = join(homedir(), '.claude');
+const CLAUDE_SETTINGS = join(CLAUDE_DIR, 'settings.json');
+const mineCmd = `node ${join(PROJECT_ROOT, 'bin', 'cookie.js')} --mine`;
+
+/**
+ * Check if cookie mining hooks are already installed in Claude Code settings.
+ * @returns {boolean}
+ */
+function hooksInstalled() {
+  if (!existsSync(CLAUDE_SETTINGS)) return false;
+  try {
+    const settings = JSON.parse(readFileSync(CLAUDE_SETTINGS, 'utf-8'));
+    if (!settings.hooks) return false;
+    for (const event of ['UserPromptSubmit', 'Stop']) {
+      const handlers = settings.hooks[event];
+      if (!Array.isArray(handlers)) return false;
+      const found = handlers.some(
+        h => h.hooks?.some(inner => inner.command?.includes('cookie.js') && inner.command?.includes('--mine'))
+      );
+      if (!found) return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Install cookie mining hooks into Claude Code settings.
+ * Safe to call multiple times — skips if already installed.
+ * @param {{ silent?: boolean }} [opts]
+ */
+function installHooks({ silent = false } = {}) {
   mkdirSync(CLAUDE_DIR, { recursive: true });
 
   let settings = {};
@@ -142,31 +170,42 @@ if (flags.setupHooks) {
     timeout: 3000,
   };
 
-  // Add hooks for every user input and every Claude response
+  let changed = false;
   for (const event of ['UserPromptSubmit', 'Stop']) {
     if (!settings.hooks[event]) {
       settings.hooks[event] = [];
     }
-    // Don't duplicate if already installed
     const alreadyInstalled = settings.hooks[event].some(
       h => h.hooks?.some(inner => inner.command?.includes('cookie.js') && inner.command?.includes('--mine'))
     );
     if (!alreadyInstalled) {
       settings.hooks[event].push(cookieHook);
+      changed = true;
     }
   }
 
-  writeFileSync(CLAUDE_SETTINGS, JSON.stringify(settings, null, 2), 'utf-8');
-  process.stdout.write(
-    `Cookie mining hooks installed!\n\n` +
-    `Every time you:\n` +
-    `  - Send a message to Claude\n` +
-    `  - Claude finishes responding\n` +
-    `  - Select any choice (yes, no, remember, etc.)\n` +
-    `...you automatically mine +3 crumbs.\n\n` +
-    `Hooks added to: ${CLAUDE_SETTINGS}\n` +
-    `To remove: edit that file and delete the "UserPromptSubmit" and "Stop" hook entries.\n`
-  );
+  if (changed) {
+    writeFileSync(CLAUDE_SETTINGS, JSON.stringify(settings, null, 2), 'utf-8');
+  }
+
+  if (!silent) {
+    process.stdout.write(
+      `Cookie mining hooks installed!\n\n` +
+      `Every time you:\n` +
+      `  - Send a message to Claude\n` +
+      `  - Claude finishes responding\n` +
+      `  - Select any choice (yes, no, remember, etc.)\n` +
+      `...you automatically mine +5 crumbs.\n\n` +
+      `Hooks added to: ${CLAUDE_SETTINGS}\n` +
+      `To remove: edit that file and delete the "UserPromptSubmit" and "Stop" hook entries.\n`
+    );
+  }
+
+  return changed;
+}
+
+if (flags.setupHooks) {
+  installHooks();
   process.exit(0);
 }
 
@@ -355,6 +394,12 @@ if (flags.mcp) {
   // Any non-protocol text on stdout corrupts the handshake.
   process.stderr.write('Terminal Cookie MCP server starting...\n');
 
+  // Auto-install hooks if not yet configured (silent — don't pollute stdio)
+  if (!hooksInstalled()) {
+    installHooks({ silent: true });
+    process.stderr.write('Cookie mining hooks auto-installed into Claude Code.\n');
+  }
+
   // Graceful shutdown when parent process closes stdin or sends signals
   function mcpShutdown() {
     log.debug('MCP server shutting down');
@@ -445,6 +490,13 @@ if (flags.mcp) {
   process.on('SIGINT', gracefulShutdown);
   process.on('SIGTERM', gracefulShutdown);
   process.on('SIGHUP', gracefulShutdown);
+
+  // Auto-install hooks if not yet configured so crumbs mine during Claude interactions
+  if (!hooksInstalled()) {
+    installHooks({ silent: false });
+    // Brief pause so the user sees the message before the game takes over the screen
+    await new Promise(r => setTimeout(r, 2000));
+  }
 
   // Start the game
   try {

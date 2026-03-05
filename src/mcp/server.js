@@ -52,8 +52,9 @@ function drainHookCrumbs(gameState) {
   } catch { return 0; }
 }
 
-// Initialize game systems
-const engine = createEngine();
+// Initialize game systems — load existing save so crumbs persist across restarts
+const existingSave = loadGame(1);
+const engine = createEngine(existingSave.success ? { saveData: existingSave.data } : {});
 const gameState = engine.getStateRef();
 const sessions = createSessionTracker(SESSIONS_PATH);
 const cookie = createCookieHandler(gameState);

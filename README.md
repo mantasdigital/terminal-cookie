@@ -74,15 +74,15 @@ claude mcp add terminal-cookie -- node /YOUR/PATH/HERE/bin/cookie.js --mcp
 
 Then open Claude Code and say `"Click the cookie"` to start playing through AI.
 
-### Step 6: Auto-mine cookies on every interaction (optional)
+### Step 6: Auto-mine cookies on every interaction (automatic)
 
-This makes **every Claude interaction** mine cookies automatically -- sending messages, getting responses, clicking "yes"/"no", accepting suggestions, everything:
+Cookie mining hooks are **installed automatically** the first time you start the game (`npm start`) or connect via MCP. Every Claude interaction mines cookies -- sending messages, getting responses, clicking "yes"/"no", accepting suggestions, everything. No extra setup needed.
+
+If you ever need to reinstall them manually:
 
 ```bash
 node bin/cookie.js --setup-hooks
 ```
-
-After this, you earn crumbs just by using Claude normally. No game commands needed.
 
 > **Want the full setup guide?** See [Playing with Claude AI](#playing-with-claude-ai) below for detailed instructions, Claude Desktop setup, troubleshooting, and the multi-terminal mining bonus.
 
@@ -337,22 +337,18 @@ Edit `~/.claude/settings.json` (create it if it doesn't exist):
 
 ### Auto-Mine Cookies on Every Interaction
 
-Run this once to install Claude Code hooks:
+Cookie mining hooks are **installed automatically** the first time you start the game or connect via MCP. Every single Claude interaction mines cookies:
 
-```bash
-node bin/cookie.js --setup-hooks
-```
-
-After this, **every single Claude interaction** mines cookies automatically:
-
-- You type a message → **+3 crumbs**
-- Claude responds → **+3 crumbs**
-- You click "yes", "no", "remember", or any choice → **+3 crumbs**
-- You approve a tool call → **+3 crumbs**
+- You type a message → **+5 crumbs**
+- Claude responds → **+5 crumbs**
+- You click "yes", "no", "remember", or any choice → **+5 crumbs**
+- You approve a tool call → **+5 crumbs**
 
 You don't need to mention the game at all. Just use Claude for your normal work — writing code, asking questions, reviewing PRs — and cookies mine in the background. The crumbs sync to the terminal game via the live state file.
 
-To remove the hooks later, edit `~/.claude/settings.json` and delete the `UserPromptSubmit` and `Stop` entries.
+If hooks are ever removed, they will be reinstalled on the next game start or MCP connection. To manually reinstall: `node bin/cookie.js --setup-hooks`
+
+To remove the hooks, edit `~/.claude/settings.json` and delete the `UserPromptSubmit` and `Stop` entries.
 
 ---
 
@@ -360,7 +356,7 @@ To remove the hooks later, edit `~/.claude/settings.json` and delete the `UserPr
 
 Once connected, talk to Claude naturally. Claude calls the game tools behind the scenes.
 
-**Every interaction earns crumbs automatically.** Tool calls auto-click the cookie. If you installed hooks (above), even plain conversation mines crumbs. Just use Claude normally and watch your crumbs grow.
+**Every interaction earns crumbs automatically.** Tool calls auto-click the cookie. Cookie mining hooks (auto-installed on first run) ensure even plain conversation mines crumbs. Just use Claude normally and watch your crumbs grow.
 
 **Things you can say:**
 
