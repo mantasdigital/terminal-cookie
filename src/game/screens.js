@@ -829,7 +829,7 @@ const tavernScreen = {
       renderer.bufferWrite(timerRow + 1, 4, renderer.dim('Press [E] to enter now'));
     }
 
-    renderer.showStatus('R=recruit I=inv H=shop V=village T=talisman G=log E=dungeon ?=help');
+    renderer.showStatus('R=recruit I=inv H=shop V=village T=talisman G=log E=dungeon Q=quit ?=help');
     renderAIBadge(state, renderer);
     renderWorkModeBadge(state, renderer);
     renderSecurityBanner(state, renderer);
@@ -982,6 +982,8 @@ const tavernScreen = {
       case 'escape':
         await engine.transition(GameState.MENU);
         break;
+      case 'q':
+        return 'save_and_quit';
     }
   },
 };
@@ -1083,7 +1085,7 @@ const dungeonScreen = {
     }
 
     const autoDungeon = state.settings?.game?.autoDungeon ?? true;
-    renderer.showStatus(autoDungeon ? 'Auto-dungeon ON (toggle in Settings) W=save ?=help' : 'Arrows=navigate Enter=interact W=save ?=help');
+    renderer.showStatus(autoDungeon ? 'Auto-dungeon ON | Esc=retreat Q=quit W=save ?=help' : 'Arrows=navigate Enter=interact Esc=retreat Q=quit W=save ?=help');
     renderAIBadge(state, renderer);
     renderWorkModeBadge(state, renderer);
     renderSecurityBanner(state, renderer);
@@ -1120,6 +1122,10 @@ const dungeonScreen = {
         return 'dungeon_interact';
       case 'w':
         return 'save_game';
+      case 'escape':
+        return 'retreat_to_tavern';
+      case 'q':
+        return 'save_and_quit';
     }
   },
 };
@@ -1212,9 +1218,9 @@ const combatScreen = {
 
     // Auto-battle indicator
     const autoRow = rows - 3;
-    renderer.bufferWrite(autoRow, 4, renderer.dim('Auto-battling... Space=speed up  A=instant resolve  F=flee'));
+    renderer.bufferWrite(autoRow, 4, renderer.dim('Auto-battling... Space=speed up  A=instant resolve  F=flee  Q=quit'));
 
-    renderer.showStatus('Space=speed up | A=resolve all | F=flee | ?=help');
+    renderer.showStatus('Space=speed up | A=resolve all | F=flee | Q=quit | ?=help');
     renderAIBadge(state, renderer);
     renderWorkModeBadge(state, renderer);
     renderSecurityBanner(state, renderer);
@@ -1244,6 +1250,8 @@ const combatScreen = {
         return 'attack';
       case 'f':
         return 'flee';
+      case 'q':
+        return 'save_and_quit';
     }
   },
 };
@@ -1335,7 +1343,7 @@ const lootScreen = {
     renderer.bufferWrite(actionsRow, 4, renderer.bold('Actions:'));
     renderer.bufferWrite(actionsRow + 1, 6, '[E] Equip   [S] Sell   [D] Discard   [Enter] Next');
 
-    renderer.showStatus('Up/Down=select E=equip S=sell D=discard Enter=continue');
+    renderer.showStatus('Up/Down=select E=equip S=sell D=discard Enter=continue Q=quit');
     renderAIBadge(state, renderer);
     renderWorkModeBadge(state, renderer);
     renderer.render();
@@ -1389,6 +1397,8 @@ const lootScreen = {
         }
         ui.lootIndex = 0;
         break;
+      case 'q':
+        return 'save_and_quit';
     }
   },
 };
@@ -1474,7 +1484,7 @@ const deathScreen = {
     const bottomRow = renderer.capabilities.rows - 3;
     renderer.bufferWrite(bottomRow, 0, renderer.centerText('[Enter] Return to Tavern   [M] Return to Menu', cols));
 
-    renderer.showStatus('Press Enter to continue');
+    renderer.showStatus('Enter=tavern M/Esc=menu Q=quit');
     renderAIBadge(state, renderer);
     renderWorkModeBadge(state, renderer);
     renderSecurityBanner(state, renderer);
@@ -1492,6 +1502,8 @@ const deathScreen = {
       case 'm': case 'escape':
         await engine.transition(GameState.MENU);
         break;
+      case 'q':
+        return 'save_and_quit';
     }
   },
 };
