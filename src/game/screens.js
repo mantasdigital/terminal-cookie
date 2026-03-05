@@ -2001,6 +2001,71 @@ const helpScreen = {
   },
 };
 
+// ── CUTSCENE SCREEN ─────────────────────────────────────────────────
+
+const cutsceneScreen = {
+  render(state, renderer) {
+    renderer.clear();
+    const cols = renderer.capabilities.cols;
+    const rows = renderer.capabilities.rows;
+    const cs = state._cutscene;
+
+    if (!cs || !cs.frames || cs.currentFrame >= cs.frames.length) {
+      renderer.bufferWrite(Math.floor(rows / 2), 0, renderer.centerText('...', cols));
+      renderer.render();
+      return;
+    }
+
+    const frame = cs.frames[cs.currentFrame];
+    const frameColor = frame.color || 'white';
+    const artLines = frame.art || [];
+    const textLines = frame.lines || [];
+    const totalLines = artLines.length + (artLines.length > 0 ? 1 : 0) + textLines.length;
+    const startRow = Math.max(2, Math.floor((rows - totalLines) / 2) - 1);
+
+    // Decorative top border
+    const border = renderer.dim('~'.repeat(Math.min(60, cols - 8)));
+    renderer.bufferWrite(startRow - 1, 0, renderer.centerText(border, cols));
+
+    let row = startRow;
+
+    // ASCII art (centered, colored)
+    for (const line of artLines) {
+      renderer.bufferWrite(row++, 0, renderer.centerText(renderer.color(line, frameColor), cols));
+    }
+    if (artLines.length > 0) row++; // gap between art and text
+
+    // Text lines (centered, colored, with emphasis)
+    for (const line of textLines) {
+      const styled = line.startsWith('"')
+        ? renderer.color(line, 'yellow') // dialogue in yellow
+        : renderer.color(line, frameColor);
+      renderer.bufferWrite(row++, 0, renderer.centerText(styled, cols));
+    }
+
+    // Decorative bottom border
+    renderer.bufferWrite(row + 1, 0, renderer.centerText(border, cols));
+
+    // Progress indicator
+    const progress = `[ ${cs.currentFrame + 1} / ${cs.frames.length} ]`;
+    renderer.bufferWrite(rows - 3, 0, renderer.centerText(renderer.dim(progress), cols));
+
+    // Skip hint
+    const skipHint = renderer.dim('Press [Enter] or [Space] to skip');
+    renderer.bufferWrite(rows - 2, 0, renderer.centerText(skipHint, cols));
+
+    renderAIBadge(state, renderer);
+    renderWorkModeBadge(state, renderer);
+    renderer.render();
+  },
+
+  async handleInput(key) {
+    if (key === 'enter' || key === 'space' || key === 'escape') {
+      return 'cutscene_skip';
+    }
+  },
+};
+
 // ── Screen registry ─────────────────────────────────────────────────
 
 /** @type {Record<string, {render: function, handleInput: function}>} */
@@ -2012,6 +2077,7 @@ const screens = {
   [GameState.LOOT]: lootScreen,
   [GameState.DEATH]: deathScreen,
   [GameState.DUNGEON_SUMMARY]: dungeonSummaryScreen,
+  [GameState.CUTSCENE]: cutsceneScreen,
   [GameState.SETTINGS]: settingsScreen,
   [GameState.HELP]: helpScreen,
 };

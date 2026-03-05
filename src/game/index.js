@@ -29,6 +29,11 @@ import { getWidget } from '../prompts/widgets.js';
 import { createLiveState } from '../save/live-state.js';
 import { getTalismanBonuses, applyTalismanRegen, awardDeathReward, upgradeTalisman, canUpgrade, salvageLoot } from './talisman.js';
 import { checkTrophies, awardTrophy, hasTrophy, getBuyableTrophies } from './trophies.js';
+import {
+  getDungeonIntroCutscene, getPreMinibossCutscene, getPostMinibossCutscene,
+  getPreBossCutscene, getPostBossCutscene, getDungeonCompleteCutscene,
+  getRandomEncounterCutscene, getTrophyCutscene, shouldTriggerRandomEncounter,
+} from './cutscenes.js';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -201,6 +206,55 @@ export async function runGame(options = {}) {
   let voiceController = null;
   let combatAutoTimer = 0; // ms since last auto-attack in combat
   let trophyCheckTimer = 0; // ms since last trophy check
+  let cutsceneTimer = 0; // ms into current cutscene frame
+  let cutsceneAfterState = null; // state to transition to after cutscene
+  let cutsceneAfterAction = null; // callback to run after cutscene ends
+
+  // Cutscene helpers
+  function startCutscene(frames, afterState, afterAction) {
+    if (!frames || frames.length === 0) {
+      // No cutscene — go directly to afterState
+      if (afterAction) afterAction();
+      if (afterState) engine.transition(afterState).catch(() => {});
+      return;
+    }
+    // Store non-serializable data outside state
+    cutsceneAfterState = afterState ?? null;
+    cutsceneAfterAction = afterAction ?? null;
+    state._cutscene = {
+      frames,
+      currentFrame: 0,
+    };
+    cutsceneTimer = 0;
+    engine.transition(GameState.CUTSCENE).catch(() => {});
+  }
+
+  function advanceCutscene() {
+    const cs = state._cutscene;
+    if (!cs) return;
+    cs.currentFrame++;
+    cutsceneTimer = 0;
+    if (cs.currentFrame >= cs.frames.length) {
+      endCutscene();
+    }
+  }
+
+  function endCutscene() {
+    const cs = state._cutscene;
+    if (!cs) return;
+    const afterState = cutsceneAfterState;
+    const afterAction = cutsceneAfterAction;
+    state._cutscene = null;
+    cutsceneTimer = 0;
+    cutsceneAfterState = null;
+    cutsceneAfterAction = null;
+    if (afterAction) afterAction();
+    if (afterState) engine.transition(afterState).catch(() => {});
+  }
+
+  function skipCutscene() {
+    endCutscene();
+  }
 
   // Adventure log helper
   function logAdventure(text, type = 'event') {
@@ -325,6 +379,8 @@ export async function runGame(options = {}) {
   }
 
   async function workModeTick() {
+    // Cutscenes auto-advance on their own timer — don't interfere
+    if (state.currentState === GameState.CUTSCENE) return;
     const now = Date.now();
     const currentState = state.currentState;
 
@@ -594,6 +650,8 @@ export async function runGame(options = {}) {
 
   async function autoDungeonTick() {
     if (!isAutoDungeon()) return;
+    // Cutscenes auto-advance on their own timer — don't interfere
+    if (state.currentState === GameState.CUTSCENE) return;
     const now = Date.now();
     const currentState = state.currentState;
 
@@ -612,8 +670,11 @@ export async function runGame(options = {}) {
             if (conns.length === 0 && !room?.content) {
               state.stats.dungeonsCleared = (state.stats.dungeonsCleared ?? 0) + 1;
               if (state._dungeonRunStats) state._dungeonRunStats.success = true;
+              const completeBiome = dp.biome ?? 'cave';
+              const completeSeed = dp.dungeonSeed ?? 0;
               state.dungeonProgress = null;
-              try { await engine.transition(GameState.DUNGEON_SUMMARY); } catch { /* ignore */ }
+              const frames = getDungeonCompleteCutscene(completeBiome, completeSeed);
+              startCutscene(frames, GameState.DUNGEON_SUMMARY);
               return;
             }
           }
@@ -958,10 +1019,28 @@ export async function runGame(options = {}) {
       removeShopBuffs();
       removeVillageCombatBuffs();
       logAdventure(`Victory! Slain enemies, found ${drops.length} loot${fallen.length > 0 ? ` (lost ${fallen.length} ally)` : ''}`, 'combat');
+
+      // Determine room type for post-combat cutscene before clearing
+      const currentRoom = dp?.rooms?.find(r => r.id === dp?.currentRoom);
+      const wasBossRoom = currentRoom?.type === 'boss';
+      const wasMinibossRoom = currentRoom?.type === 'miniboss';
+      const biome = dp?.biome ?? 'cave';
+      const roomSeed = (dp?.dungeonSeed ?? 0) + (currentRoom?.id ?? 0);
+
       activeCombat = null;
       rollBar = null;
       state._lastCombatRoll = null;
-      await engine.transition(GameState.LOOT);
+
+      // Post-boss/miniboss cutscenes before showing loot
+      if (wasBossRoom) {
+        const frames = getPostBossCutscene(biome, roomSeed);
+        startCutscene(frames, GameState.LOOT);
+      } else if (wasMinibossRoom) {
+        const frames = getPostMinibossCutscene(biome, roomSeed);
+        startCutscene(frames, GameState.LOOT);
+      } else {
+        await engine.transition(GameState.LOOT);
+      }
     } else if (attackResult.outcome === 'defeat') {
       state.stats.deaths = (state.stats.deaths ?? 0) + 1;
       const dungeonLevel = state.dungeonProgress?.level ?? 1;
@@ -1048,7 +1127,9 @@ export async function runGame(options = {}) {
       cookie.resetSession();
       storyManager.resetForDungeon();
       logAdventure(`Entered dungeon level ${dungeonLevel} (biome: ${state.dungeonProgress.biome ?? 'cave'})`, 'dungeon');
-      await engine.transition(GameState.DUNGEON);
+      // Play dungeon intro cutscene
+      const introFrames = getDungeonIntroCutscene(state.dungeonProgress.biome ?? 'cave', dungeonSeed);
+      startCutscene(introFrames, GameState.DUNGEON);
     } catch (err) {
       if (debug) process.stderr.write(`[dungeon] ${err.message}\n`);
     }
@@ -1455,6 +1536,8 @@ export async function runGame(options = {}) {
         inv.splice(result.index, 1);
         renderer.showNotification(`Dropped ${item.name}`, 'info');
       }
+    } else if (result === 'cutscene_skip') {
+      skipCutscene();
     } else if (result === 'summary_continue') {
       // From dungeon summary → tavern (success path)
       state._dungeonRunStats = null;
@@ -1489,18 +1572,43 @@ export async function runGame(options = {}) {
 
         if (room?.content === 'enemy' && (room.enemies?.length > 0 || room.enemy)) {
           const enemies = room.enemies ?? [room.enemy];
-          applyTalismanCombatBuffs();
-          applyShopBuffs();
-          applyVillageCombatBuffs();
-          activeCombat = createCombat({
-            team: state.team,
-            enemies,
-            rng,
-          });
-          combatAutoTimer = 0;
-          rollBar = null;
-          logAdventure(`Combat! Facing ${enemies.map(e => e.name).join(', ')}`, 'combat');
-          await engine.transition(GameState.COMBAT);
+          const isBossRoom = room.type === 'boss';
+          const isMinibossRoom = room.type === 'miniboss';
+          const biome = dp.biome ?? 'cave';
+          const roomSeed = (dp.dungeonSeed ?? 0) + (room.id ?? 0);
+
+          // Prepare combat start as a callback after cutscene
+          const beginCombat = () => {
+            applyTalismanCombatBuffs();
+            applyShopBuffs();
+            applyVillageCombatBuffs();
+            activeCombat = createCombat({
+              team: state.team,
+              enemies,
+              rng,
+            });
+            combatAutoTimer = 0;
+            rollBar = null;
+            logAdventure(`Combat! Facing ${enemies.map(e => e.name).join(', ')}`, 'combat');
+          };
+
+          // Boss/miniboss get pre-combat cutscenes
+          if (isBossRoom) {
+            const frames = getPreBossCutscene(biome, roomSeed);
+            startCutscene(frames, GameState.COMBAT, beginCombat);
+          } else if (isMinibossRoom) {
+            const frames = getPreMinibossCutscene(biome, roomSeed);
+            startCutscene(frames, GameState.COMBAT, beginCombat);
+          } else {
+            // Regular enemy — maybe random encounter cutscene
+            if (shouldTriggerRandomEncounter(roomSeed)) {
+              const frames = getRandomEncounterCutscene(roomSeed);
+              startCutscene(frames, GameState.COMBAT, beginCombat);
+            } else {
+              beginCombat();
+              await engine.transition(GameState.COMBAT);
+            }
+          }
         } else if (room?.content === 'loot') {
           state.pendingLoot = room.loot ?? [];
           clearRoom(dp, dp.currentRoom);
@@ -1598,11 +1706,14 @@ export async function runGame(options = {}) {
             state.stats.roomsCleared = (state.stats.roomsCleared ?? 0) + 1;
             if (state._dungeonRunStats) state._dungeonRunStats.roomsCleared++;
           } else {
-            // Dead end or dungeon complete — show summary
+            // Dead end or dungeon complete — show summary with cutscene
             state.stats.dungeonsCleared = (state.stats.dungeonsCleared ?? 0) + 1;
             if (state._dungeonRunStats) state._dungeonRunStats.success = true;
+            const completeBiome = dp.biome ?? 'cave';
+            const completeSeed = dp.dungeonSeed ?? 0;
             state.dungeonProgress = null;
-            await engine.transition(GameState.DUNGEON_SUMMARY);
+            const frames = getDungeonCompleteCutscene(completeBiome, completeSeed);
+            startCutscene(frames, GameState.DUNGEON_SUMMARY);
           }
         }
       }
@@ -1761,6 +1872,23 @@ export async function runGame(options = {}) {
       for (const t of newTrophies) {
         renderer.showNotification(`Trophy unlocked: ${t.name} — ${t.desc}`, 'success');
         logAdventure(`Trophy: ${t.name} — ${t.desc}`, 'trophy');
+        // Queue trophy cutscene if not in combat or another cutscene
+        if (state.currentState !== GameState.COMBAT && state.currentState !== GameState.CUTSCENE) {
+          const trophyFrames = getTrophyCutscene(t.id, t.name);
+          const returnTo = state.currentState;
+          startCutscene(trophyFrames, returnTo);
+          break; // One trophy cutscene at a time
+        }
+      }
+    }
+
+    // Auto-advance cutscene frames
+    if (state.currentState === GameState.CUTSCENE && state._cutscene) {
+      cutsceneTimer += FRAME_MS;
+      const frame = state._cutscene.frames[state._cutscene.currentFrame];
+      const frameDuration = frame?.duration ?? 1200;
+      if (cutsceneTimer >= frameDuration) {
+        advanceCutscene();
       }
     }
 

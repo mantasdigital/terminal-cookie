@@ -16,6 +16,7 @@ export const GameState = Object.freeze({
   LOOT: 'LOOT',
   DEATH: 'DEATH',
   DUNGEON_SUMMARY: 'DUNGEON_SUMMARY',
+  CUTSCENE: 'CUTSCENE',
   SETTINGS: 'SETTINGS',
   HELP: 'HELP',
 });
@@ -25,13 +26,14 @@ export const GameState = Object.freeze({
  * @type {Record<string, string[]>}
  */
 const TRANSITIONS = {
-  [GameState.MENU]:     [GameState.TAVERN, GameState.DUNGEON, GameState.SETTINGS, GameState.HELP],
-  [GameState.TAVERN]:   [GameState.DUNGEON, GameState.COMBAT, GameState.SETTINGS, GameState.MENU],
-  [GameState.DUNGEON]:  [GameState.COMBAT, GameState.LOOT, GameState.TAVERN, GameState.DEATH, GameState.MENU, GameState.DUNGEON_SUMMARY],
-  [GameState.COMBAT]:   [GameState.LOOT, GameState.DEATH, GameState.DUNGEON, GameState.TAVERN, GameState.DUNGEON_SUMMARY],
-  [GameState.LOOT]:     [GameState.DUNGEON, GameState.TAVERN, GameState.COMBAT, GameState.DUNGEON_SUMMARY],
-  [GameState.DEATH]:    [GameState.MENU, GameState.TAVERN, GameState.DUNGEON_SUMMARY],
+  [GameState.MENU]:     [GameState.TAVERN, GameState.DUNGEON, GameState.CUTSCENE, GameState.SETTINGS, GameState.HELP],
+  [GameState.TAVERN]:   [GameState.DUNGEON, GameState.COMBAT, GameState.CUTSCENE, GameState.SETTINGS, GameState.MENU],
+  [GameState.DUNGEON]:  [GameState.COMBAT, GameState.LOOT, GameState.CUTSCENE, GameState.TAVERN, GameState.DEATH, GameState.MENU, GameState.DUNGEON_SUMMARY],
+  [GameState.COMBAT]:   [GameState.LOOT, GameState.DEATH, GameState.CUTSCENE, GameState.DUNGEON, GameState.TAVERN, GameState.DUNGEON_SUMMARY],
+  [GameState.LOOT]:     [GameState.DUNGEON, GameState.TAVERN, GameState.CUTSCENE, GameState.COMBAT, GameState.DUNGEON_SUMMARY],
+  [GameState.DEATH]:    [GameState.MENU, GameState.TAVERN, GameState.CUTSCENE, GameState.DUNGEON_SUMMARY],
   [GameState.DUNGEON_SUMMARY]: [GameState.TAVERN, GameState.MENU],
+  [GameState.CUTSCENE]:  [GameState.DUNGEON, GameState.COMBAT, GameState.LOOT, GameState.TAVERN, GameState.MENU, GameState.DUNGEON_SUMMARY, GameState.CUTSCENE],
   [GameState.SETTINGS]: [GameState.MENU, GameState.TAVERN, GameState.DUNGEON],
   [GameState.HELP]:     [GameState.MENU, GameState.TAVERN, GameState.DUNGEON],
 };
