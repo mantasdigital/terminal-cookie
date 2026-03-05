@@ -155,6 +155,7 @@ export function createPassiveRunner({ engine, rng, settings, scores, sessions })
           if (state.passiveConfig.autoSell) {
             const value = sellValue(item);
             state.crumbs += value;
+            state._mcpEarned = (state._mcpEarned ?? 0) + value;
             log(`Auto-sold ${item.name} for ${value} crumbs`);
           } else {
             state.inventory.push(item);
@@ -255,6 +256,7 @@ export function createPassiveRunner({ engine, rng, settings, scores, sessions })
           if (state.passiveConfig.autoSell) {
             const value = sellValue(item);
             state.crumbs += value;
+            state._mcpEarned = (state._mcpEarned ?? 0) + value;
             log(`Room ${room.id}: Miniboss defeated! Auto-sold ${item.name} for ${value} crumbs.`);
           } else {
             state.inventory.push(item);
@@ -317,6 +319,7 @@ export function createPassiveRunner({ engine, rng, settings, scores, sessions })
       if (state.passiveConfig.autoSell) {
         const value = sellValue(item);
         state.crumbs += value;
+        state._mcpEarned = (state._mcpEarned ?? 0) + value;
         log(`Room ${room.id}: Found and auto-sold ${item.name} for ${value} crumbs.`);
       } else {
         state.inventory.push(item);
@@ -332,6 +335,7 @@ export function createPassiveRunner({ engine, rng, settings, scores, sessions })
   function handleNPCRoom(dungeon, room) {
     log(`Room ${room.id}: Encountered a mysterious figure. They share wisdom and move on.`);
     state.crumbs += 2;
+    state._mcpEarned = (state._mcpEarned ?? 0) + 2;
   }
 
   /**
@@ -355,6 +359,7 @@ export function createPassiveRunner({ engine, rng, settings, scores, sessions })
     if (dungeon.completed) {
       const crumbReward = dungeon.level * 50;
       state.crumbs += crumbReward;
+      state._mcpEarned = (state._mcpEarned ?? 0) + crumbReward;
       state.stats.runs = (state.stats.runs || 0) + 1;
       scores.recordDungeonClear(dungeon.level);
       log(`Dungeon complete! +${crumbReward} crumbs.`);
@@ -369,6 +374,7 @@ export function createPassiveRunner({ engine, rng, settings, scores, sessions })
       dungeon.completed = true;
       const crumbReward = dungeon.level * 30;
       state.crumbs += crumbReward;
+      state._mcpEarned = (state._mcpEarned ?? 0) + crumbReward;
       state.stats.runs = (state.stats.runs || 0) + 1;
       scores.recordDungeonClear(dungeon.level);
       log(`Dead end reached. Dungeon cleared! +${crumbReward} crumbs.`);
@@ -418,6 +424,7 @@ export function createPassiveRunner({ engine, rng, settings, scores, sessions })
     const milestone = state.totalToolCalls % 10 === 0 ? 5 : 0;
     const earned = base + milestone;
     state.crumbs += earned;
+    state._mcpEarned = (state._mcpEarned ?? 0) + earned;
     state.stats.crumbsEarned = (state.stats.crumbsEarned || 0) + earned;
     if (milestone > 0) {
       log(`Milestone! ${state.totalToolCalls} tool calls. +${earned} crumbs!`);
@@ -496,6 +503,7 @@ export function createPassiveRunner({ engine, rng, settings, scores, sessions })
       for (const item of items) {
         const v = sellValue(item);
         state.crumbs += v;
+        state._mcpEarned = (state._mcpEarned ?? 0) + v;
         total += v;
       }
       return { result: `Sold ${items.length} item(s) for ${total} crumbs.` };
@@ -559,6 +567,7 @@ export function createPassiveRunner({ engine, rng, settings, scores, sessions })
 
       const crumbReward = level * 100;
       state.crumbs += crumbReward;
+      state._mcpEarned = (state._mcpEarned ?? 0) + crumbReward;
       log(`Boss defeated! +${crumbReward} crumbs. Loot: ${drops.map(d => d.name).join(', ') || 'none'}`);
       return { result: `Victory! ${result.rounds} rounds. +${crumbReward} crumbs.`, log: result.log };
     } else {

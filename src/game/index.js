@@ -104,25 +104,19 @@ export async function runGame(options = {}) {
       // During reset grace: skip all merges — fresh state is authoritative
       if (resetActive) return;
 
-      // Normal merge — take higher crumbs, but respect recent spends on either side
-      const localRecentSpend = local._lastCrumbSpend && (Date.now() - local._lastCrumbSpend) < 10000;
-      const externalRecentSpend = external._lastCrumbSpend && (Date.now() - external._lastCrumbSpend) < 10000;
-      if (external.crumbs != null) {
-        if (externalRecentSpend && external._lastCrumbSpend !== local._lastCrumbSpend) {
-          // The other side just spent crumbs — apply the spend delta to our local crumbs
-          // so we don't lose any crumbs we earned independently.
-          const spendAmount = external._lastCrumbSpendAmount ?? 0;
-          if (spendAmount > 0) {
-            local.crumbs = Math.max(0, (local.crumbs ?? 0) - spendAmount);
-          } else {
-            // Fallback: no spend amount recorded, take the lower value
-            local.crumbs = Math.min(local.crumbs ?? 0, external.crumbs);
-          }
-          local._lastCrumbSpend = external._lastCrumbSpend;
-          local._lastCrumbSpendAmount = external._lastCrumbSpendAmount;
-        } else if (!localRecentSpend) {
-          local.crumbs = Math.max(local.crumbs ?? 0, external.crumbs);
-        }
+      // PN-Counter CRDT merge for crumbs:
+      // Game is authoritative for its own crumbs. MCP sends earned/spent deltas.
+      // Game applies: crumbs += mcpEarnDelta - mcpSpendDelta
+      const mcpEarned = external._mcpEarned ?? 0;
+      const mcpSpent = external._mcpSpent ?? 0;
+      const lastAppliedEarn = local._lastMcpEarnedApplied ?? 0;
+      const lastAppliedSpend = local._lastMcpSpentApplied ?? 0;
+      const earnDelta = mcpEarned - lastAppliedEarn;
+      const spendDelta = mcpSpent - lastAppliedSpend;
+      if (earnDelta > 0 || spendDelta > 0) {
+        local.crumbs = Math.max(0, (local.crumbs ?? 0) + earnDelta - spendDelta);
+        local._lastMcpEarnedApplied = mcpEarned;
+        local._lastMcpSpentApplied = mcpSpent;
       }
       // For team, merge by ID — never lose locally recruited members
       if (external.team && Array.isArray(external.team)) {

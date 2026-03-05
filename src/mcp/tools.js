@@ -55,6 +55,7 @@ export function defineTools(options = {}) {
         const total = powerBonus + settingsBonus + sessionBonus;
 
         state.crumbs += settingsBonus + sessionBonus;
+        state._mcpEarned = (state._mcpEarned ?? 0) + total;
         scores.recordClick(total);
         scores.setMax('highest_crumbs', state.crumbs);
 
@@ -304,6 +305,7 @@ export function defineTools(options = {}) {
         const state = engine.getStateRef();
         const crumbReward = 5;
         state.crumbs = (state.crumbs || 0) + crumbReward;
+        state._mcpEarned = (state._mcpEarned ?? 0) + crumbReward;
         scores.increment('total_crumbs_earned', crumbReward);
         return { content: [{ type: 'text', text: `+${crumbReward} crumbs | Total: ${formatCrumbs(state.crumbs)}` }] };
       },
@@ -430,6 +432,7 @@ export function defineTools(options = {}) {
         if (classification.type === 'code_review') crumbReward += 5;
         if (classification.type === 'permission') crumbReward += 2;
         state.crumbs += crumbReward;
+        state._mcpEarned = (state._mcpEarned ?? 0) + crumbReward;
         state.stats.crumbsEarned = (state.stats.crumbsEarned || 0) + crumbReward;
         scores.increment('total_crumbs_earned', crumbReward);
         return { content: [{ type: 'text', text: `+${crumbReward}crumbs | ${classification.type} | Total:${state.crumbs}` }] };
@@ -568,6 +571,7 @@ export function defineTools(options = {}) {
           const recruit = roster[idx];
           if (state.crumbs < recruit.cost) return { content: [{ type: 'text', text: `Need ${recruit.cost}, have ${state.crumbs}` }], isError: true };
           state.crumbs -= recruit.cost;
+          state._mcpSpent = (state._mcpSpent ?? 0) + recruit.cost;
           state._lastCrumbSpend = Date.now();
           state._lastCrumbSpendAmount = recruit.cost;
           state.team.push(recruit);
@@ -906,12 +910,15 @@ export function defineTools(options = {}) {
             }
             result += ` | Healed`;
           } else if (offer.effect.action === 'grant_crumbs') {
-            state.crumbs += offer.effect.amount || 10;
-            result += ` | +${offer.effect.amount} crumbs`;
+            const grantAmount = offer.effect.amount || 10;
+            state.crumbs += grantAmount;
+            state._mcpEarned = (state._mcpEarned ?? 0) + grantAmount;
+            result += ` | +${grantAmount} crumbs`;
           }
         }
         if (offer.cost > 0) {
           state.crumbs = Math.max(0, state.crumbs - offer.cost);
+          state._mcpSpent = (state._mcpSpent ?? 0) + offer.cost;
           state._lastCrumbSpend = Date.now();
           state._lastCrumbSpendAmount = offer.cost;
           result += ` | -${offer.cost} crumbs`;
@@ -980,6 +987,7 @@ export function defineTools(options = {}) {
         else if (choice.includes('deny') || choice.includes('no')) crumbReward = 12;
 
         state.crumbs += crumbReward;
+        state._mcpEarned = (state._mcpEarned ?? 0) + crumbReward;
         state.stats.crumbsEarned = (state.stats.crumbsEarned || 0) + crumbReward;
         scores.increment('total_crumbs_earned', crumbReward);
 

@@ -47,6 +47,7 @@ function drainHookCrumbs(gameState) {
     lastDrainedHookCrumbs = total;
     if (delta > 0) {
       gameState.crumbs += delta;
+      gameState._mcpEarned = (gameState._mcpEarned ?? 0) + delta;
       gameState.stats.crumbsEarned = (gameState.stats.crumbsEarned || 0) + delta;
     }
     return delta;
@@ -80,24 +81,26 @@ const liveState = createLiveState({
 
     // Normal merge
     if (external.newGameId) local.newGameId = external.newGameId;
-    const localRecentSpend = local._lastCrumbSpend && (Date.now() - local._lastCrumbSpend) < 10000;
-    const externalRecentSpend = external._lastCrumbSpend && (Date.now() - external._lastCrumbSpend) < 10000;
+
+    // PN-Counter CRDT merge for crumbs:
+    // Game is authoritative for crumbs. MCP tracks its own earned/spent counters.
+    // MCP merge = game's crumbs + MCP's unapplied net delta.
     if (external.crumbs != null) {
-      if (externalRecentSpend && external._lastCrumbSpend !== local._lastCrumbSpend) {
-        // The other side just spent crumbs — apply the spend delta to our local crumbs
-        // so we don't lose any crumbs we earned independently.
-        const spendAmount = external._lastCrumbSpendAmount ?? 0;
-        if (spendAmount > 0) {
-          local.crumbs = Math.max(0, (local.crumbs ?? 0) - spendAmount);
-        } else {
-          // Fallback: no spend amount recorded, take the lower value
-          local.crumbs = Math.min(local.crumbs ?? 0, external.crumbs);
-        }
-        local._lastCrumbSpend = external._lastCrumbSpend;
-        local._lastCrumbSpendAmount = external._lastCrumbSpendAmount;
-      } else if (!localRecentSpend) {
-        local.crumbs = Math.max(local.crumbs ?? 0, external.crumbs);
-      }
+      // Max-merge MCP counters across MCP instances
+      local._mcpEarned = Math.max(local._mcpEarned ?? 0, external._mcpEarned ?? 0);
+      local._mcpSpent = Math.max(local._mcpSpent ?? 0, external._mcpSpent ?? 0);
+
+      // Compute how much MCP earned/spent that the game hasn't applied yet
+      const gameAppliedEarn = external._lastMcpEarnedApplied ?? 0;
+      const gameAppliedSpend = external._lastMcpSpentApplied ?? 0;
+      const unappliedNet = ((local._mcpEarned ?? 0) - gameAppliedEarn) - ((local._mcpSpent ?? 0) - gameAppliedSpend);
+
+      // Game's crumbs + our unapplied net = correct MCP-side crumbs
+      local.crumbs = Math.max(0, (external.crumbs ?? 0) + unappliedNet);
+
+      // Sync the applied trackers
+      local._lastMcpEarnedApplied = gameAppliedEarn;
+      local._lastMcpSpentApplied = gameAppliedSpend;
     }
     if (external.totalToolCalls != null) local.totalToolCalls = Math.max(local.totalToolCalls ?? 0, external.totalToolCalls);
     if (external.team) local.team = external.team;
@@ -231,6 +234,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       if (settingsBonus + sessionBonus > 0) {
         gameState.crumbs += settingsBonus + sessionBonus;
       }
+      gameState._mcpEarned = (gameState._mcpEarned ?? 0) + totalAutoClick;
       scores.recordClick(totalAutoClick);
       scores.setMax('highest_crumbs', gameState.crumbs);
 
