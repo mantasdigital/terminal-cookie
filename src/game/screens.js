@@ -442,6 +442,15 @@ const tavernScreen = {
           renderer.bufferWrite(contentTop + i * 5, 16, truncate(info, cols - 20));
           const stats = `ATK:${m.stats.atk} DEF:${m.stats.def} SPD:${m.stats.spd} LCK:${m.stats.lck}`;
           renderer.bufferWrite(contentTop + i * 5 + 1, 16, stats);
+          // Show equipped items
+          const eq = m.equipment ?? {};
+          const eqParts = [];
+          if (eq.weapon) eqParts.push(`${lootIcon('weapon', eq.weapon.rarity ?? 'common')}${eq.weapon.name}`);
+          if (eq.armor) eqParts.push(`${lootIcon('armor', eq.armor.rarity ?? 'common')}${eq.armor.name}`);
+          if (eq.accessory) eqParts.push(`${lootIcon(eq.accessory.slot ?? 'ring', eq.accessory.rarity ?? 'common')}${eq.accessory.name}`);
+          if (eqParts.length > 0) {
+            renderer.bufferWrite(contentTop + i * 5 + 2, 16, renderer.dim(truncate(eqParts.join(' '), cols - 20)));
+          }
         }
       }
     } else if (ui.tavernTab === 'recruit') {
@@ -461,6 +470,26 @@ const tavernScreen = {
           renderer.bufferWrite(contentTop + i * 2 + 1, 4, stats);
         }
         renderer.bufferWrite(contentTop + roster.length * 2 + 1, 4, renderer.dim('Use Up/Down to browse, Enter to recruit'));
+
+        // Show selected recruit portrait on the right side
+        const selected = roster[ui.menuIndex];
+        if (selected) {
+          const previewCol = Math.max(cols - 28, Math.floor(cols * 0.6));
+          const portrait = buildPortrait(selected);
+          renderer.bufferWrite(contentTop, previewCol, renderer.bold(selected.name));
+          renderer.bufferWrite(contentTop + 1, previewCol, `${selected.race} ${selected.class}`);
+          for (let j = 0; j < portrait.length; j++) {
+            renderer.bufferWrite(contentTop + 3 + j, previewCol + 2, portrait[j]);
+          }
+          // Show abilities
+          const abilities = selected.abilities ?? [];
+          if (abilities.length > 0) {
+            renderer.bufferWrite(contentTop + 8, previewCol, renderer.dim('Abilities:'));
+            for (let a = 0; a < abilities.length; a++) {
+              renderer.bufferWrite(contentTop + 9 + a, previewCol + 2, abilities[a]);
+            }
+          }
+        }
       }
     } else if (ui.tavernTab === 'inventory') {
       const inv = state.inventory ?? [];
@@ -1020,19 +1049,33 @@ const deathScreen = {
       renderer.bufferWrite(summaryRow + 6, 6, renderer.color(`Talisman saved: +${talismanReward} crumbs (consolation)`, 'cyan'));
     }
 
-    // Recovered loot
+    // Talisman salvaged loot
+    let extraRows = 0;
+    const salvaged = state.lastSalvagedLoot ?? [];
+    if (salvaged.length > 0) {
+      renderer.bufferWrite(summaryRow + 7, 4, renderer.color('Talisman salvaged items to inventory:', 'yellow'));
+      for (let i = 0; i < salvaged.length; i++) {
+        const item = salvaged[i];
+        const source = item.salvageSource ? ` (from ${item.salvageSource})` : '';
+        renderer.bufferWrite(summaryRow + 8 + i, 6,
+          `${lootIcon(item.slot ?? 'weapon', item.rarity ?? 'common')} ${item.name ?? 'Item'}${source}`);
+      }
+      extraRows = salvaged.length + 1;
+    }
+
+    // Recovered loot (graveyard)
     const recovered = state.recoveredLoot ?? [];
     if (recovered.length > 0) {
-      renderer.bufferWrite(summaryRow + 7, 4, renderer.color('Recovered from the grave:', 'yellow'));
+      renderer.bufferWrite(summaryRow + 7 + extraRows, 4, renderer.color('Recovered from the grave:', 'yellow'));
       for (let i = 0; i < recovered.length; i++) {
         const item = recovered[i];
-        renderer.bufferWrite(summaryRow + 8 + i, 6, `${lootIcon(item.slot ?? 'weapon', item.rarity ?? 'common')} ${item.name ?? 'Item'}`);
+        renderer.bufferWrite(summaryRow + 8 + extraRows + i, 6, `${lootIcon(item.slot ?? 'weapon', item.rarity ?? 'common')} ${item.name ?? 'Item'}`);
       }
     }
 
     // Graveyard run hint
     if (state.graveyardRunAvailable) {
-      renderer.bufferWrite(summaryRow + 9 + recovered.length, 4,
+      renderer.bufferWrite(summaryRow + 9 + extraRows + recovered.length, 4,
         renderer.color('A graveyard run is available — re-enter the same dungeon to recover more!', 'cyan'));
     }
 

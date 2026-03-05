@@ -50,11 +50,13 @@ export function createLiveState({ getState, setState, label = 'unknown', skipIni
    * Write current state to the live file.
    */
   function write() {
-    ensureDir();
     try {
+      ensureDir();
       const state = getState();
+      // Exclude transient UI data that can cause serialization issues
+      const { tavernRoster, activeCombat, rollBarState, ...serializableState } = state;
       const data = {
-        ...state,
+        ...serializableState,
         _live: {
           writerPid: pid,
           writerLabel: label,
@@ -65,8 +67,8 @@ export function createLiveState({ getState, setState, label = 'unknown', skipIni
       writeFileSync(LIVE_PATH, json, 'utf-8');
       lastWriteMs = Date.now();
       lastWrittenJson = json;
-    } catch {
-      // best-effort write
+    } catch (err) {
+      _debugLog(`write: error: ${err.message}`);
     }
   }
 
@@ -99,7 +101,7 @@ export function createLiveState({ getState, setState, label = 'unknown', skipIni
       // External change detected — merge it
       _debugLog(`poll: external change from ${data._live?.writerLabel}(${data._live?.writerPid}), crumbs=${data.crumbs}`);
       lastExternalJson = raw;
-      const { _live, _tavernRoster, ...stateData } = data;
+      const { _live, _tavernRoster, tavernRoster, activeCombat, rollBarState, ...stateData } = data;
       setState(stateData);
       return true;
     } catch (err) {
@@ -112,29 +114,39 @@ export function createLiveState({ getState, setState, label = 'unknown', skipIni
    * Start polling for external changes and writing state periodically.
    */
   function start() {
-    if (pollHandle) { _debugLog('start: already running, skipping'); return; }
-    _debugLog(`start: skipInitialPoll=${skipInitialPoll}, LIVE_PATH=${LIVE_PATH}`);
+    try {
+      if (pollHandle) { _debugLog('start: already running, skipping'); return; }
+      _debugLog(`start: skipInitialPoll=${skipInitialPoll}, LIVE_PATH=${LIVE_PATH}`);
 
-    // Poll first to pick up any external changes (e.g. hook crumbs)
-    // before writing our state, so we don't overwrite them.
-    // Skip initial poll on new games to avoid loading stale crumbs.
-    if (!skipInitialPoll) {
-      const pollResult = poll();
-      _debugLog(`start: initial poll returned ${pollResult}`);
-    }
-    write();
-    _debugLog(`start: initial write done, crumbs=${getState().crumbs}`);
-
-    pollHandle = setInterval(() => {
-      // Check for external changes first
-      const externalUpdate = poll();
-
-      // Write our state (but not if we just loaded external state — let it settle)
-      if (!externalUpdate) {
-        write();
+      // Poll first to pick up any external changes (e.g. hook crumbs)
+      // before writing our state, so we don't overwrite them.
+      // Skip initial poll on new games to avoid loading stale crumbs.
+      if (!skipInitialPoll) {
+        const pollResult = poll();
+        _debugLog(`start: initial poll returned ${pollResult}`);
       }
-    }, POLL_INTERVAL_MS);
-    _debugLog('start: interval set');
+      write();
+      _debugLog(`start: initial write done, crumbs=${getState().crumbs}`);
+
+      pollHandle = setInterval(() => {
+        try {
+          // Check for external changes first
+          const externalUpdate = poll();
+
+          // Write our state (but not if we just loaded external state — let it settle)
+          if (!externalUpdate) {
+            write();
+          }
+        } catch (err) {
+          _debugLog(`interval: error: ${err.message}`);
+        }
+      }, POLL_INTERVAL_MS);
+      _debugLog('start: interval set');
+    } catch (err) {
+      // Log to stderr as fallback if debug log fails
+      try { process.stderr.write(`[live-state] start error (${label}): ${err.message}\n`); } catch { /* ignore */ }
+      _debugLog(`start: FATAL error: ${err.message}`);
+    }
   }
 
   /**

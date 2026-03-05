@@ -16,18 +16,19 @@ const MAX_LEVEL = 10;
  * - deathReward: crumbs granted as consolation on team wipe
  * - atkBonus:    flat ATK bonus applied to every team member in combat
  * - defBonus:    flat DEF bonus applied to every team member in combat
+ * - salvageRate: chance (0-1) to recover each equipped item on death, scaled by dungeon depth
  */
 const TIERS = [
-  /*  1 */ { upgradeCost: 0,    crumbBonus: 0.05, lootQuality: 1,  hpRegen: 1, deathReward: 5,   atkBonus: 0, defBonus: 0 },
-  /*  2 */ { upgradeCost: 30,   crumbBonus: 0.08, lootQuality: 2,  hpRegen: 1, deathReward: 8,   atkBonus: 0, defBonus: 0 },
-  /*  3 */ { upgradeCost: 75,   crumbBonus: 0.12, lootQuality: 3,  hpRegen: 2, deathReward: 12,  atkBonus: 0, defBonus: 0 },
-  /*  4 */ { upgradeCost: 150,  crumbBonus: 0.16, lootQuality: 4,  hpRegen: 2, deathReward: 18,  atkBonus: 1, defBonus: 0 },
-  /*  5 */ { upgradeCost: 300,  crumbBonus: 0.20, lootQuality: 6,  hpRegen: 3, deathReward: 25,  atkBonus: 1, defBonus: 0 },
-  /*  6 */ { upgradeCost: 500,  crumbBonus: 0.25, lootQuality: 8,  hpRegen: 3, deathReward: 35,  atkBonus: 1, defBonus: 1 },
-  /*  7 */ { upgradeCost: 800,  crumbBonus: 0.30, lootQuality: 10, hpRegen: 4, deathReward: 50,  atkBonus: 2, defBonus: 1 },
-  /*  8 */ { upgradeCost: 1200, crumbBonus: 0.35, lootQuality: 13, hpRegen: 5, deathReward: 70,  atkBonus: 2, defBonus: 2 },
-  /*  9 */ { upgradeCost: 1800, crumbBonus: 0.42, lootQuality: 16, hpRegen: 6, deathReward: 100, atkBonus: 3, defBonus: 2 },
-  /* 10 */ { upgradeCost: 0,    crumbBonus: 0.50, lootQuality: 20, hpRegen: 8, deathReward: 150, atkBonus: 3, defBonus: 3 },
+  /*  1 */ { upgradeCost: 0,    crumbBonus: 0.05, lootQuality: 1,  hpRegen: 1, deathReward: 5,   atkBonus: 0, defBonus: 0, salvageRate: 0.0  },
+  /*  2 */ { upgradeCost: 30,   crumbBonus: 0.08, lootQuality: 2,  hpRegen: 1, deathReward: 8,   atkBonus: 0, defBonus: 0, salvageRate: 0.1  },
+  /*  3 */ { upgradeCost: 75,   crumbBonus: 0.12, lootQuality: 3,  hpRegen: 2, deathReward: 12,  atkBonus: 0, defBonus: 0, salvageRate: 0.15 },
+  /*  4 */ { upgradeCost: 150,  crumbBonus: 0.16, lootQuality: 4,  hpRegen: 2, deathReward: 18,  atkBonus: 1, defBonus: 0, salvageRate: 0.2  },
+  /*  5 */ { upgradeCost: 300,  crumbBonus: 0.20, lootQuality: 6,  hpRegen: 3, deathReward: 25,  atkBonus: 1, defBonus: 0, salvageRate: 0.3  },
+  /*  6 */ { upgradeCost: 500,  crumbBonus: 0.25, lootQuality: 8,  hpRegen: 3, deathReward: 35,  atkBonus: 1, defBonus: 1, salvageRate: 0.4  },
+  /*  7 */ { upgradeCost: 800,  crumbBonus: 0.30, lootQuality: 10, hpRegen: 4, deathReward: 50,  atkBonus: 2, defBonus: 1, salvageRate: 0.5  },
+  /*  8 */ { upgradeCost: 1200, crumbBonus: 0.35, lootQuality: 13, hpRegen: 5, deathReward: 70,  atkBonus: 2, defBonus: 2, salvageRate: 0.6  },
+  /*  9 */ { upgradeCost: 1800, crumbBonus: 0.42, lootQuality: 16, hpRegen: 6, deathReward: 100, atkBonus: 3, defBonus: 2, salvageRate: 0.75 },
+  /* 10 */ { upgradeCost: 0,    crumbBonus: 0.50, lootQuality: 20, hpRegen: 8, deathReward: 150, atkBonus: 3, defBonus: 3, salvageRate: 0.9  },
 ];
 
 /**
@@ -110,6 +111,51 @@ export function awardDeathReward(gameState) {
 }
 
 /**
+ * Salvage equipped items from dead team members via talisman.
+ * Chance scales with talisman level, dungeon depth (rooms cleared), and
+ * performance (monsters killed). Higher talisman = more items saved.
+ * @param {object} gameState
+ * @param {object} rng - RNG instance
+ * @returns {object[]} Salvaged items added to inventory
+ */
+export function salvageLoot(gameState, rng) {
+  const talisman = gameState.talisman;
+  if (!talisman) return [];
+
+  const { salvageRate } = getTalismanBonuses(talisman.level);
+  if (salvageRate <= 0) return [];
+
+  const roomsCleared = gameState.stats?.roomsCleared ?? 0;
+  const monstersSlain = gameState.stats?.monstersSlain ?? 0;
+  const dungeonLevel = gameState.dungeonProgress?.level ?? 1;
+
+  // Performance bonus: deeper dungeons and more kills improve salvage odds
+  const depthBonus = Math.min(0.15, dungeonLevel * 0.02);
+  const performanceBonus = Math.min(0.1, (roomsCleared * 0.005) + (monstersSlain * 0.01));
+  const totalChance = Math.min(0.95, salvageRate + depthBonus + performanceBonus);
+
+  const team = gameState.team ?? [];
+  const salvaged = [];
+
+  for (const member of team) {
+    const eq = member.equipment ?? {};
+    for (const slot of ['weapon', 'armor', 'accessory']) {
+      if (eq[slot] && rng.chance(totalChance)) {
+        salvaged.push({ ...eq[slot], salvageSource: member.name });
+      }
+    }
+  }
+
+  // Add salvaged items to inventory
+  gameState.inventory = gameState.inventory ?? [];
+  for (const item of salvaged) {
+    gameState.inventory.push(item);
+  }
+
+  return salvaged;
+}
+
+/**
  * Create the default talisman object for new games.
  * @returns {object}
  */
@@ -139,6 +185,7 @@ export function formatTalismanInfo(talisman, crumbs) {
   lines.push(`  Loot quality:    +${b.lootQuality}`);
   lines.push(`  HP regen/room:   +${b.hpRegen}`);
   lines.push(`  Death consolation: ${b.deathReward} crumbs`);
+  if (b.salvageRate > 0) lines.push(`  Loot salvage:    ${Math.round(b.salvageRate * 100)}%`);
   if (b.atkBonus > 0) lines.push(`  Team ATK:        +${b.atkBonus}`);
   if (b.defBonus > 0) lines.push(`  Team DEF:        +${b.defBonus}`);
 

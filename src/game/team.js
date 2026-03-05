@@ -151,17 +151,58 @@ export function awardXP(member, dangerLevel) {
   return { leveled, newLevel: member.level };
 }
 
+// Equipment visual modifiers for portraits
+const WEAPON_VISUALS = {
+  weapon: {
+    common:    '|-',
+    uncommon:  '|=',
+    rare:      '|*',
+    epic:      '|#',
+    legendary: '|!',
+  },
+};
+
+const ARMOR_VISUALS = {
+  common:    '[.]',
+  uncommon:  '[+]',
+  rare:      '[*]',
+  epic:      '[#]',
+  legendary: '[!]',
+};
+
+const ACCESSORY_VISUALS = {
+  common:    '.',
+  uncommon:  '+',
+  rare:      '*',
+  epic:      '#',
+  legendary: '!',
+};
+
 /**
- * Build an ASCII portrait for a member.
+ * Build an ASCII portrait for a member, reflecting equipped items.
  * @param {object} member
  * @returns {string[]} Lines of the portrait
  */
 export function buildPortrait(member) {
   const parts = PORTRAIT_PARTS[member.race] ?? PORTRAIT_PARTS.Human;
   const classTag = member.class.substring(0, 3).toUpperCase();
+  const eq = member.equipment ?? {};
+
+  // Weapon: show on right side of body
+  const wpnRarity = eq.weapon?.rarity?.toLowerCase() ?? null;
+  const wpnGlyph = wpnRarity ? (WEAPON_VISUALS.weapon[wpnRarity] ?? '|-') : '  ';
+
+  // Armor: replace body line
+  const armRarity = eq.armor?.rarity?.toLowerCase() ?? null;
+  const body = armRarity ? (ARMOR_VISUALS[armRarity] ?? parts.body) : parts.body;
+
+  // Accessory: show as indicator on head line
+  const accRarity = eq.accessory?.rarity?.toLowerCase() ?? null;
+  const accGlyph = accRarity ? (ACCESSORY_VISUALS[accRarity] ?? '') : '';
+
   return [
-    `  ${parts.head}`,
-    `  ${parts.body}`,
+    `  ${parts.head}${accGlyph ? ' ' + accGlyph : ''}`,
+    `  ${body}${wpnGlyph}`,
     `  ${parts.legs}`,
     ` [${classTag}]`,
   ];

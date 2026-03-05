@@ -26,7 +26,7 @@ import { getScreen, getUIState, resetUIState } from './screens.js';
 import { classifyPrompt } from '../prompts/classifier.js';
 import { getWidget } from '../prompts/widgets.js';
 import { createLiveState } from '../save/live-state.js';
-import { getTalismanBonuses, applyTalismanRegen, awardDeathReward, upgradeTalisman, canUpgrade } from './talisman.js';
+import { getTalismanBonuses, applyTalismanRegen, awardDeathReward, upgradeTalisman, canUpgrade, salvageLoot } from './talisman.js';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -336,13 +336,15 @@ export async function runGame(options = {}) {
             const penalty = storyManager.applyDeathPenalty(dungeonLevel);
             const talismanDeathReward = awardDeathReward(state);
             state.lastTalismanDeathReward = talismanDeathReward;
+            const salvaged = salvageLoot(state, rng);
+            state.lastSalvagedLoot = salvaged;
             storyManager.addStoryEntry(`Your team has fallen! Lost ${penalty} crumbs.`, 'combat');
             graveyard.recordWipe(state.team, state.lastDungeonSeed ?? 0);
             economy.activateWipeDiscount();
             removeTalismanCombatBuffs();
             activeCombat = null;
             rollBar = null;
-            workModeLog('Auto: team defeated');
+            workModeLog(`Auto: team defeated, salvaged ${salvaged.length} items`);
             await engine.transition(GameState.DEATH);
           } else if (attackResult.error) {
             // Combat stuck — force recovery
@@ -637,6 +639,8 @@ export async function runGame(options = {}) {
           const penalty = storyManager.applyDeathPenalty(dungeonLevel);
           const talismanDeathReward = awardDeathReward(state);
           state.lastTalismanDeathReward = talismanDeathReward;
+          const salvaged = salvageLoot(state, rng);
+          state.lastSalvagedLoot = salvaged;
           storyManager.addStoryEntry(`Your team has fallen! Lost ${penalty} crumbs to the dungeon.`, 'combat');
           graveyard.recordWipe(state.team, state.lastDungeonSeed ?? 0);
           economy.activateWipeDiscount();
@@ -675,6 +679,8 @@ export async function runGame(options = {}) {
         const penalty = storyManager.applyDeathPenalty(dungeonLevel);
         const talismanDeathReward = awardDeathReward(state);
         state.lastTalismanDeathReward = talismanDeathReward;
+        const salvaged = salvageLoot(state, rng);
+        state.lastSalvagedLoot = salvaged;
         storyManager.addStoryEntry(`Your team has fallen! Lost ${penalty} crumbs to the dungeon.`, 'combat');
         removeTalismanCombatBuffs();
         await engine.transition(GameState.DEATH);
