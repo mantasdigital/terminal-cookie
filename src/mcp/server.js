@@ -44,7 +44,8 @@ const liveState = createLiveState({
   setState: (external) => {
     // Merge terminal game changes into MCP state
     const local = engine.getStateRef();
-    if (external.crumbs != null) local.crumbs = external.crumbs;
+    if (external.crumbs != null) local.crumbs = Math.max(local.crumbs ?? 0, external.crumbs);
+    if (external.totalToolCalls != null) local.totalToolCalls = Math.max(local.totalToolCalls ?? 0, external.totalToolCalls);
     if (external.team) local.team = external.team;
     if (external.inventory) local.inventory = external.inventory;
     if (external.stats) Object.assign(local.stats, external.stats);
@@ -68,6 +69,7 @@ const passiveRunner = createPassiveRunner({
   rng: engine.rng,
   settings,
   scores,
+  sessions,
 });
 
 // Tool context passed to handlers
@@ -307,6 +309,14 @@ async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }
+
+// Clean up intervals and sessions on exit so the process releases the folder
+process.on('exit', () => {
+  if (autosaveHandle) clearInterval(autosaveHandle);
+  passiveRunner.stop();
+  liveState.stop();
+  sessions.deregister();
+});
 
 main().catch((err) => {
   process.stderr.write(`Fatal: ${err.message}\n`);

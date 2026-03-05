@@ -22,7 +22,7 @@ let nextPendingId = 1;
  * @param {object} options.scores - Scores instance
  * @returns {object} Passive runner instance
  */
-export function createPassiveRunner({ engine, rng, settings, scores }) {
+export function createPassiveRunner({ engine, rng, settings, scores, sessions }) {
   let intervalHandle = null;
   let tickCount = 0;
 
@@ -259,6 +259,9 @@ export function createPassiveRunner({ engine, rng, settings, scores }) {
    */
   function tick() {
     tickCount++;
+
+    // Keep MCP session alive between tool calls
+    if (sessions) sessions.heartbeat();
 
     // Only tick if in dungeon and have a dungeon
     if (!state.dungeonProgress) return;

@@ -366,6 +366,13 @@ if (flags.mcp) {
   // Graceful shutdown when parent process closes stdin or sends signals
   function mcpShutdown() {
     log.debug('MCP server shutting down');
+    try {
+      // Clean up sessions so badge doesn't show stale connection
+      const sessionsPath = join(PROJECT_ROOT, 'data', 'sessions.json');
+      if (existsSync(sessionsPath)) {
+        writeFileSync(sessionsPath, JSON.stringify({ sessions: {} }, null, 2), 'utf-8');
+      }
+    } catch { /* best effort */ }
     process.exit(0);
   }
   process.on('SIGINT', mcpShutdown);

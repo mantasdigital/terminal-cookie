@@ -8,7 +8,7 @@ import { readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
 import { randomBytes } from 'crypto';
 
-const SESSION_TTL_MS = 60_000; // 60s inactivity = session expired
+const SESSION_TTL_MS = 300_000; // 5 min inactivity = session expired
 
 /**
  * Create a session tracker that persists to a shared JSON file.
