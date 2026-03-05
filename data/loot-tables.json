@@ -44,7 +44,15 @@
     { "name": "Masterwork", "min_level": 12, "power_bonus": 7, "tier": 5 },
     { "name": "Enchanted", "min_level": 16, "power_bonus": 10, "tier": 6 },
     { "name": "Legendary", "min_level": 20, "power_bonus": 14, "tier": 7 },
-    { "name": "Mythic", "min_level": 25, "power_bonus": 18, "tier": 8 }
+    { "name": "Mythic", "min_level": 25, "power_bonus": 18, "tier": 8 },
+    { "name": "Celestial", "min_level": 35, "power_bonus": 24, "tier": 9 },
+    { "name": "Primordial", "min_level": 50, "power_bonus": 32, "tier": 10 },
+    { "name": "Eternal", "min_level": 75, "power_bonus": 42, "tier": 11 },
+    { "name": "Void-Forged", "min_level": 100, "power_bonus": 55, "tier": 12 },
+    { "name": "Astral", "min_level": 150, "power_bonus": 72, "tier": 13 },
+    { "name": "Transcendent", "min_level": 200, "power_bonus": 95, "tier": 14 },
+    { "name": "Godforged", "min_level": 300, "power_bonus": 130, "tier": 15 },
+    { "name": "Omega", "min_level": 400, "power_bonus": 180, "tier": 16 }
   ],
   "suffixes": [
     { "name": "of the Bear", "stat": "hp", "bonus": 3, "description": "+HP" },

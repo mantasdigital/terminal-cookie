@@ -22,6 +22,7 @@ import {
   getBuildingLevel, getBuildingCost, getBuildingDefs, getBuildingIds,
   getVillageBonuses, getMaxBuildingLevel, getUnlockThreshold,
 } from './village.js';
+import { getEarnedTrophies, getAllTrophies, getBuyableTrophies, hasTrophy } from './trophies.js';
 
 const __screens_dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__screens_dirname, '..', '..');
@@ -209,6 +210,7 @@ const ui = {
   equipPicker: false,    // show member picker when equipping from inventory
   equipPickerIdx: 0,     // selected member in equip picker
   villageIndex: 0,       // village building selection
+  trophyIndex: 0,        // trophy list selection
   helpVisible: false,
   leaderboardVisible: false,
   securityLogVisible: false,
@@ -539,11 +541,11 @@ const tavernScreen = {
     // Tabs — Village only shows if unlocked
     const hasVillage = isVillageUnlocked(state) || canUnlockVillage(state);
     const tabs = hasVillage
-      ? ['[Party]', '[Recruit]', '[Inventory]', '[Shop]', '[Village]', '[Talisman]', '[Log]']
-      : ['[Party]', '[Recruit]', '[Inventory]', '[Shop]', '[Talisman]', '[Log]'];
+      ? ['[Party]', '[Recruit]', '[Inventory]', '[Shop]', '[Village]', '[Talisman]', '[Trophies]', '[Log]']
+      : ['[Party]', '[Recruit]', '[Inventory]', '[Shop]', '[Talisman]', '[Trophies]', '[Log]'];
     const tabMap = hasVillage
-      ? ['party', 'recruit', 'inventory', 'shop', 'village', 'talisman', 'log']
-      : ['party', 'recruit', 'inventory', 'shop', 'talisman', 'log'];
+      ? ['party', 'recruit', 'inventory', 'shop', 'village', 'talisman', 'trophies', 'log']
+      : ['party', 'recruit', 'inventory', 'shop', 'talisman', 'trophies', 'log'];
     let tabStr = '';
     for (let i = 0; i < tabs.length; i++) {
       const active = tabMap[i] === ui.tavernTab;
@@ -912,6 +914,43 @@ const tavernScreen = {
           if (bonuses.lootQuality > 0) renderer.bufferWrite(bRow++, detCol, `  Loot: +${bonuses.lootQuality}`);
         }
       }
+    } else if (ui.tavernTab === 'trophies') {
+      const earned = getEarnedTrophies(state);
+      const all = getAllTrophies();
+      const buyable = getBuyableTrophies(state);
+      const cols2 = renderer.capabilities.cols;
+      const maxRows = renderer.capabilities.rows - contentTop - 5;
+
+      renderer.bufferWrite(contentTop, 4, renderer.bold(`Trophies: ${earned.length}/${all.length}`));
+
+      // Group by category
+      const categories = [...new Set(all.map(t => t.category))];
+      let row = contentTop + 2;
+      let trophyListIdx = 0;
+      for (const cat of categories) {
+        if (row >= contentTop + maxRows) break;
+        renderer.bufferWrite(row, 4, renderer.bold(`-- ${cat} --`));
+        row++;
+        const catTrophies = all.filter(t => t.category === cat);
+        for (const t of catTrophies) {
+          if (row >= contentTop + maxRows) break;
+          const owned = hasTrophy(state, t.id);
+          const prefix = trophyListIdx === ui.trophyIndex ? '> ' : '  ';
+          const icon = owned ? renderer.color(t.icon, 'yellow') : renderer.dim(t.icon);
+          const name = owned ? renderer.color(t.name, 'green') : renderer.dim(t.name);
+          const desc = owned ? t.desc : '???';
+          const costLabel = t.cost && !owned ? renderer.dim(` [${formatCrumbs(t.cost)}c]`) : '';
+          renderer.bufferWrite(row, 4, `${prefix}${icon} ${name} ${renderer.dim(desc)}${costLabel}`);
+          row++;
+          trophyListIdx++;
+        }
+      }
+
+      // Buy prompt for buyable trophies
+      if (buyable.length > 0) {
+        const allFlat = all.filter(t => !t.cost || !hasTrophy(state, t.id));
+        renderer.bufferWrite(renderer.capabilities.rows - 5, 4, renderer.dim('Enter=buy trophy (if buyable)'));
+      }
     } else if (ui.tavernTab === 'log') {
       const log = state.adventureLog ?? [];
       if (log.length === 0) {
@@ -1043,6 +1082,7 @@ const tavernScreen = {
         else if (ui.tavernTab === 'inventory') ui.invIndex = Math.max(0, ui.invIndex - 1);
         else if (ui.tavernTab === 'shop') ui.shopIndex = Math.max(0, ui.shopIndex - 1);
         else if (ui.tavernTab === 'village') ui.villageIndex = Math.max(0, ui.villageIndex - 1);
+        else if (ui.tavernTab === 'trophies') ui.trophyIndex = Math.max(0, ui.trophyIndex - 1);
         else if (ui.tavernTab === 'log') ui.logScroll = Math.min((state.adventureLog ?? []).length, ui.logScroll + 1);
         else ui.menuIndex = Math.max(0, ui.menuIndex - 1);
         break;
@@ -1052,6 +1092,7 @@ const tavernScreen = {
         else if (ui.tavernTab === 'inventory') ui.invIndex = Math.min((state.inventory ?? []).length - 1, ui.invIndex + 1);
         else if (ui.tavernTab === 'shop') ui.shopIndex = Math.min(SHOP_ITEMS.length - 1, ui.shopIndex + 1);
         else if (ui.tavernTab === 'village') ui.villageIndex = Math.min(getBuildingIds().length - 1, ui.villageIndex + 1);
+        else if (ui.tavernTab === 'trophies') ui.trophyIndex = Math.min(getAllTrophies().length - 1, ui.trophyIndex + 1);
         else if (ui.tavernTab === 'log') ui.logScroll = Math.max(0, ui.logScroll - 1);
         else ui.menuIndex++;
         break;
@@ -1072,6 +1113,17 @@ const tavernScreen = {
           if ((state.team ?? []).length > 0 && (state.inventory ?? []).length > 0) {
             ui.equipPicker = true;
             ui.equipPickerIdx = 0;
+          }
+          return;
+        }
+        if (ui.tavernTab === 'trophies') {
+          // Map flat trophyIndex to trophy def, then find buyable index
+          const allT = getAllTrophies();
+          const selected = allT[ui.trophyIndex];
+          if (selected && selected.cost && !hasTrophy(state, selected.id)) {
+            const buyable = getBuyableTrophies(state);
+            const buyIdx = buyable.findIndex(t => t.id === selected.id);
+            if (buyIdx >= 0) return { action: 'trophy_buy', index: buyIdx };
           }
           return;
         }
@@ -1669,6 +1721,9 @@ const dungeonSummaryScreen = {
     renderer.bufferWrite(row++, 6, `Crumbs earned:   ${renderer.color(formatCrumbs(crumbsEarned), crumbsEarned > 0 ? 'green' : 'brightBlack')}`);
     renderer.bufferWrite(row++, 6, `Rooms cleared:   ${stats.roomsCleared ?? 0}`);
     renderer.bufferWrite(row++, 6, `Monsters slain:  ${stats.monstersSlain ?? 0}`);
+    if ((stats.bossesSlain ?? 0) > 0) {
+      renderer.bufferWrite(row++, 6, renderer.color(`Bosses slain:    ${stats.bossesSlain}`, 'yellow'));
+    }
     row++;
 
     // Loot

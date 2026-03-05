@@ -113,7 +113,7 @@ export function awardXP(member, dangerLevel) {
   const xpGain = 10 * dangerLevel;
   member.xp += xpGain;
 
-  const cap = 50;
+  const cap = 500;
   let leveled = false;
 
   while (member.level < cap) {

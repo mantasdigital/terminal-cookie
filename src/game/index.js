@@ -28,6 +28,7 @@ import { classifyPrompt } from '../prompts/classifier.js';
 import { getWidget } from '../prompts/widgets.js';
 import { createLiveState } from '../save/live-state.js';
 import { getTalismanBonuses, applyTalismanRegen, awardDeathReward, upgradeTalisman, canUpgrade, salvageLoot } from './talisman.js';
+import { checkTrophies, awardTrophy, hasTrophy, getBuyableTrophies } from './trophies.js';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -154,6 +155,14 @@ export async function runGame(options = {}) {
       if (external.passiveLog) local.passiveLog = external.passiveLog;
       if (external.totalToolCalls != null) local.totalToolCalls = Math.max(local.totalToolCalls ?? 0, external.totalToolCalls);
       if (external.tokenUsage != null) local.tokenUsage = Math.max(local.tokenUsage ?? 0, external.tokenUsage);
+      if (external.playTime != null) local.playTime = Math.max(local.playTime ?? 0, external.playTime);
+      // Merge trophies: union of both sets
+      if (external.trophies && Array.isArray(external.trophies)) {
+        local.trophies = local.trophies ?? [];
+        for (const t of external.trophies) {
+          if (!local.trophies.includes(t)) local.trophies.push(t);
+        }
+      }
       if (external.talisman) {
         local.talisman = local.talisman ?? { level: 1 };
         local.talisman.level = Math.max(local.talisman.level, external.talisman.level ?? 1);
@@ -191,6 +200,7 @@ export async function runGame(options = {}) {
   let activeCombat = null;
   let voiceController = null;
   let combatAutoTimer = 0; // ms since last auto-attack in combat
+  let trophyCheckTimer = 0; // ms since last trophy check
 
   // Adventure log helper
   function logAdventure(text, type = 'event') {
@@ -752,6 +762,7 @@ export async function runGame(options = {}) {
       state.team.push(member);
       roster.splice(idx, 1);
       logAdventure(`Auto-recruited ${member.name} the ${member.race} ${member.class}`, 'recruit');
+      state.stats.totalRecruits = (state.stats.totalRecruits ?? 0) + 1;
       renderer.showNotification(`Auto: ${member.name} joins your team!`, 'info');
       tutorial.advance('recruit');
       if (!dungeonTimer) {
@@ -834,6 +845,31 @@ export async function runGame(options = {}) {
         drops.push(...generateEnemyDrops({ enemy, level, rng }));
       }
       state.pendingLoot = drops;
+
+      // Track boss kills and flawless victories
+      const bossDefeated = defeatedEnemies.some(e => e.isBoss);
+      if (bossDefeated) {
+        state.stats.bossesDefeated = (state.stats.bossesDefeated ?? 0) + 1;
+        if (state._dungeonRunStats) state._dungeonRunStats.bossesSlain++;
+        const teamFallen = (state.team ?? []).filter(m => m.currentHp <= 0);
+        if (teamFallen.length === 0) {
+          state.stats.flawlessBossKills = (state.stats.flawlessBossKills ?? 0) + 1;
+          if (!hasTrophy(state, 'flawless')) {
+            const t = awardTrophy(state, 'flawless');
+            if (t) {
+              renderer.showNotification(`Trophy: ${t.name} — ${t.desc}`, 'success');
+              logAdventure(`Trophy: ${t.name} — ${t.desc}`, 'trophy');
+            }
+          }
+        }
+      }
+
+      // Track legendary loot finds
+      for (const item of drops) {
+        if (item.rarity === 'Legendary') {
+          state.stats.legendariesFound = (state.stats.legendariesFound ?? 0) + 1;
+        }
+      }
       const vbXp = getVillageBonuses(state);
       for (const m of (state.team ?? []).filter(t => t.currentHp > 0)) {
         awardXP(m, level);
@@ -920,6 +956,7 @@ export async function runGame(options = {}) {
       crumbsBefore: state.crumbs ?? 0,
       roomsCleared: 0,
       monstersSlain: 0,
+      bossesSlain: 0,
       lootCollected: [],
       lootSold: 0,
       xpEarned: 0,
@@ -1104,6 +1141,7 @@ export async function runGame(options = {}) {
           roster.splice(ui.menuIndex, 1);
           renderer.showNotification(`${member.name} the ${member.race} ${member.class} joins your team!`, 'info');
           logAdventure(`Recruited ${member.name} the ${member.race} ${member.class} for ${cost} crumbs`, 'recruit');
+          state.stats.totalRecruits = (state.stats.totalRecruits ?? 0) + 1;
           tutorial.advance('recruit');
           // Start dungeon auto-timer after first recruit (if not already running)
           if (!dungeonTimer) {
@@ -1242,6 +1280,7 @@ export async function runGame(options = {}) {
           if (equipable.length > 0) {
             const target = equipable[rng.int(0, equipable.length - 1)];
             enchantItem(target, 1);
+            state.stats.highestEnchant = Math.max(state.stats.highestEnchant ?? 0, target.enchantLevel ?? 1);
             logAdventure(`Enchanted ${target.name} with scroll (+2 power)`, 'enchant');
             renderer.showNotification(`Enchanted ${target.name}!`, 'success');
           } else {
@@ -1256,6 +1295,19 @@ export async function runGame(options = {}) {
       } else {
         renderer.showNotification('Not enough crumbs!', 'warn');
       }
+    } else if (result?.action === 'trophy_buy') {
+      const buyable = getBuyableTrophies(state);
+      const trophy = buyable[result.index];
+      if (trophy && state.crumbs >= trophy.cost) {
+        state.crumbs -= trophy.cost;
+        state._lastCrumbSpend = Date.now();
+        state._lastCrumbSpendAmount = trophy.cost;
+        awardTrophy(state, trophy.id);
+        logAdventure(`Bought trophy: ${trophy.name} for ${trophy.cost.toLocaleString()} crumbs`, 'trophy');
+        renderer.showNotification(`Trophy acquired: ${trophy.name}!`, 'success');
+      } else if (trophy) {
+        renderer.showNotification(`Not enough crumbs! Need ${trophy.cost.toLocaleString()}`, 'warn');
+      }
     } else if (result?.action === 'inv_enchant') {
       const inv = state.inventory ?? [];
       const item = inv[result.index];
@@ -1268,6 +1320,7 @@ export async function runGame(options = {}) {
           state._lastCrumbSpend = Date.now();
           state._lastCrumbSpendAmount = cost;
           enchantItem(item, 1);
+          state.stats.highestEnchant = Math.max(state.stats.highestEnchant ?? 0, item.enchantLevel ?? 1);
           logAdventure(`Enchanted ${item.name} for ${cost} crumbs`, 'enchant');
           renderer.showNotification(`Enchanted ${item.name}! (+2 power)`, 'success');
         } else {
@@ -1644,6 +1697,20 @@ export async function runGame(options = {}) {
     // Engine tick (scheduler, etc)
     engine.update(FRAME_MS);
 
+    // Track play time
+    state.playTime = (state.playTime ?? 0) + FRAME_MS;
+
+    // Periodic trophy checks (every 5s to avoid overhead)
+    trophyCheckTimer += FRAME_MS;
+    if (trophyCheckTimer >= 5000) {
+      trophyCheckTimer = 0;
+      const newTrophies = checkTrophies(state);
+      for (const t of newTrophies) {
+        renderer.showNotification(`Trophy unlocked: ${t.name} — ${t.desc}`, 'success');
+        logAdventure(`Trophy: ${t.name} — ${t.desc}`, 'trophy');
+      }
+    }
+
     // Auto-combat tick — auto-attack every 600ms
     if (activeCombat && !activeCombat.isFinished && state.currentState === GameState.COMBAT) {
       combatAutoTimer += FRAME_MS;
@@ -1653,6 +1720,10 @@ export async function runGame(options = {}) {
         if (attackResult.roll) {
           const currentTurn = activeCombat.currentTurn();
           state._lastCombatRoll = { ...attackResult.roll, attacker: attackResult.attacker, target: attackResult.target, damage: attackResult.damage ?? attackResult.selfDamage ?? 0, modifier: Math.floor((currentTurn?.stats?.atk ?? 5) / 4) };
+        }
+        // Track highest single-hit damage
+        if (attackResult.damage > 0) {
+          state.stats.highestDamage = Math.max(state.stats.highestDamage ?? 0, attackResult.damage);
         }
         if (attackResult.outcome === 'victory' || attackResult.outcome === 'defeat') {
           await handleCombatEnd(attackResult);

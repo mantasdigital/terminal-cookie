@@ -74,6 +74,8 @@ function defaultGameState(seed) {
     adventureLog: [],
     shopBuffs: {},
     village: null,
+    trophies: [],
+    playTime: 0,
   };
 }
 

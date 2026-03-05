@@ -105,6 +105,13 @@ const liveState = createLiveState({
     }
     if (external.totalToolCalls != null) local.totalToolCalls = Math.max(local.totalToolCalls ?? 0, external.totalToolCalls);
     if (external.tokenUsage != null) local.tokenUsage = Math.max(local.tokenUsage ?? 0, external.tokenUsage);
+    if (external.playTime != null) local.playTime = Math.max(local.playTime ?? 0, external.playTime);
+    if (external.trophies && Array.isArray(external.trophies)) {
+      local.trophies = local.trophies ?? [];
+      for (const t of external.trophies) {
+        if (!local.trophies.includes(t)) local.trophies.push(t);
+      }
+    }
     if (external.team) local.team = external.team;
     if (external.inventory) local.inventory = external.inventory;
     if (external.stats) Object.assign(local.stats, external.stats);
