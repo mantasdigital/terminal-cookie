@@ -26,16 +26,17 @@ function loadMonsters() {
 
 /** Room type weight tables: [type, baseWeight, lvl20Weight] */
 const ROOM_TYPE_WEIGHTS = [
-  ['empty',   30, 5],
-  ['monster', 25, 35],
-  ['trap',    15, 25],
-  ['loot',    15, 10],
-  ['shrine',  10, 5],
-  ['npc',     10, 15],
-  ['boss',    5,  20],
+  ['empty',    20, 5],
+  ['monster',  30, 35],
+  ['trap',     12, 20],
+  ['loot',     12, 8],
+  ['shrine',    8, 4],
+  ['npc',       8, 8],
+  ['miniboss',  5, 12],
+  ['boss',      5, 8],
 ];
 
-const MAX_ROOMS = 25;
+const MAX_ROOMS = 30;
 const MAX_FORKS = 3;
 const MAX_DEPTH = 8;
 const BIOME_IDS = ['cave', 'crypt', 'forest', 'volcano', 'abyss'];
@@ -69,8 +70,8 @@ export function generateDungeon({ level, seed, biome }) {
   const biomeId = biome || BIOME_IDS[rng.int(0, BIOME_IDS.length - 1)];
   const biomeData = biomes.find(b => b.id === biomeId) || biomes[0];
 
-  // Room count: 3 + level/5, capped at MAX_ROOMS
-  const roomCount = Math.min(MAX_ROOMS, 3 + Math.floor(level / 5));
+  // Room count scales with level: starts at 12, grows to MAX_ROOMS
+  const roomCount = Math.min(MAX_ROOMS, 12 + Math.floor(level / 2));
 
   // Curses: chance increases with level, pick from biome curses or generic
   const activeCurses = [];
@@ -113,7 +114,10 @@ export function generateDungeon({ level, seed, biome }) {
 }
 
 /**
- * Build the room tree structure.
+ * Build a linear room chain with occasional forks that rejoin.
+ * Every room connects to the next, ensuring no dead ends.
+ * Final room is boss. Minibosses placed randomly in the back half.
+ * After dungeon 1, multiple minibosses appear.
  */
 function buildRoomTree(rng, roomCount, level) {
   const weights = getRoomWeights(level);
@@ -122,62 +126,60 @@ function buildRoomTree(rng, roomCount, level) {
   // Create entrance
   rooms.push(createRoom(0, 'empty', 0));
 
-  let nextId = 1;
-  const frontier = [0]; // rooms that can still branch
+  const lastIdx = roomCount - 1;
 
-  while (nextId < roomCount && frontier.length > 0) {
-    const parentIdx = rng.int(0, frontier.length - 1);
-    const parentId = frontier[parentIdx];
-    const parent = rooms[parentId];
-
-    // Max forks from this parent
-    if (parent.connections.length >= MAX_FORKS) {
-      frontier.splice(parentIdx, 1);
-      continue;
+  // Build linear spine
+  for (let i = 1; i < roomCount; i++) {
+    let type;
+    if (i === lastIdx) {
+      type = 'boss';
+    } else {
+      type = rng.weightedPick(weights);
+      // Don't allow random boss/miniboss placement here; we place them below
+      if (type === 'boss' || type === 'miniboss') type = 'monster';
     }
-
-    // Depth check
-    if (parent.depth >= MAX_DEPTH - 1) {
-      frontier.splice(parentIdx, 1);
-      continue;
-    }
-
-    // How many children to add from this parent this iteration
-    const remaining = roomCount - nextId;
-    const maxNew = Math.min(remaining, MAX_FORKS - parent.connections.length, rng.int(1, 2));
-
-    for (let i = 0; i < maxNew && nextId < roomCount; i++) {
-      const type = rng.weightedPick(weights);
-      const child = createRoom(nextId, type, parent.depth + 1);
-      parent.connections.push(nextId);
-      rooms.push(child);
-
-      if (child.depth < MAX_DEPTH - 1) {
-        frontier.push(nextId);
-      }
-      nextId++;
-    }
+    rooms.push(createRoom(i, type, i));
+    rooms[i - 1].connections.push(i);
   }
 
-  // Fill remaining if frontier ran out
-  while (nextId < roomCount) {
-    const type = rng.weightedPick(weights);
-    const parentId = rng.int(0, rooms.length - 2);
-    const child = createRoom(nextId, type, rooms[parentId].depth + 1);
-    rooms[parentId].connections.push(nextId);
-    rooms.push(child);
-    nextId++;
+  // Place minibosses in the back half (random positions, not fixed)
+  const minibossCount = level <= 1 ? 1 : Math.min(3, 1 + Math.floor(level / 4));
+  const backHalfStart = Math.floor(roomCount * 0.35);
+  const candidates = [];
+  for (let i = backHalfStart; i < lastIdx; i++) {
+    if (rooms[i].type !== 'boss' && rooms[i].type !== 'empty') {
+      candidates.push(i);
+    }
+  }
+  // Shuffle candidates and pick up to minibossCount
+  for (let i = candidates.length - 1; i > 0; i--) {
+    const j = rng.int(0, i);
+    [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+  }
+  for (let i = 0; i < Math.min(minibossCount, candidates.length); i++) {
+    rooms[candidates[i]].type = 'miniboss';
+    rooms[candidates[i]].name = ROOM_NAMES.miniboss[candidates[i] % ROOM_NAMES.miniboss.length];
+    rooms[candidates[i]].description = ROOM_DESCRIPTIONS.miniboss;
   }
 
-  // Ensure at least one boss room at deeper levels
-  if (level >= 3) {
-    const hasBoss = rooms.some(r => r.type === 'boss');
-    if (!hasBoss) {
-      // Convert the deepest non-entrance room to boss
-      let deepest = rooms[rooms.length - 1];
-      if (deepest.id !== 0) {
-        deepest.type = 'boss';
-      }
+  // Scatter extra loot rooms (chests) — 1-3 per dungeon
+  const lootCount = rng.int(1, Math.min(3, 1 + Math.floor(level / 3)));
+  const lootCandidates = [];
+  for (let i = 2; i < lastIdx; i++) {
+    if (rooms[i].type === 'empty') lootCandidates.push(i);
+  }
+  for (let i = 0; i < Math.min(lootCount, lootCandidates.length); i++) {
+    const idx = rng.int(0, lootCandidates.length - 1);
+    rooms[lootCandidates[idx]].type = 'loot';
+    rooms[lootCandidates[idx]].name = ROOM_NAMES.loot[lootCandidates[idx] % ROOM_NAMES.loot.length];
+    rooms[lootCandidates[idx]].description = ROOM_DESCRIPTIONS.loot;
+    lootCandidates.splice(idx, 1);
+  }
+
+  // Add occasional fork paths: a room can also connect to room i+2 (skip one)
+  for (let i = 0; i < roomCount - 2; i++) {
+    if (rng.chance(0.25) && !rooms[i].connections.includes(i + 2)) {
+      rooms[i].connections.push(i + 2);
     }
   }
 
@@ -191,6 +193,7 @@ const ROOM_NAMES = {
   loot:    ['Treasure Room', 'Glinting Vault', 'Hidden Cache', 'Stash Room', 'Loot Chamber'],
   shrine:  ['Ancient Shrine', 'Healing Font', 'Sacred Altar', 'Blessed Spring', 'Mystic Shrine'],
   npc: ['Stranger\'s Camp', 'Mysterious Figure', 'Wanderer\'s Rest', 'Hidden Meeting', 'Campfire Glow'],
+  miniboss: ['Elite Guard Post', 'Champion\'s Hall', 'Warden\'s Chamber', 'Proving Ground', 'Inner Sanctum'],
   boss:    ['Boss Arena', 'Grand Chamber', 'Throne Room', 'Final Stand', 'The Gauntlet'],
 };
 
@@ -201,6 +204,7 @@ const ROOM_DESCRIPTIONS = {
   loot:    'Something glitters in the corner.',
   shrine:  'A warm light radiates from an ancient altar.',
   npc: 'Someone waits here... friend or foe?',
+  miniboss: 'A powerful creature guards this passage. Prepare yourself!',
   boss:    'A massive chamber. The ground trembles beneath you.',
 };
 

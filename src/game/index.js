@@ -299,6 +299,29 @@ export async function runGame(options = {}) {
       }
 
       if (currentState === GameState.LOOT) {
+        // Auto-resolve spin wheel
+        if (state.spinWheel) {
+          if (state.spinWheel.selectedIdx < 0) {
+            // Auto-spin
+            const prizes = state.spinWheel.prizes;
+            state.spinWheel.selectedIdx = rng.int(0, prizes.length - 1);
+            workModeLog(`Auto: spin wheel landed on ${prizes[state.spinWheel.selectedIdx]?.name}`);
+          }
+          // Auto-equip or sell the prize
+          const item = state.spinWheel.prizes[state.spinWheel.selectedIdx];
+          if (item) {
+            const member = (state.team ?? []).find(m => m.currentHp > 0 && !m.equipment?.[item.slot ?? 'weapon']);
+            if (member) {
+              member.equipment = member.equipment ?? {};
+              member.equipment[item.slot ?? 'weapon'] = item;
+            } else {
+              economy.sellItem(item);
+            }
+          }
+          state.spinWheel = null;
+          return;
+        }
+
         if (now - workModeLastLootAction >= 500) {
           workModeLastLootAction = now;
           const loot = state.pendingLoot ?? [];
@@ -372,10 +395,13 @@ export async function runGame(options = {}) {
       state.lastDungeonSeed = dungeonSeed;
       const usedSignatures = new Set();
       for (const room of state.dungeonProgress.rooms) {
-        if (room.type === 'monster' || room.type === 'boss') {
+        if (room.type === 'monster' || room.type === 'boss' || room.type === 'miniboss') {
           room.content = 'enemy';
-          const enemies = generateRoomEnemies({ level: dungeonLevel, rng, isBoss: room.type === 'boss' });
-          room.enemy = enemies[0] ?? generateEnemy({ level: dungeonLevel, rng });
+          const isBoss = room.type === 'boss' || room.type === 'miniboss';
+          // Scale enemy level by room depth for progressive difficulty
+          const roomLevel = dungeonLevel + Math.floor(room.depth * 0.3);
+          const enemies = generateRoomEnemies({ level: roomLevel, rng, isBoss });
+          room.enemy = enemies[0] ?? generateEnemy({ level: roomLevel, rng });
           room.enemies = enemies;
         } else if (room.type === 'loot') {
           room.content = 'loot';
@@ -581,6 +607,46 @@ export async function runGame(options = {}) {
         loot.splice(ui.lootIndex, 1);
         if (ui.lootIndex >= loot.length) ui.lootIndex = Math.max(0, loot.length - 1);
       }
+    } else if (result === 'spin_wheel_start') {
+      // Spin the wheel — pick a random prize
+      if (state.spinWheel) {
+        state.spinWheel.spinning = true;
+        // Weighted selection: later indices (rarer) are less likely
+        const weights = state.spinWheel.prizes.map((_, i) => Math.max(1, state.spinWheel.prizes.length - i));
+        const totalWeight = weights.reduce((a, b) => a + b, 0);
+        let roll = rng.int(1, totalWeight);
+        let selected = 0;
+        for (let i = 0; i < weights.length; i++) {
+          roll -= weights[i];
+          if (roll <= 0) { selected = i; break; }
+        }
+        state.spinWheel.selectedIdx = selected;
+        state.spinWheel.spinning = false;
+      }
+    } else if (result === 'spin_wheel_equip') {
+      if (state.spinWheel && state.spinWheel.selectedIdx >= 0) {
+        const item = state.spinWheel.prizes[state.spinWheel.selectedIdx];
+        if (item) {
+          const member = (state.team ?? []).find(m => m.currentHp > 0 && !m.equipment?.[item.slot ?? 'weapon']);
+          if (member) {
+            member.equipment = member.equipment ?? {};
+            member.equipment[item.slot ?? 'weapon'] = item;
+          } else {
+            state.inventory = state.inventory ?? [];
+            state.inventory.push(item);
+          }
+        }
+        state.spinWheel = null;
+      }
+    } else if (result === 'spin_wheel_sell') {
+      if (state.spinWheel && state.spinWheel.selectedIdx >= 0) {
+        const item = state.spinWheel.prizes[state.spinWheel.selectedIdx];
+        if (item) economy.sellItem(item);
+        state.spinWheel = null;
+      }
+    } else if (result === 'spin_wheel_done') {
+      // Continue without taking the prize
+      state.spinWheel = null;
     } else if (result === 'explore_dungeon') {
       await enterDungeon();
     } else if (result === 'dungeon_interact') {
@@ -613,6 +679,23 @@ export async function runGame(options = {}) {
         } else if (room?.content === 'loot') {
           state.pendingLoot = room.loot ?? [];
           clearRoom(dp, dp.currentRoom);
+          // 30% chance of spin wheel instead of normal loot
+          if (rng.chance(0.3)) {
+            const level = dp?.level ?? 1;
+            const bonuses = settings.getBonuses();
+            const prizes = [];
+            const rarities = ['common', 'common', 'uncommon', 'uncommon', 'rare', 'legendary'];
+            for (let i = 0; i < 6; i++) {
+              const item = generateLoot({ level, rng, qualityBonus: bonuses.lootFindBonus });
+              if (item) {
+                item.rarity = rarities[i];
+                prizes.push(item);
+              }
+            }
+            if (prizes.length > 0) {
+              state.spinWheel = { prizes, selectedIdx: -1, spinning: false };
+            }
+          }
           await engine.transition(GameState.LOOT);
         } else if (room?.content === 'shrine') {
           // Shrine: heal team
@@ -672,6 +755,11 @@ export async function runGame(options = {}) {
           if (nextId != null) {
             moveToRoom(dp, nextId);
             state.stats.roomsCleared = (state.stats.roomsCleared ?? 0) + 1;
+          } else {
+            // Dead end or dungeon complete — return to tavern
+            state.stats.dungeonsCleared = (state.stats.dungeonsCleared ?? 0) + 1;
+            state.dungeonProgress = null;
+            await engine.transition(GameState.TAVERN);
           }
         }
       }

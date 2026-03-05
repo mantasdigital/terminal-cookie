@@ -399,7 +399,7 @@ const tavernScreen = {
       renderer.bufferWrite(2 + i, 2, cookieArt[i]);
     }
     renderer.bufferWrite(2, 12, renderer.bold(`Crumbs: ${formatCrumbs(state.crumbs ?? 0)}`));
-    renderer.bufferWrite(3, 12, '[C] Click cookie');
+    renderer.bufferWrite(3, 12, renderer.dim('Earned via AI interactions'));
 
     // Tabs
     const tabs = ['[Party]', '[Recruit]', '[Inventory]'];
@@ -475,7 +475,7 @@ const tavernScreen = {
       renderer.bufferWrite(timerRow + 1, 4, renderer.dim('Press [E] to enter now'));
     }
 
-    renderer.showStatus('C=cookie R=recruit I=inventory E=dungeon W=save Ctrl-C=quit ?=help');
+    renderer.showStatus('R=recruit I=inventory E=dungeon W=save Ctrl-C=quit ?=help');
     renderAIBadge(state, renderer);
     renderWorkModeBadge(state, renderer);
     renderSecurityBanner(state, renderer);
@@ -501,9 +501,6 @@ const tavernScreen = {
     const state = engine.getState();
 
     switch (key) {
-      case 'c': case 'space':
-        // Cookie click handled by game orchestrator
-        return 'cookie_click';
       case 'r':
         ui.tavernTab = 'recruit';
         ui.menuIndex = 0;
@@ -643,7 +640,7 @@ const dungeonScreen = {
       renderer.bufferWrite(partyRow, col, `${m.name} ${hpBar(m.currentHp, m.maxHp, 8)}`);
     }
 
-    renderer.showStatus('Arrows=navigate Enter=interact W=save Esc=retreat ?=help');
+    renderer.showStatus('Arrows=navigate Enter=interact W=save ?=help');
     renderAIBadge(state, renderer);
     renderWorkModeBadge(state, renderer);
     renderSecurityBanner(state, renderer);
@@ -680,9 +677,6 @@ const dungeonScreen = {
         return 'dungeon_interact';
       case 'w':
         return 'save_game';
-      case 'escape':
-        await engine.transition(GameState.TAVERN);
-        break;
     }
   },
 };
@@ -801,6 +795,38 @@ const lootScreen = {
     renderer.clear();
     const cols = renderer.capabilities.cols;
 
+    // Spin wheel mode
+    if (state.spinWheel) {
+      renderer.showHeader('=== Spin the Wheel! ===');
+      const wheel = state.spinWheel;
+      const prizes = wheel.prizes ?? [];
+      const selectedIdx = wheel.selectedIdx ?? -1;
+      const spinning = wheel.spinning ?? false;
+
+      renderer.bufferWrite(3, 4, spinning
+        ? renderer.color('>>> SPINNING... <<<', 'yellow')
+        : renderer.bold('Press Enter to spin!'));
+
+      for (let i = 0; i < prizes.length; i++) {
+        const prefix = i === selectedIdx ? renderer.color(' >> ', 'yellow') : '    ';
+        const rarity = prizes[i].rarity ?? 'common';
+        const color = rarity === 'legendary' ? 'yellow' : rarity === 'rare' ? 'cyan' : rarity === 'uncommon' ? 'green' : 'brightBlack';
+        renderer.bufferWrite(5 + i, 4, prefix + renderer.color(`[${rarity.toUpperCase()}] ${prizes[i].name}`, color));
+      }
+
+      if (!spinning && selectedIdx >= 0) {
+        const won = prizes[selectedIdx];
+        renderer.bufferWrite(5 + prizes.length + 1, 4, renderer.bold(`You won: ${won?.name ?? 'something'}!`));
+        renderer.bufferWrite(5 + prizes.length + 2, 4, '[E] Equip   [S] Sell   [Enter] Continue');
+      }
+
+      renderer.showStatus(spinning ? 'Spinning...' : 'Enter=spin/continue E=equip S=sell');
+      renderAIBadge(state, renderer);
+      renderWorkModeBadge(state, renderer);
+      renderer.render();
+      return;
+    }
+
     renderer.showHeader('=== Loot Found! ===');
 
     const loot = state.pendingLoot ?? [];
@@ -839,6 +865,28 @@ const lootScreen = {
   },
 
   async handleInput(key, engine) {
+    const stateRef = engine.getStateRef();
+
+    // Spin wheel mode
+    if (stateRef.spinWheel) {
+      const wheel = stateRef.spinWheel;
+      if (key === 'enter') {
+        if (wheel.spinning) return; // already spinning
+        if (wheel.selectedIdx < 0) {
+          // Start spin
+          return 'spin_wheel_start';
+        } else {
+          // Continue after win
+          return 'spin_wheel_done';
+        }
+      } else if (key === 'e' && wheel.selectedIdx >= 0) {
+        return 'spin_wheel_equip';
+      } else if (key === 's' && wheel.selectedIdx >= 0) {
+        return 'spin_wheel_sell';
+      }
+      return;
+    }
+
     const state = engine.getState();
     const loot = state.pendingLoot ?? [];
 
@@ -856,11 +904,11 @@ const lootScreen = {
       case 'd':
         return 'loot_discard';
       case 'enter':
-        await engine.transition(GameState.DUNGEON);
-        ui.lootIndex = 0;
-        break;
-      case 'escape':
-        await engine.transition(GameState.TAVERN);
+        if (state.dungeonProgress) {
+          await engine.transition(GameState.DUNGEON);
+        } else {
+          await engine.transition(GameState.TAVERN);
+        }
         ui.lootIndex = 0;
         break;
     }
