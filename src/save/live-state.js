@@ -8,12 +8,11 @@
  */
 
 import { readFileSync, writeFileSync, appendFileSync, mkdirSync, existsSync } from 'fs';
-import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { join } from 'path';
+import { homedir } from 'os';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const SAVES_DIR = join(__dirname, '..', '..', 'saves');
-const LIVE_PATH = join(SAVES_DIR, 'live.json');
+const SHARED_DIR = join(homedir(), '.terminal-cookie');
+const LIVE_PATH = join(SHARED_DIR, 'live.json');
 const POLL_INTERVAL_MS = 1000;
 
 /**
@@ -32,7 +31,7 @@ export function createLiveState({ getState, setState, label = 'unknown', skipIni
   let pollHandle = null;
 
   // Temporary debug log — writes to saves/live-debug.log
-  const DEBUG_LOG = join(SAVES_DIR, 'live-debug.log');
+  const DEBUG_LOG = join(SHARED_DIR, 'live-debug.log');
   function _debugLog(msg) {
     try {
       const ts = new Date().toISOString();
@@ -41,8 +40,8 @@ export function createLiveState({ getState, setState, label = 'unknown', skipIni
   }
 
   function ensureDir() {
-    if (!existsSync(SAVES_DIR)) {
-      mkdirSync(SAVES_DIR, { recursive: true });
+    if (!existsSync(SHARED_DIR)) {
+      mkdirSync(SHARED_DIR, { recursive: true });
     }
   }
 

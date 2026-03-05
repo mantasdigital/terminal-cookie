@@ -213,11 +213,11 @@ if (flags.mine) {
   // Silent cookie mine — called by Claude Code hooks on every interaction.
   // Writes to a dedicated hook-crumbs.json counter that the MCP server drains.
   // This avoids race conditions with the MCP server's live.json writes.
-  const SAVES_DIR = join(PROJECT_ROOT, 'saves');
-  const HOOK_PATH = join(SAVES_DIR, 'hook-crumbs.json');
+  const SHARED_DIR = join(homedir(), '.terminal-cookie');
+  const HOOK_PATH = join(SHARED_DIR, 'hook-crumbs.json');
   const crumbsEarned = 1;
   try {
-    mkdirSync(SAVES_DIR, { recursive: true });
+    mkdirSync(SHARED_DIR, { recursive: true });
     let hookData = { total: 0 };
     if (existsSync(HOOK_PATH)) {
       try { hookData = JSON.parse(readFileSync(HOOK_PATH, 'utf-8')); } catch { hookData = { total: 0 }; }

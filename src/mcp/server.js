@@ -26,7 +26,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__dirname, '..', '..');
 const SETTINGS_PATH = join(PROJECT_ROOT, 'data', 'settings.json');
 const SESSIONS_PATH = join(homedir(), '.terminal-cookie', 'sessions.json');
-const HOOK_CRUMBS_PATH = join(PROJECT_ROOT, 'saves', 'hook-crumbs.json');
+const HOOK_CRUMBS_PATH = join(homedir(), '.terminal-cookie', 'hook-crumbs.json');
 
 // Single scanner instance shared with tools.js
 const aiScanner = createScanner();
