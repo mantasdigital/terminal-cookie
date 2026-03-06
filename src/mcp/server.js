@@ -73,7 +73,18 @@ scores.load();
 
 // Live state bridge — syncs with terminal game if running
 const liveState = createLiveState({
-  getState: () => ({ ...engine.getStateRef() }),
+  getState: () => {
+    const state = { ...engine.getStateRef() };
+    // Write game-authoritative crumbs to live.json: subtract unapplied MCP
+    // earnings so other processes (game, other MCPs) don't double-count them.
+    // The delta is conveyed separately via _mcpEarned/_mcpSpent counters.
+    const unapplied = ((state._mcpEarned ?? 0) - (state._lastMcpEarnedApplied ?? 0))
+                    - ((state._mcpSpent ?? 0) - (state._lastMcpSpentApplied ?? 0));
+    if (unapplied > 0) {
+      state.crumbs = Math.max(0, (state.crumbs ?? 0) - unapplied);
+    }
+    return state;
+  },
   setState: (external) => {
     const local = engine.getStateRef();
 

@@ -85,6 +85,22 @@ export async function runGame(options = {}) {
     onRender: () => { /* Rendering driven by game loop, not engine events */ },
   });
 
+  // ── Clean up MCP-only fields from loaded save ─────────────────
+  // If the save was made by MCP, it may contain _mcpEarned/_mcpSpent that
+  // are already baked into the crumbs. Align _lastMcpEarnedApplied so
+  // reading stale live.json doesn't double-count those earnings.
+  {
+    const s = engine.getStateRef();
+    if (s._mcpEarned != null) {
+      s._lastMcpEarnedApplied = Math.max(s._lastMcpEarnedApplied ?? 0, s._mcpEarned);
+      delete s._mcpEarned;
+    }
+    if (s._mcpSpent != null) {
+      s._lastMcpSpentApplied = Math.max(s._lastMcpSpentApplied ?? 0, s._mcpSpent);
+      delete s._mcpSpent;
+    }
+  }
+
   // ── Live state bridge (syncs with MCP server) ─────────────────
   const liveState = createLiveState({
     getState: () => engine.getState(),
@@ -435,36 +451,42 @@ export async function runGame(options = {}) {
       if (currentState === GameState.TAVERN) {
         // Crumbs are earned via AI interactions only — no auto-click in work mode
 
-        // Auto recruit cheapest affordable every 3s
+        // Auto recruit all affordable every 3s
         if (now - workModeLastRecruit >= 3000) {
           workModeLastRecruit = now;
-          const roster = state.tavernRoster ?? [];
-          if (roster.length > 0) {
-            // Find cheapest affordable
+          let recruited = 0;
+          while (true) {
+            const roster = state.tavernRoster ?? [];
+            if (roster.length === 0) break;
             const affordable = roster
               .map((m, i) => ({ m, i, cost: economy.recruitCost(m) }))
               .filter(x => state.crumbs >= x.cost)
               .sort((a, b) => a.cost - b.cost);
-            if (affordable.length > 0) {
-              const { m: member, i: idx } = affordable[0];
-              if (economy.tryRecruit(member)) {
-                state.team = state.team ?? [];
-                state.team.push(member);
-                roster.splice(idx, 1);
-                workModeLog(`Auto: recruited ${member.name} the ${member.class}`);
-                if (!dungeonTimer) {
-                  if (state.dungeonProgress) state.dungeonProgress = null;
-                  startDungeonTimer();
-                }
-              }
+            if (affordable.length === 0) break;
+            const { m: member, i: idx } = affordable[0];
+            if (economy.tryRecruit(member)) {
+              state.team = state.team ?? [];
+              state.team.push(member);
+              roster.splice(idx, 1);
+              recruited++;
+            } else {
+              break;
             }
+          }
+          if (recruited > 0) {
+            workModeLog(`Auto: recruited ${recruited} member${recruited > 1 ? 's' : ''}`);
           }
         }
 
         // Auto enter dungeon immediately if team and no dungeon in progress
+        // Only enter if no more affordable recruits (buy all first)
         if ((state.team ?? []).length > 0 && !state.dungeonProgress && !dungeonTimer) {
-          await enterDungeon();
-          workModeLog('Auto: entering dungeon');
+          const roster = state.tavernRoster ?? [];
+          const canAfford = roster.some(m => state.crumbs >= economy.recruitCost(m));
+          if (!canAfford) {
+            await enterDungeon();
+            workModeLog('Auto: entering dungeon');
+          }
         }
         return;
       }
@@ -837,8 +859,9 @@ export async function runGame(options = {}) {
   let autoEquipLast = 0;
 
   /**
-   * Auto-recruit: pick the highest total stats affordable member from the roster.
+   * Auto-recruit: buy ALL affordable members from the roster each tick.
    * Runs every 2s on the tavern screen when game.autoRecruit is enabled.
+   * Only starts the dungeon timer once no more affordable recruits remain.
    */
   async function autoRecruitTick() {
     if (isWorkMode()) return; // work mode has its own recruit
@@ -850,46 +873,69 @@ export async function runGame(options = {}) {
     autoRecruitLast = now;
 
     const roster = state.tavernRoster ?? [];
-    if (roster.length === 0) return;
-
-    // Find affordable members, sort by chosen strategy
-    const sortMode = settings.get('game.recruitSort') ?? 'totalStats';
-    const affordable = roster
-      .map((m, i) => {
-        const total = m.stats.hp + m.stats.atk + m.stats.def + m.stats.spd + m.stats.lck;
-        const cost = economy.recruitCost(m);
-        const primary = CLASSES[m.class]?.primary ?? 'atk';
-        return { m, i, cost, total, primary, primaryVal: m.stats[primary] ?? 0 };
-      })
-      .filter(x => state.crumbs >= x.cost)
-      .sort((a, b) => {
-        switch (sortMode) {
-          case 'atk': return b.m.stats.atk - a.m.stats.atk;
-          case 'def': return b.m.stats.def - a.m.stats.def;
-          case 'hp': return b.m.stats.hp - a.m.stats.hp;
-          case 'spd': return b.m.stats.spd - a.m.stats.spd;
-          case 'lck': return b.m.stats.lck - a.m.stats.lck;
-          case 'primary': return b.primaryVal - a.primaryVal;
-          case 'efficiency': return (b.total / b.cost) - (a.total / a.cost);
-          default: return b.total - a.total; // totalStats
-        }
-      });
-
-    if (affordable.length === 0) return;
-
-    const { m: member, i: idx } = affordable[0];
-    if (economy.tryRecruit(member)) {
-      state.team = state.team ?? [];
-      state.team.push(member);
-      roster.splice(idx, 1);
-      logAdventure(`Auto-recruited ${member.name} the ${member.race} ${member.class}`, 'recruit');
-      state.stats.totalRecruits = (state.stats.totalRecruits ?? 0) + 1;
-      renderer.showNotification(`Auto: ${member.name} joins your team!`, 'info');
-      tutorial.advance('recruit');
-      if (!dungeonTimer) {
+    if (roster.length === 0) {
+      // No recruits left — start dungeon timer if we have a team
+      if ((state.team ?? []).length > 0 && !dungeonTimer) {
         if (state.dungeonProgress) state.dungeonProgress = null;
         startDungeonTimer();
       }
+      return;
+    }
+
+    // Find affordable members, sort by chosen strategy
+    const sortMode = settings.get('game.recruitSort') ?? 'totalStats';
+    let recruited = 0;
+
+    // Keep buying the best affordable recruit until none remain or can't afford
+    while (true) {
+      const currentRoster = state.tavernRoster ?? [];
+      if (currentRoster.length === 0) break;
+
+      const affordable = currentRoster
+        .map((m, i) => {
+          const total = m.stats.hp + m.stats.atk + m.stats.def + m.stats.spd + m.stats.lck;
+          const cost = economy.recruitCost(m);
+          const primary = CLASSES[m.class]?.primary ?? 'atk';
+          return { m, i, cost, total, primary, primaryVal: m.stats[primary] ?? 0 };
+        })
+        .filter(x => state.crumbs >= x.cost)
+        .sort((a, b) => {
+          switch (sortMode) {
+            case 'atk': return b.m.stats.atk - a.m.stats.atk;
+            case 'def': return b.m.stats.def - a.m.stats.def;
+            case 'hp': return b.m.stats.hp - a.m.stats.hp;
+            case 'spd': return b.m.stats.spd - a.m.stats.spd;
+            case 'lck': return b.m.stats.lck - a.m.stats.lck;
+            case 'primary': return b.primaryVal - a.primaryVal;
+            case 'efficiency': return (b.total / b.cost) - (a.total / a.cost);
+            default: return b.total - a.total; // totalStats
+          }
+        });
+
+      if (affordable.length === 0) break;
+
+      const { m: member, i: idx } = affordable[0];
+      if (economy.tryRecruit(member)) {
+        state.team = state.team ?? [];
+        state.team.push(member);
+        currentRoster.splice(idx, 1);
+        logAdventure(`Auto-recruited ${member.name} the ${member.race} ${member.class}`, 'recruit');
+        state.stats.totalRecruits = (state.stats.totalRecruits ?? 0) + 1;
+        recruited++;
+        tutorial.advance('recruit');
+      } else {
+        break; // Can't afford — stop
+      }
+    }
+
+    if (recruited > 0) {
+      renderer.showNotification(`Auto: recruited ${recruited} member${recruited > 1 ? 's' : ''}!`, 'info');
+    }
+
+    // Only start dungeon timer after buying all we can afford
+    if ((state.team ?? []).length > 0 && !dungeonTimer) {
+      if (state.dungeonProgress) state.dungeonProgress = null;
+      startDungeonTimer();
     }
   }
 
@@ -985,6 +1031,50 @@ export async function runGame(options = {}) {
       }
       logAdventure('Auto-bought Healing Potion: team healed +20 HP', 'shop');
       renderer.showNotification('Auto: team healed +20 HP!', 'success');
+    }
+
+    // Auto-buy combat buffs before dungeon if we can afford them and don't have them yet
+    const buffs = state.shopBuffs ?? {};
+    const aliveCount = team.filter(m => m.alive && m.currentHp > 0).length;
+    if (aliveCount > 0 && dungeonTimer) {
+      // Buy whetstone (+3 ATK) if no ATK buff yet
+      if (!buffs.atk && state.crumbs >= 25) {
+        state.crumbs -= 25;
+        state._lastCrumbSpend = Date.now();
+        state._lastCrumbSpendAmount = 25;
+        state.shopBuffs = state.shopBuffs ?? {};
+        state.shopBuffs.atk = (state.shopBuffs.atk ?? 0) + 3;
+        logAdventure('Auto-bought Whetstone: +3 ATK for next combat', 'shop');
+      }
+      // Buy iron shield (+3 DEF) if no DEF buff yet
+      if (!buffs.def && state.crumbs >= 25) {
+        state.crumbs -= 25;
+        state._lastCrumbSpend = Date.now();
+        state._lastCrumbSpendAmount = 25;
+        state.shopBuffs = state.shopBuffs ?? {};
+        state.shopBuffs.def = (state.shopBuffs.def ?? 0) + 3;
+        logAdventure('Auto-bought Iron Shield Oil: +3 DEF for next combat', 'shop');
+      }
+      // Buy lucky charm (+5 LCK) if no LCK buff yet and enough crumbs
+      if (!buffs.lck && state.crumbs >= 40) {
+        state.crumbs -= 40;
+        state._lastCrumbSpend = Date.now();
+        state._lastCrumbSpendAmount = 40;
+        state.shopBuffs = state.shopBuffs ?? {};
+        state.shopBuffs.lck = (state.shopBuffs.lck ?? 0) + 5;
+        logAdventure('Auto-bought Lucky Charm: +5 LCK for next combat', 'shop');
+      }
+      // Enchant a random inventory item if affordable and have items
+      const enchantableInv = (state.inventory ?? []).filter(i => i.slot !== 'consumable');
+      if (enchantableInv.length > 0 && state.crumbs >= 50) {
+        const target = enchantableInv[rng.int(0, enchantableInv.length - 1)];
+        state.crumbs -= 50;
+        state._lastCrumbSpend = Date.now();
+        state._lastCrumbSpendAmount = 50;
+        enchantItem(target, 1);
+        state.stats.highestEnchant = Math.max(state.stats.highestEnchant ?? 0, target.enchantLevel ?? 1);
+        logAdventure(`Auto-enchanted ${target.name} with scroll (+2 power)`, 'enchant');
+      }
     }
   }
 
@@ -1818,6 +1908,7 @@ export async function runGame(options = {}) {
       state._dungeonRunStats = null;
       dungeonTimer = null;
       saveGame(slot, engine.getState());
+      renderer.showNotification('Game saved!', 'success');
       await engine.transition(GameState.MENU);
     } else if (result?.action === 'new_game_slot') {
       // Save current game before switching slots

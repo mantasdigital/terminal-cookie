@@ -71,37 +71,38 @@ function checkAIConnection() {
  * Only renders if settings.game.showAIStatus is true (or settings not available).
  */
 function renderAIBadge(state, renderer) {
-  const showAI = state.settings?.game?.showAIStatus ?? true;
-  if (!showAI) return;
-
   const cols = renderer.capabilities.cols;
-  const ai = checkAIConnection();
+  const showAI = state.settings?.game?.showAIStatus ?? true;
 
-  // Crumbs + AI status on row 0
-  const crumbText = `Crumbs: ${formatCrumbs(state.crumbs ?? 0)}`;
-  const crumbLen = crumbText.replace(/\x1b\[[^m]*m/g, '').length;
+  if (showAI) {
+    const ai = checkAIConnection();
 
-  let badge;
-  if (ai.connected) {
-    badge = ai.count > 1 ? `AI: ${ai.count} connected` : 'AI: connected';
-    badge = renderer.color(badge, 'green');
-  } else {
-    badge = renderer.dim('AI: --');
+    // Crumbs + AI status on row 0
+    const crumbText = `Crumbs: ${formatCrumbs(state.crumbs ?? 0)}`;
+    const crumbLen = crumbText.replace(/\x1b\[[^m]*m/g, '').length;
+
+    let badge;
+    if (ai.connected) {
+      badge = ai.count > 1 ? `AI: ${ai.count} connected` : 'AI: connected';
+      badge = renderer.color(badge, 'green');
+    } else {
+      badge = renderer.dim('AI: --');
+    }
+    const badgeLen = ai.connected ? (ai.count > 1 ? 16 : 13) : 6;
+
+    // Right-align: crumbs then AI badge
+    const totalLen = crumbLen + 3 + badgeLen;
+    const startCol = Math.max(0, cols - totalLen - 1);
+    renderer.bufferWrite(0, startCol, renderer.bold(crumbText) + '  ' + badge);
   }
-  const badgeLen = ai.connected ? (ai.count > 1 ? 16 : 13) : 6;
 
-  // Right-align: crumbs then AI badge
-  const totalLen = crumbLen + 3 + badgeLen;
-  const startCol = Math.max(0, cols - totalLen - 1);
-  renderer.bufferWrite(0, startCol, renderer.bold(crumbText) + '  ' + badge);
-
-  // Token usage display (below crumbs, on by default)
+  // Token usage display (independent of AI badge visibility)
   const showTokens = state.settings?.game?.showTokenUsage ?? false;
-  if (showTokens && state.tokenUsage > 0) {
+  if (showTokens) {
     const fmtTk = (n) => n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` :
                           n >= 1_000 ? `${(n / 1_000).toFixed(1)}K` : `${n}`;
 
-    const totalLabel = `Tokens: ~${fmtTk(state.tokenUsage)}`;
+    const totalLabel = `Tokens: ~${fmtTk(state.tokenUsage ?? 0)}`;
     const dailyTokens = (state.tokenUsageDaily?.date === new Date().toISOString().slice(0, 10))
       ? state.tokenUsageDaily.tokens : 0;
     const monthlyTokens = (state.tokenUsageMonthly?.month === new Date().toISOString().slice(0, 7))
@@ -1038,7 +1039,7 @@ const tavernScreen = {
       renderer.bufferWrite(timerRow + 1, 4, renderer.dim('Press [E] to enter now'));
     }
 
-    renderer.showStatus('R=recruit I=inv H=shop V=village T=talisman G=log E=dungeon Q=menu ?=help');
+    renderer.showStatus('R=recruit I=inv H=shop V=village T=talisman Y=trophies G=log E=dungeon Q=menu ?=help');
     renderAIBadge(state, renderer);
     renderWorkModeBadge(state, renderer);
     renderSecurityBanner(state, renderer);
@@ -1100,6 +1101,10 @@ const tavernScreen = {
         ui.tavernTab = 'log';
         ui.logScroll = 0;
         break;
+      case 'y':
+        ui.tavernTab = 'trophies';
+        ui.trophyIndex = 0;
+        break;
       case 'u':
         if (ui.tavernTab === 'talisman') return 'talisman_upgrade';
         if (ui.tavernTab === 'party') return { action: 'party_unequip', memberIndex: ui.partyIndex, slot: ui.partySlot };
@@ -1115,16 +1120,16 @@ const tavernScreen = {
       case 'left':
         { const hasV = isVillageUnlocked(state) || canUnlockVillage(state);
           const tabs = hasV
-            ? ['party', 'recruit', 'inventory', 'shop', 'village', 'talisman', 'log']
-            : ['party', 'recruit', 'inventory', 'shop', 'talisman', 'log'];
+            ? ['party', 'recruit', 'inventory', 'shop', 'village', 'talisman', 'trophies', 'log']
+            : ['party', 'recruit', 'inventory', 'shop', 'talisman', 'trophies', 'log'];
           const idx = tabs.indexOf(ui.tavernTab);
           ui.tavernTab = tabs[(idx - 1 + tabs.length) % tabs.length]; }
         break;
       case 'right':
         { const hasV = isVillageUnlocked(state) || canUnlockVillage(state);
           const tabs = hasV
-            ? ['party', 'recruit', 'inventory', 'shop', 'village', 'talisman', 'log']
-            : ['party', 'recruit', 'inventory', 'shop', 'talisman', 'log'];
+            ? ['party', 'recruit', 'inventory', 'shop', 'village', 'talisman', 'trophies', 'log']
+            : ['party', 'recruit', 'inventory', 'shop', 'talisman', 'trophies', 'log'];
           const idx = tabs.indexOf(ui.tavernTab);
           ui.tavernTab = tabs[(idx + 1) % tabs.length]; }
         break;
@@ -2190,6 +2195,7 @@ export function resetUIState() {
   ui.equipPicker = false;
   ui.equipPickerIdx = 0;
   ui.villageIndex = 0;
+  ui.trophyIndex = 0;
   ui.helpVisible = false;
   ui.leaderboardVisible = false;
   ui.securityLogVisible = false;
