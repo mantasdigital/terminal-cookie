@@ -306,6 +306,7 @@ const ui = {
   equipPickerIdx: 0,     // selected member in equip picker
   villageIndex: 0,       // village building selection
   trophyIndex: 0,        // trophy list selection
+  _trophyScroll: 0,      // trophy list scroll offset
   helpVisible: false,
   leaderboardVisible: false,
   securityLogVisible: false,
@@ -1047,36 +1048,92 @@ const tavernScreen = {
       const all = getAllTrophies();
       const buyable = getBuyableTrophies(state);
       const cols2 = renderer.capabilities.cols;
+      const halfCol = Math.floor(cols2 / 2);
       const maxRows = renderer.capabilities.rows - contentTop - 5;
 
       renderer.bufferWrite(contentTop, 4, renderer.bold(`Trophies: ${earned.length}/${all.length}`));
 
-      // Group by category
+      // Build flat list of rows: { type: 'header'|'trophy', ... }
+      const flatRows = [];
       const categories = [...new Set(all.map(t => t.category))];
-      let row = contentTop + 2;
-      let trophyListIdx = 0;
       for (const cat of categories) {
-        if (row >= contentTop + maxRows) break;
-        renderer.bufferWrite(row, 4, renderer.bold(`-- ${cat} --`));
-        row++;
+        flatRows.push({ type: 'header', cat });
         const catTrophies = all.filter(t => t.category === cat);
         for (const t of catTrophies) {
-          if (row >= contentTop + maxRows) break;
+          flatRows.push({ type: 'trophy', trophy: t, flatIdx: flatRows.filter(r => r.type === 'trophy').length });
+        }
+      }
+
+      // Clamp trophyIndex and compute scroll offset to keep selected visible
+      const trophyCount = all.length;
+      ui.trophyIndex = Math.max(0, Math.min(ui.trophyIndex, trophyCount - 1));
+      // Find the flat row index of the selected trophy
+      let selectedFlatRow = 0;
+      let tIdx = 0;
+      for (let i = 0; i < flatRows.length; i++) {
+        if (flatRows[i].type === 'trophy') {
+          if (tIdx === ui.trophyIndex) { selectedFlatRow = i; break; }
+          tIdx++;
+        }
+      }
+      // Scroll so the selected row is visible
+      const scrollPad = 2;
+      if (!ui._trophyScroll) ui._trophyScroll = 0;
+      if (selectedFlatRow < ui._trophyScroll + scrollPad) {
+        ui._trophyScroll = Math.max(0, selectedFlatRow - scrollPad);
+      }
+      if (selectedFlatRow >= ui._trophyScroll + maxRows - scrollPad) {
+        ui._trophyScroll = Math.min(flatRows.length - maxRows, selectedFlatRow - maxRows + scrollPad + 1);
+      }
+      ui._trophyScroll = Math.max(0, ui._trophyScroll);
+
+      // Left panel: all trophies with scroll
+      // Count trophies before the scroll window to track correct index
+      let listTrophyIdx = 0;
+      for (let fi = 0; fi < ui._trophyScroll; fi++) {
+        if (flatRows[fi].type === 'trophy') listTrophyIdx++;
+      }
+      let row = contentTop + 2;
+      for (let fi = ui._trophyScroll; fi < flatRows.length && row < contentTop + maxRows; fi++) {
+        const entry = flatRows[fi];
+        if (entry.type === 'header') {
+          renderer.bufferWrite(row, 4, renderer.bold(`-- ${entry.cat} --`));
+        } else {
+          const t = entry.trophy;
           const owned = hasTrophy(state, t.id);
-          const prefix = trophyListIdx === ui.trophyIndex ? '> ' : '  ';
+          const prefix = listTrophyIdx === ui.trophyIndex ? '> ' : '  ';
           const icon = owned ? renderer.color(t.icon, 'yellow') : renderer.dim(t.icon);
           const name = owned ? renderer.color(t.name, 'green') : renderer.dim(t.name);
           const desc = owned ? t.desc : '???';
           const costLabel = t.cost && !owned ? renderer.dim(` [${formatCrumbs(t.cost)}c]`) : '';
-          renderer.bufferWrite(row, 4, `${prefix}${icon} ${name} ${renderer.dim(desc)}${costLabel}`);
-          row++;
-          trophyListIdx++;
+          renderer.bufferWrite(row, 4, truncate(`${prefix}${icon} ${name} ${renderer.dim(desc)}${costLabel}`, halfCol - 6));
+          listTrophyIdx++;
         }
+        row++;
+      }
+      // Scroll indicators
+      if (ui._trophyScroll > 0) {
+        renderer.bufferWrite(contentTop + 1, 4, renderer.dim('^ more above ^'));
+      }
+      if (ui._trophyScroll + maxRows < flatRows.length) {
+        renderer.bufferWrite(contentTop + maxRows, 4, renderer.dim('v more below v'));
+      }
+
+      // Right panel: unlocked trophies only
+      renderer.bufferWrite(contentTop, halfCol + 2, renderer.bold('Unlocked'));
+      let rRow = contentTop + 2;
+      for (const t of earned) {
+        if (rRow >= contentTop + maxRows) break;
+        renderer.bufferWrite(rRow, halfCol + 2, `${renderer.color(t.icon, 'yellow')} ${renderer.color(t.name, 'green')}`);
+        renderer.bufferWrite(rRow + 1, halfCol + 4, renderer.dim(truncate(t.desc, cols2 - halfCol - 6)));
+        rRow += 2;
+      }
+      if (earned.length === 0) {
+        renderer.bufferWrite(contentTop + 2, halfCol + 2, renderer.dim('No trophies yet'));
       }
 
       // Buy prompt for buyable trophies
       if (buyable.length > 0) {
-        const allFlat = all.filter(t => !t.cost || !hasTrophy(state, t.id));
         renderer.bufferWrite(renderer.capabilities.rows - 5, 4, renderer.dim('Enter=buy trophy (if buyable)'));
       }
     } else if (ui.tavernTab === 'log') {
@@ -1178,6 +1235,7 @@ const tavernScreen = {
       case 'y':
         ui.tavernTab = 'trophies';
         ui.trophyIndex = 0;
+        ui._trophyScroll = 0;
         break;
       case 'u':
         if (ui.tavernTab === 'talisman') return 'talisman_upgrade';
@@ -3044,6 +3102,7 @@ export function resetUIState() {
   ui.equipPickerIdx = 0;
   ui.villageIndex = 0;
   ui.trophyIndex = 0;
+  ui._trophyScroll = 0;
   ui.helpVisible = false;
   ui.leaderboardVisible = false;
   ui.securityLogVisible = false;
