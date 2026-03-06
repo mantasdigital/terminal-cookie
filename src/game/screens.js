@@ -96,7 +96,7 @@ function renderAIBadge(state, renderer) {
   renderer.bufferWrite(0, startCol, renderer.bold(crumbText) + '  ' + badge);
 
   // Token usage display (below crumbs, on by default)
-  const showTokens = state.settings?.game?.showTokenUsage ?? true;
+  const showTokens = state.settings?.game?.showTokenUsage ?? false;
   if (showTokens && state.tokenUsage > 0) {
     const fmtTk = (n) => n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` :
                           n >= 1_000 ? `${(n / 1_000).toFixed(1)}K` : `${n}`;
