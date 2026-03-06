@@ -506,6 +506,10 @@ export async function runGame(options = {}) {
           }
         }
 
+        // Auto-shop and auto-talisman in work mode too
+        await autoShopTick();
+        await autoTalismanTick();
+
         // Auto enter dungeon immediately if team and no dungeon in progress
         // Only enter if no more affordable recruits (buy all first)
         if ((state.team ?? []).length > 0 && !state.dungeonProgress && !dungeonTimer) {
@@ -892,6 +896,8 @@ export async function runGame(options = {}) {
   // ── Auto-recruit & Auto-equip for default mode ───────────────────
   let autoRecruitLast = 0;
   let autoEquipLast = 0;
+  let autoShopLast = 0;
+  let autoTalismanLast = 0;
 
   /**
    * Auto-recruit: buy ALL affordable members from the roster each tick.
@@ -975,11 +981,11 @@ export async function runGame(options = {}) {
   }
 
   /**
-   * Auto-equip: equip best gear from inventory to team, buy heal potions when needed.
+   * Auto-equip: equip best gear from inventory to team.
    * Runs every 3s when game.autoEquip is enabled.
    */
   async function autoEquipTick() {
-    if (!(settings.get('game.autoEquip') ?? false)) return;
+    if (!(settings.get('game.autoEquip') ?? true)) return;
     if (state.currentState !== GameState.TAVERN) return;
 
     const now = Date.now();
@@ -990,7 +996,6 @@ export async function runGame(options = {}) {
     const inv = state.inventory ?? [];
     if (team.length === 0) return;
 
-    // Auto-equip items from inventory using chosen strategy
     const equipMode = settings.get('game.equipStrategy') ?? 'power';
     const RARITY_ORDER = { Common: 0, Uncommon: 1, Rare: 2, Epic: 3, Legendary: 4 };
 
@@ -1005,7 +1010,6 @@ export async function runGame(options = {}) {
               return rd !== 0 ? rd : (b.item.power ?? 0) - (a.item.power ?? 0);
             }
             case 'primaryStat': {
-              // Sum of all stat bonuses relevant to the slot
               const aSum = Object.values(a.item.statBonus ?? {}).reduce((s, v) => s + v, 0);
               const bSum = Object.values(b.item.statBonus ?? {}).reduce((s, v) => s + v, 0);
               return bSum - aSum;
@@ -1013,7 +1017,6 @@ export async function runGame(options = {}) {
             case 'value':
               return (b.item.value ?? 0) - (a.item.value ?? 0);
             case 'teamNeed': {
-              // Score by how much the item's primary stat helps the team's weakest area
               const teamAvg = stat => {
                 const vals = team.filter(m => m.alive).map(m => m.stats[stat] ?? 0);
                 return vals.length > 0 ? vals.reduce((s, v) => s + v, 0) / vals.length : 0;
@@ -1036,7 +1039,6 @@ export async function runGame(options = {}) {
           bestMember = alive.find(m => {
             const current = m.equipment?.[slot];
             if (!current) return true;
-            // Compare using same strategy
             if (equipMode === 'rarity') {
               return (RARITY_ORDER[item.rarity] ?? 0) > (RARITY_ORDER[current.rarity] ?? 0);
             }
@@ -1053,30 +1055,33 @@ export async function runGame(options = {}) {
         }
       }
     }
+  }
 
-    // Smart auto-shop: spend up to 20% of current crumbs per tick
-    const shopBudget = Math.floor(state.crumbs * 0.20);
-    let shopSpent = 0;
-    const canSpend = (cost) => cost <= (shopBudget - shopSpent) && state.crumbs >= cost;
-    const doSpend = (cost) => { state.crumbs -= cost; shopSpent += cost; state._lastCrumbSpend = Date.now(); state._lastCrumbSpendAmount = cost; };
+  /**
+   * Auto-shop: buy heal potions, combat buffs, and enchant scrolls.
+   * Runs every 3s when game.autoShop is enabled. Budget-capped.
+   */
+  async function autoShopTick() {
+    if (!(settings.get('game.autoShop') ?? true)) return;
+    if (state.currentState !== GameState.TAVERN) return;
 
-    // 1. Auto-upgrade talisman (highest priority — permanent investment)
-    const talismanLevel = state.talisman?.level ?? 1;
-    const talismanCost = getUpgradeCost(talismanLevel);
-    if (talismanCost > 0 && canUpgrade(state.talisman, state.crumbs) && canSpend(talismanCost)) {
-      const result = upgradeTalisman(state);
-      if (result.success) {
-        shopSpent += result.cost;
-        logAdventure(`Auto-upgraded Talisman to level ${result.newLevel} (${result.cost}c)`, 'shop');
-        renderer.showNotification(`Auto: Talisman -> Lv${result.newLevel}!`, 'success');
-      }
-    }
+    const now = Date.now();
+    if (now - autoShopLast < 3000) return;
+    autoShopLast = now;
 
-    // 2. Auto-buy heal potions when any team member is below 50% HP
+    const team = state.team ?? [];
+    if (team.length === 0) return;
+
+    const budgetPct = settings.get('game.shopBudget') ?? 10;
+    const budget = Math.floor(state.crumbs * (budgetPct / 100));
+    let spent = 0;
+    const canSpend = (cost) => cost <= (budget - spent) && state.crumbs >= cost;
+    const doSpend = (cost) => { state.crumbs -= cost; spent += cost; state._lastCrumbSpend = Date.now(); state._lastCrumbSpendAmount = cost; };
+
+    // Heal potions when any team member is below 50% HP
     const needsHeal = team.some(m => m.alive && m.currentHp > 0 && m.currentHp < m.maxHp * 0.5);
-    const healCost = 15;
-    if (needsHeal && canSpend(healCost)) {
-      doSpend(healCost);
+    if (needsHeal && canSpend(15)) {
+      doSpend(15);
       for (const m of team.filter(m => m.currentHp > 0)) {
         m.currentHp = Math.min(m.maxHp, m.currentHp + 20);
       }
@@ -1084,32 +1089,29 @@ export async function runGame(options = {}) {
       renderer.showNotification('Auto: team healed +20 HP!', 'success');
     }
 
-    // 3. Auto-buy combat buffs (only if team alive)
+    // Combat buffs (only if team alive)
     const buffs = state.shopBuffs ?? {};
     const aliveCount = team.filter(m => m.alive && m.currentHp > 0).length;
     if (aliveCount > 0) {
-      // Buy whetstone (+3 ATK) if no ATK buff yet
       if (!buffs.atk && canSpend(25)) {
         doSpend(25);
         state.shopBuffs = state.shopBuffs ?? {};
         state.shopBuffs.atk = (state.shopBuffs.atk ?? 0) + 3;
         logAdventure('Auto-bought Whetstone: +3 ATK for next combat', 'shop');
       }
-      // Buy iron shield (+3 DEF) if no DEF buff yet
       if (!buffs.def && canSpend(25)) {
         doSpend(25);
         state.shopBuffs = state.shopBuffs ?? {};
         state.shopBuffs.def = (state.shopBuffs.def ?? 0) + 3;
         logAdventure('Auto-bought Iron Shield Oil: +3 DEF for next combat', 'shop');
       }
-      // Buy lucky charm (+5 LCK) if no LCK buff yet
       if (!buffs.lck && canSpend(40)) {
         doSpend(40);
         state.shopBuffs = state.shopBuffs ?? {};
         state.shopBuffs.lck = (state.shopBuffs.lck ?? 0) + 5;
         logAdventure('Auto-bought Lucky Charm: +5 LCK for next combat', 'shop');
       }
-      // Enchant a random equipped or inventory item
+      // Enchant a random inventory item
       const enchantableInv = (state.inventory ?? []).filter(i => i.slot !== 'consumable');
       if (enchantableInv.length > 0 && canSpend(50)) {
         const target = enchantableInv[rng.int(0, enchantableInv.length - 1)];
@@ -1117,6 +1119,30 @@ export async function runGame(options = {}) {
         enchantItem(target, 1);
         state.stats.highestEnchant = Math.max(state.stats.highestEnchant ?? 0, target.enchantLevel ?? 1);
         logAdventure(`Auto-enchanted ${target.name} with scroll (+2 power)`, 'enchant');
+      }
+    }
+  }
+
+  /**
+   * Auto-talisman: upgrade talisman when affordable within budget.
+   * Runs every 5s when game.autoTalisman is enabled. Budget-capped.
+   */
+  async function autoTalismanTick() {
+    if (!(settings.get('game.autoTalisman') ?? true)) return;
+    if (state.currentState !== GameState.TAVERN) return;
+
+    const now = Date.now();
+    if (now - autoTalismanLast < 5000) return;
+    autoTalismanLast = now;
+
+    const budgetPct = settings.get('game.talismanBudget') ?? 10;
+    const budget = Math.floor(state.crumbs * (budgetPct / 100));
+    const cost = getUpgradeCost(state.talisman?.level ?? 1);
+    if (cost > 0 && cost <= budget && canUpgrade(state.talisman, state.crumbs)) {
+      const result = upgradeTalisman(state);
+      if (result.success) {
+        logAdventure(`Auto-upgraded Talisman to level ${result.newLevel} (${result.cost}c)`, 'shop');
+        renderer.showNotification(`Auto: Talisman -> Lv${result.newLevel}!`, 'success');
       }
     }
   }
@@ -2162,6 +2188,8 @@ export async function runGame(options = {}) {
       await autoDungeonTick();
       await autoRecruitTick();
       await autoEquipTick();
+      await autoShopTick();
+      await autoTalismanTick();
     }
 
     // Autosave
