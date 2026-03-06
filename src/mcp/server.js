@@ -105,6 +105,20 @@ const liveState = createLiveState({
     }
     if (external.totalToolCalls != null) local.totalToolCalls = Math.max(local.totalToolCalls ?? 0, external.totalToolCalls);
     if (external.tokenUsage != null) local.tokenUsage = Math.max(local.tokenUsage ?? 0, external.tokenUsage);
+    if (external.tokenUsageDaily) {
+      if (!local.tokenUsageDaily || local.tokenUsageDaily.date !== external.tokenUsageDaily.date) {
+        local.tokenUsageDaily = external.tokenUsageDaily;
+      } else {
+        local.tokenUsageDaily.tokens = Math.max(local.tokenUsageDaily.tokens, external.tokenUsageDaily.tokens);
+      }
+    }
+    if (external.tokenUsageMonthly) {
+      if (!local.tokenUsageMonthly || local.tokenUsageMonthly.month !== external.tokenUsageMonthly.month) {
+        local.tokenUsageMonthly = external.tokenUsageMonthly;
+      } else {
+        local.tokenUsageMonthly.tokens = Math.max(local.tokenUsageMonthly.tokens, external.tokenUsageMonthly.tokens);
+      }
+    }
     if (external.playTime != null) local.playTime = Math.max(local.playTime ?? 0, external.playTime);
     if (external.trophies && Array.isArray(external.trophies)) {
       local.trophies = local.trophies ?? [];
@@ -310,6 +324,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         .join('\n') || '';
       const estimatedTokens = Math.ceil((tokenInput.length + tokenOutput.length) / 4);
       gameState.tokenUsage = (gameState.tokenUsage ?? 0) + estimatedTokens;
+
+      // Daily/monthly token tracking
+      const _now = new Date();
+      const _today = _now.toISOString().slice(0, 10);
+      const _month = _now.toISOString().slice(0, 7);
+
+      if (!gameState.tokenUsageDaily || gameState.tokenUsageDaily.date !== _today) {
+        gameState.tokenUsageDaily = { date: _today, tokens: 0 };
+      }
+      gameState.tokenUsageDaily.tokens += estimatedTokens;
+
+      if (!gameState.tokenUsageMonthly || gameState.tokenUsageMonthly.month !== _month) {
+        gameState.tokenUsageMonthly = { month: _month, tokens: 0 };
+      }
+      gameState.tokenUsageMonthly.tokens += estimatedTokens;
 
       // Autosave scores after every action
       try { scores.save(); } catch { /* best effort */ }

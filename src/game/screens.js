@@ -95,17 +95,23 @@ function renderAIBadge(state, renderer) {
   const startCol = Math.max(0, cols - totalLen - 1);
   renderer.bufferWrite(0, startCol, renderer.bold(crumbText) + '  ' + badge);
 
-  // Token usage display (below AI badge, off by default)
-  const showTokens = state.settings?.game?.showTokenUsage ?? false;
-  if (showTokens && ai.connected && state.tokenUsage > 0) {
-    const tk = state.tokenUsage;
-    const tokenText = tk >= 1_000_000 ? `${(tk / 1_000_000).toFixed(1)}M` :
-                      tk >= 1_000 ? `${(tk / 1_000).toFixed(1)}K` :
-                      `${tk}`;
-    const tokenLabel = `Tokens: ~${tokenText}`;
-    const tokenLen = tokenLabel.length;
-    const tokenCol = Math.max(0, cols - tokenLen - 1);
-    renderer.bufferWrite(1, tokenCol, renderer.dim(tokenLabel));
+  // Token usage display (below crumbs, on by default)
+  const showTokens = state.settings?.game?.showTokenUsage ?? true;
+  if (showTokens && state.tokenUsage > 0) {
+    const fmtTk = (n) => n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` :
+                          n >= 1_000 ? `${(n / 1_000).toFixed(1)}K` : `${n}`;
+
+    const totalLabel = `Tokens: ~${fmtTk(state.tokenUsage)}`;
+    const dailyTokens = (state.tokenUsageDaily?.date === new Date().toISOString().slice(0, 10))
+      ? state.tokenUsageDaily.tokens : 0;
+    const monthlyTokens = (state.tokenUsageMonthly?.month === new Date().toISOString().slice(0, 7))
+      ? state.tokenUsageMonthly.tokens : 0;
+    const todayLabel = `Today: ~${fmtTk(dailyTokens)}`;
+    const monthLabel = `Month: ~${fmtTk(monthlyTokens)}`;
+
+    const tokenLine = `${totalLabel}  ${todayLabel}  ${monthLabel}`;
+    const tokenCol = Math.max(0, cols - tokenLine.length - 1);
+    renderer.bufferWrite(1, tokenCol, renderer.dim(tokenLine));
   }
 }
 

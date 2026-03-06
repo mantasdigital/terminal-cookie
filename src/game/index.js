@@ -161,6 +161,20 @@ export async function runGame(options = {}) {
       if (external.passiveLog) local.passiveLog = external.passiveLog;
       if (external.totalToolCalls != null) local.totalToolCalls = Math.max(local.totalToolCalls ?? 0, external.totalToolCalls);
       if (external.tokenUsage != null) local.tokenUsage = Math.max(local.tokenUsage ?? 0, external.tokenUsage);
+      if (external.tokenUsageDaily) {
+        if (!local.tokenUsageDaily || local.tokenUsageDaily.date !== external.tokenUsageDaily.date) {
+          local.tokenUsageDaily = external.tokenUsageDaily;
+        } else {
+          local.tokenUsageDaily.tokens = Math.max(local.tokenUsageDaily.tokens, external.tokenUsageDaily.tokens);
+        }
+      }
+      if (external.tokenUsageMonthly) {
+        if (!local.tokenUsageMonthly || local.tokenUsageMonthly.month !== external.tokenUsageMonthly.month) {
+          local.tokenUsageMonthly = external.tokenUsageMonthly;
+        } else {
+          local.tokenUsageMonthly.tokens = Math.max(local.tokenUsageMonthly.tokens, external.tokenUsageMonthly.tokens);
+        }
+      }
       if (external.playTime != null) local.playTime = Math.max(local.playTime ?? 0, external.playTime);
       // Merge trophies: union of both sets
       if (external.trophies && Array.isArray(external.trophies)) {
