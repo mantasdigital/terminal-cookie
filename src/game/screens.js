@@ -1903,18 +1903,41 @@ const settingsScreen = {
 
     renderer.showHeader('=== Settings ===');
 
-    let currentSection = '';
-    let row = 3;
+    const maxVisibleRows = renderer.capabilities.rows - 12; // reserve space for header, bonuses, status
 
+    // Build row data: section headers + setting entries with their indices
+    const rowData = [];
+    let currentSection = '';
     for (let i = 0; i < SETTINGS_LAYOUT.length; i++) {
       const s = SETTINGS_LAYOUT[i];
-
-      // Section header
       if (s.section !== currentSection) {
         currentSection = s.section;
-        renderer.bufferWrite(row, 4, renderer.bold(`-- ${currentSection} --`));
-        row++;
+        rowData.push({ type: 'header', section: currentSection });
       }
+      rowData.push({ type: 'setting', index: i, setting: s });
+    }
+
+    // Find the row index of the selected setting
+    const selectedRowIdx = rowData.findIndex(r => r.type === 'setting' && r.index === ui.settingIndex);
+
+    // Compute scroll offset to keep selection visible
+    const scrollOffset = Math.max(0, Math.min(
+      selectedRowIdx - Math.floor(maxVisibleRows / 2),
+      rowData.length - maxVisibleRows
+    ));
+
+    const visibleRows = rowData.slice(scrollOffset, scrollOffset + maxVisibleRows);
+    let row = 3;
+
+    for (const entry of visibleRows) {
+      if (entry.type === 'header') {
+        renderer.bufferWrite(row, 4, renderer.bold(`-- ${entry.section} --`));
+        row++;
+        continue;
+      }
+
+      const s = entry.setting;
+      const i = entry.index;
 
       // Get value by traversing dot path
       const parts = s.key.split('.');
@@ -1937,6 +1960,12 @@ const settingsScreen = {
       const line = `${prefix}${toggle} ${s.label}${bonus}`;
       renderer.bufferWrite(row, 4, line);
       row++;
+    }
+
+    // Scroll indicator
+    if (rowData.length > maxVisibleRows) {
+      const pos = Math.round((scrollOffset / Math.max(1, rowData.length - maxVisibleRows)) * 100);
+      renderer.bufferWrite(row, 4, renderer.dim(`-- ${pos}% -- (${SETTINGS_LAYOUT.length} settings)`));
     }
 
     // Bonuses summary

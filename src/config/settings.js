@@ -5,8 +5,8 @@ import { dirname } from 'node:path';
 
 const DEFAULT_SETTINGS = {
   focus: { autoFocus: false, bell: false, stickyTop: false },
-  security: { vaultEnabled: false, autoRedact: false, encryptedClipboard: false, aiMonitor: true },
-  game: { colorBlindMode: false, compactMode: false, debugLogging: false, showAIStatus: true, autoDungeon: true },
+  security: { vaultEnabled: false, autoRedact: false, encryptedClipboard: false, aiMonitor: true, alertKey: '!', dismissKey: 'd' },
+  game: { colorBlindMode: false, compactMode: false, debugLogging: false, showAIStatus: true, autoDungeon: true, autoRecruit: false, recruitSort: 'totalStats', autoEquip: false, equipStrategy: 'power', showTokenUsage: false },
   voice: {
     enabled: false,
     triggerWord: 'cookie',
