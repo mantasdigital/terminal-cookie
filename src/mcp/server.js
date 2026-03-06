@@ -58,6 +58,12 @@ function drainHookCrumbs(gameState) {
 const existingSave = loadGame(1);
 const engine = createEngine(existingSave.success ? { saveData: existingSave.data } : {});
 const gameState = engine.getStateRef();
+
+// Reset per-session CRDT counters so stale save values don't inflate crumbs
+// when a running game already has different crumbs. These get re-seeded from
+// the game's _lastMcpEarnedApplied on first live-state sync.
+gameState._mcpEarned = 0;
+gameState._mcpSpent = 0;
 const sessions = createSessionTracker(SESSIONS_PATH);
 const cookie = createCookieHandler(gameState);
 const settings = createSettings(SETTINGS_PATH);
@@ -86,22 +92,25 @@ const liveState = createLiveState({
     // Game is authoritative for crumbs. MCP tracks its own earned/spent counters.
     // MCP merge = game's crumbs + MCP's unapplied net delta.
     if (external.crumbs != null) {
-      if (external._lastMcpEarnedApplied != null || local._mcpEarned != null) {
-        // CRDT path: game or MCP has counters
-        local._mcpEarned = Math.max(local._mcpEarned ?? 0, external._mcpEarned ?? 0);
-        local._mcpSpent = Math.max(local._mcpSpent ?? 0, external._mcpSpent ?? 0);
-
-        const gameAppliedEarn = external._lastMcpEarnedApplied ?? 0;
-        const gameAppliedSpend = external._lastMcpSpentApplied ?? 0;
-        const unappliedNet = ((local._mcpEarned ?? 0) - gameAppliedEarn) - ((local._mcpSpent ?? 0) - gameAppliedSpend);
-
-        local.crumbs = Math.max(0, (external.crumbs ?? 0) + unappliedNet);
-        local._lastMcpEarnedApplied = gameAppliedEarn;
-        local._lastMcpSpentApplied = gameAppliedSpend;
-      } else {
-        // Fallback: neither side has CRDT counters yet — take higher crumbs
-        local.crumbs = Math.max(local.crumbs ?? 0, external.crumbs);
+      // Seed MCP counters from game's applied values when behind (new MCP session).
+      // This ensures unapplied delta starts at 0 instead of replaying stale history.
+      const gameAppliedEarn = external._lastMcpEarnedApplied ?? 0;
+      const gameAppliedSpend = external._lastMcpSpentApplied ?? 0;
+      if ((local._mcpEarned ?? 0) < gameAppliedEarn) {
+        local._mcpEarned = gameAppliedEarn;
       }
+      if ((local._mcpSpent ?? 0) < gameAppliedSpend) {
+        local._mcpSpent = gameAppliedSpend;
+      }
+
+      local._mcpEarned = Math.max(local._mcpEarned ?? 0, external._mcpEarned ?? 0);
+      local._mcpSpent = Math.max(local._mcpSpent ?? 0, external._mcpSpent ?? 0);
+
+      const unappliedNet = ((local._mcpEarned ?? 0) - gameAppliedEarn) - ((local._mcpSpent ?? 0) - gameAppliedSpend);
+
+      local.crumbs = Math.max(0, (external.crumbs ?? 0) + unappliedNet);
+      local._lastMcpEarnedApplied = gameAppliedEarn;
+      local._lastMcpSpentApplied = gameAppliedSpend;
     }
     if (external.totalToolCalls != null) local.totalToolCalls = Math.max(local.totalToolCalls ?? 0, external.totalToolCalls);
     if (external.tokenUsage != null) local.tokenUsage = Math.max(local.tokenUsage ?? 0, external.tokenUsage);

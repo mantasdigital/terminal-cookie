@@ -127,11 +127,8 @@ export async function runGame(options = {}) {
           local._lastMcpSpentApplied = mcpSpent;
         }
       } else if (external.crumbs != null) {
-        // Fallback: old MCP without CRDT counters — take higher crumbs for earnings
-        const localRecentSpend = local._lastCrumbSpend && (Date.now() - local._lastCrumbSpend) < 10000;
-        if (!localRecentSpend) {
-          local.crumbs = Math.max(local.crumbs ?? 0, external.crumbs);
-        }
+        // Fallback: MCP without CRDT counters — game is authoritative, ignore
+        // stale external crumbs to prevent inflation from old save data.
       }
       // For team, merge by ID — never lose locally recruited members
       if (external.team && Array.isArray(external.team)) {
