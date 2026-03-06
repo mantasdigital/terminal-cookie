@@ -15,7 +15,7 @@
      |_______|
 ```
 
-A terminal-based cookie dungeon crawler that doubles as an AI security monitor and Model Context Protocol (MCP) server. Recruit adventurers, explore procedurally generated dungeons with auto-play, build villages, upgrade talismans, and scan code for security vulnerabilities -- all from your terminal. Crumbs are earned through AI interactions.
+A terminal-based cookie dungeon crawler that doubles as an AI security monitor and Model Context Protocol (MCP) server. Recruit adventurers, explore procedurally generated dungeons with animated combat visuals, build villages, upgrade talismans, collect 50 trophies, and scan code for security vulnerabilities -- all from your terminal. Features auto-equip, auto-shop, auto-talisman upgrade, loot rain animations, 2000+ dungeon art pieces, and full automation settings. Crumbs are earned through AI interactions.
 
 ---
 
@@ -135,6 +135,7 @@ When the game starts, you see the main menu. Use these keys:
 | `H`         | Switch to Shop tab               |
 | `V`         | Switch to Village tab (9+ team)  |
 | `T`         | Switch to Talisman tab           |
+| `Y`         | Switch to Trophies tab             |
 | `G`         | Switch to Adventure Log tab      |
 | `Left`/`Right` | Switch between tabs          |
 | `Up`/`Down` | Browse list / select member      |
@@ -511,12 +512,22 @@ Open settings in-game by pressing `S` from the Tavern. Use `Up`/`Down` to naviga
 
 ### Game Settings
 
-| Setting          | What it does                            |
-|------------------|-----------------------------------------|
-| Auto-Dungeon     | Auto-play dungeons (ON by default)     |
-| Color-Blind Mode | Accessible colors (+2% loot find)      |
-| Compact Mode     | Smaller UI for small terminal windows  |
-| Debug Logging    | Save debug info to a file              |
+| Setting          | Default | What it does                                    |
+|------------------|---------|------------------------------------------------|
+| Auto-Dungeon     | ON      | Auto-play dungeons, combat, loot, death recovery |
+| Auto-Recruit     | ON      | Buy all affordable recruits automatically        |
+| Recruit Sort     | totalStats | Sort recruits by: totalStats, atk, def, hp, spd, lck, primary, efficiency |
+| Auto-Equip       | ON      | Equip best gear from inventory to team every 3s  |
+| Equip Strategy   | power   | How to rank gear: power, rarity, primaryStat, teamNeed, value |
+| Auto-Shop        | ON      | Buy heal potions, combat buffs, enchant scrolls  |
+| Shop Budget %    | 10%     | Max % of crumbs to spend on shop per tick (5-50%) |
+| Auto-Talisman    | ON      | Auto-upgrade talisman when affordable            |
+| Talisman Budget %| 10%     | Max % of crumbs for talisman upgrade per tick (5-50%) |
+| Color-Blind Mode | OFF     | Accessible colors (+2% loot find)                |
+| Compact Mode     | OFF     | Smaller UI for small terminal windows            |
+| Show AI Status   | ON      | Show AI connection badge                         |
+| Show Token Usage | OFF     | Show token usage counter (total/daily/monthly)   |
+| Debug Logging    | OFF     | Save debug info to a file                        |
 
 ---
 
@@ -557,6 +568,48 @@ Each building has 3 upgrade levels with escalating crumb costs.
 A persistent artifact that grows stronger over 10 upgrade levels. Talisman bonuses **survive death** — even if your entire team wipes, your talisman keeps its level.
 
 Bonuses include crumb multiplier, combat stats, regen, loot quality, and death consolation rewards. Upgrade via the Talisman tab (`T`) in the tavern.
+
+---
+
+## Trophies
+
+50 trophies across 9 categories (Boss, Combat, Death, Level, Loot, Progression, Crumbs, Time, Shop). View them in the Trophies tab (`Y`) in the tavern. The left panel shows all trophies with scroll support, the right panel shows only your unlocked trophies. Some trophies are earned through gameplay milestones, others can be bought with crumbs (1M/5M/25M/100M).
+
+---
+
+## Combat Visuals
+
+Combat features animated visuals including:
+- Enemy ASCII art with idle, attack, and hurt animation frames
+- Attack effect particles (slash, magic, crit, fumble, arrow, heal)
+- Floating damage numbers that rise and fade
+- Hit flash effects on impact
+- Live color-coded battle feed with HP changes
+
+---
+
+## Dungeon Exploration Visuals
+
+Dungeon rooms feature:
+- 2000+ unique ASCII environment art pieces across 5 biomes x 11 room types
+- Room reveal animations when entering new rooms
+- Weather overlays that change every 5 seconds per biome
+- Atmospheric decorations below the dungeon map
+- Story event animations triggered by new log entries
+
+---
+
+## Loot & Victory Animations
+
+- **Loot rain**: Items fall from the top of the screen with staggered reveals
+- **Source labels**: Items tagged with origin -- [BOSS DROP], [MINIBOSS], [TREASURE]
+- **Best item showcase**: Highest-rarity item highlighted with pulsing effect
+- **Victory confetti**: 30 animated particles on dungeon clear
+- **Stat counting**: Crumbs/rooms/monsters count up with ease-out animation
+- **Boss slain banner**: Animated banner when boss is defeated
+- **Defeat effects**: R.I.P. tombstone fade-in, death penalty shake, fallen ally names
+
+Press Enter/Space/Escape to skip any animation.
 
 ---
 
