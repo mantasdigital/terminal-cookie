@@ -328,6 +328,223 @@ const RANDOM_ENCOUNTERS = [
   ],
 ];
 
+// ── ADDITIONAL RANDOM ENCOUNTERS ──────────────────────────────────
+// Expands the encounter pool for more dungeon variety
+
+const EXTRA_ENCOUNTERS = [
+  [
+    { lines: ['A door slams shut behind the party.', 'A voice booms: "ANSWER MY RIDDLE!"'], color: 'magenta', duration: 1800 },
+    { lines: ['"What has eyes but cannot see?"', '"A potato," your mage answers immediately.', 'The door opens. "...Correct."'], color: 'yellow', duration: 2000 },
+  ],
+  [
+    { art: ['  _____', ' |     |', ' | ??? |', ' |_____|'], lines: ['You find a mysterious vending machine.', 'It only accepts exact change. In crumbs.'], color: 'cyan', duration: 1800 },
+    { lines: ['Your scout inserts 3 crumbs. Nothing happens.', '"Out of order since the Third Age."'], color: 'yellow', duration: 1500 },
+  ],
+  [
+    { lines: ['A group of goblins is having a tea party.', 'They invite you to sit down.'], color: 'green', duration: 1500 },
+    { lines: ['"One lump or two?" asks the goblin.', 'Your warrior nervously accepts a scone.', 'It\'s actually quite good.'], color: 'yellow', duration: 2000 },
+  ],
+  [
+    { lines: ['You find a painting of your team on the wall.', 'It\'s labeled "Intruders — Do Not Feed."'], color: 'magenta', duration: 1800 },
+    { lines: ['"When was this painted?" "We just got here!"', '"The dungeon has wifi. And a social media account."'], color: 'yellow', duration: 1800 },
+  ],
+  [
+    { lines: ['A trapped adventurer hangs from a net.', '"Oh hey. Can you help me down?" "How long you been up there?"'], color: 'cyan', duration: 1800 },
+    { lines: ['"Three days. I\'ve named the spiders."', '"That\'s... concerning." "Reginald says hi."'], color: 'yellow', duration: 1800 },
+  ],
+  [
+    { art: ['  \\o/', '   |', '  / \\'], lines: ['A skeleton is doing yoga in the corner.', 'Downward-facing bone.'], color: 'brightBlack', duration: 1800 },
+    { lines: ['"Namaste," it whispers as you pass.', 'Your healer nods respectfully.'], color: 'yellow', duration: 1500 },
+  ],
+  [
+    { lines: ['You step into a room full of mirrors.', 'Each reflection shows a different version of you.'], color: 'magenta', duration: 1500 },
+    { lines: ['One version waves. Another is eating cookies.', 'A third is running away. "Interesting priorities."'], color: 'yellow', duration: 1800 },
+  ],
+  [
+    { lines: ['A fountain in the center bubbles with... chocolate?', 'A sign reads: "Drink at own risk."'], color: 'cyan', duration: 1500 },
+    { lines: ['Your bard takes a sip.', '"It\'s actually just mud." "...Still good though."'], color: 'yellow', duration: 1500 },
+  ],
+  [
+    { lines: ['The floor is covered in coins. All of them fake.', '"Cursed monopoly money," your scout mutters.'], color: 'brightBlack', duration: 1800 },
+    { lines: ['Your warrior picks one up anyway.', '"It\'s the principle of the thing."'], color: 'yellow', duration: 1500 },
+  ],
+  [
+    { lines: ['A dungeon review board is nailed to the wall:', '"2 stars. Not enough loot. Too many traps."'], color: 'white', duration: 1800 },
+    { lines: ['"Previous reviewer: \'The boss was rude.\'"', '"Next reviewer: \'I died. 0/10.\'"'], color: 'yellow', duration: 1800 },
+  ],
+  [
+    { lines: ['Two monsters are playing chess in the corner.', 'They glare at you. "Do you MIND?"'], color: 'cyan', duration: 1800 },
+    { lines: ['Your party tiptoes past.', '"Checkmate!" one monster shouts. The other flips the board.'], color: 'yellow', duration: 1800 },
+  ],
+  [
+    { lines: ['You discover a monster\'s diary.', '"Day 47: Still no adventurers. Getting lonely."'], color: 'brightBlack', duration: 1800 },
+    { lines: ['"Day 48: Adventurers came! They killed me."', '"Wait, then who wrote—" "DON\'T THINK ABOUT IT."'], color: 'yellow', duration: 1800 },
+  ],
+  [
+    { lines: ['A cat sits in the middle of the dungeon path.', 'It stares at you with an air of absolute authority.'], color: 'white', duration: 1500 },
+    { lines: ['Your team tries to go around it. It moves to block.', '"The Dungeon Cat demands tribute."', 'Your healer gives it a cookie crumb. It purrs.'], color: 'yellow', duration: 2200 },
+  ],
+  [
+    { lines: ['An imp runs past carrying a large bag of cookies.', '"You didn\'t see anything!" it shrieks.'], color: 'red', duration: 1500 },
+    { lines: ['Moments later, a larger demon runs past.', '"DID YOU SEE AN IMP?!" "Which way did it go?"'], color: 'yellow', duration: 1500 },
+  ],
+  [
+    { lines: ['The party finds an ancient puzzle door.', 'It requires solving a math problem to open.'], color: 'magenta', duration: 1500 },
+    { lines: ['"2 + 2 = ?" reads the door.', '"It\'s a trick question," whispers your mage.', '"No it isn\'t." "You don\'t know that."'], color: 'yellow', duration: 2000 },
+  ],
+  [
+    { lines: ['A sign on the wall reads: "TRAP AHEAD."', 'Below it in crayon: "No there isn\'t."'], color: 'red', duration: 1500 },
+    { lines: ['Your scout checks. There IS a trap.', '"The crayon lied." "Crayons can\'t be trusted."'], color: 'yellow', duration: 1500 },
+  ],
+  [
+    { lines: ['You find a room where gravity is sideways.', 'Walking on the wall is disorienting but fun.'], color: 'magenta', duration: 1500 },
+    { lines: ['"My lunch is going the wrong direction."', '"Everything is going the wrong direction."'], color: 'yellow', duration: 1500 },
+  ],
+  [
+    { lines: ['A treasure chest opens itself.', '"Finally! Someone! I\'ve been trying to give away', 'this loot for YEARS!"'], color: 'cyan', duration: 2000 },
+    { lines: ['"Is this a trap?" "NO! I\'m a GENEROUS chest!"', 'Your team backs away slowly.'], color: 'yellow', duration: 1800 },
+  ],
+];
+
+// Merge extra encounters into the main pool
+for (const enc of EXTRA_ENCOUNTERS) {
+  RANDOM_ENCOUNTERS.push(enc);
+}
+
+// ── COMEDIC ENDINGS ──────────────────────────────────────────────
+// Randomized comedic epilogues that play after dungeon completion or defeat.
+
+const VICTORY_ENDINGS = {
+  cave: [
+    [
+      { lines: ['Your team emerges blinking into the sunlight.', '"Did we just... survive?"'], color: 'yellow', duration: 1500 },
+      { lines: ['"I call dibs on the shower!" "We don\'t have a shower."', '"Then I call dibs on the river."'], color: 'yellow', duration: 1500 },
+      { lines: ['Your bard immediately starts composing a ballad.', 'It rhymes "cave" with "brave." And also "misbehave."'], color: 'cyan', duration: 1800 },
+    ],
+    [
+      { lines: ['You count the loot. Then recount it.', '"Wait, that\'s it?" "Quality over quantity!"'], color: 'yellow', duration: 1500 },
+      { lines: ['Your warrior is wearing a stalactite as a hat.', '"Battle trophy." "That\'s a rock." "BATTLE. TROPHY."'], color: 'yellow', duration: 1800 },
+    ],
+    [
+      { lines: ['A bat follows you out. It won\'t leave.', '"I think it imprinted on you."'], color: 'cyan', duration: 1500 },
+      { lines: ['"We are NOT keeping a dungeon bat."', 'The bat squeaks. Your healer melts. "We\'re keeping the bat."'], color: 'yellow', duration: 2000 },
+    ],
+  ],
+  crypt: [
+    [
+      { lines: ['You seal the crypt doors behind you.', 'A ghost waves goodbye from a window. "Come back soon!"'], color: 'magenta', duration: 1500 },
+      { lines: ['"That ghost seemed... nice?" "Don\'t. Don\'t humanize the ghosts."', '"But he waved!" "THEY ALL WAVE."'], color: 'yellow', duration: 2000 },
+    ],
+    [
+      { lines: ['Your team checks for any lingering curses.', '"Am I cursed?" "You were like that before."'], color: 'magenta', duration: 1500 },
+      { lines: ['"I want a receipt for this dungeon run."', '"Sir, this is the underworld." "I still want a receipt."'], color: 'yellow', duration: 1800 },
+    ],
+    [
+      { lines: ['A skeleton\'s hand gives you a thumbs up from the ground.', '"Good job, adventurers!" "...Thanks?"'], color: 'brightBlack', duration: 1800 },
+      { lines: ['Your mage picks up a bone. "Souvenir."', '"Put that back." "It\'s a COLLECTIBLE."'], color: 'yellow', duration: 1500 },
+    ],
+  ],
+  forest: [
+    [
+      { lines: ['The trees part to let you leave. How polite.', 'A squirrel throws an acorn at your head. Less polite.'], color: 'green', duration: 1800 },
+      { lines: ['"The forest is judging us." "It\'s a FOREST."', '"A JUDGY forest."'], color: 'yellow', duration: 1500 },
+    ],
+    [
+      { lines: ['You find your original trail markers.', 'Someone drew smiley faces on all of them.'], color: 'green', duration: 1500 },
+      { lines: ['"Fairies." "Definitely fairies."', '"At least they\'re FRIENDLY fairies."'], color: 'yellow', duration: 1500 },
+    ],
+    [
+      { lines: ['A deer watches you leave with visible relief.', '"The scary ones are leaving," it seems to say.'], color: 'green', duration: 1500 },
+      { lines: ['Your berserker waves at the deer. It bolts.', '"I just wanted to say bye!" "You\'re still holding an axe."'], color: 'yellow', duration: 1800 },
+    ],
+  ],
+  volcano: [
+    [
+      { lines: ['You stumble out of the caldera, everything singed.', '"My eyebrows will grow back. Probably."'], color: 'red', duration: 1500 },
+      { lines: ['"On the bright side, my armor is now pre-heated."', '"That\'s not a bright side." "It\'s literally glowing."'], color: 'yellow', duration: 1800 },
+    ],
+    [
+      { lines: ['Your boots have melted to your feet.', '"New fashion trend?" "No." "Volcanic chic?"'], color: 'red', duration: 1500 },
+      { lines: ['Your bard\'s lute is on fire. They keep playing.', '"THE SHOW MUST GO ON!" "YOUR HANDS!" "THE SHOW!"'], color: 'yellow', duration: 2000 },
+    ],
+    [
+      { lines: ['An imp runs after you waving a receipt.', '"You forgot your complimentary lava sample!"'], color: 'red', duration: 1500 },
+      { lines: ['"NO THANK YOU." "But it comes with a gift basket!"', '"STILL NO." The imp looks genuinely hurt.'], color: 'yellow', duration: 1800 },
+    ],
+  ],
+  abyss: [
+    [
+      { lines: ['You tumble back into normal reality.', 'Gravity works again. Colors make sense. Bliss.'], color: 'magenta', duration: 1500 },
+      { lines: ['"How long were we in there?" "Three hours."', '"It felt like three YEARS." "Time is a suggestion down there."'], color: 'yellow', duration: 2000 },
+    ],
+    [
+      { lines: ['Your shadow gives a relieved sigh upon returning.', '"Even my shadow had a bad time."'], color: 'magenta', duration: 1500 },
+      { lines: ['Your mage\'s spell book is now written backwards.', '"Is this a feature?" "It\'s a CURSE." "Same thing in the abyss."'], color: 'yellow', duration: 1800 },
+    ],
+    [
+      { lines: ['Everything looks normal. Suspiciously normal.', '"Is anyone else seeing the right number of fingers?"'], color: 'magenta', duration: 1500 },
+      { lines: ['"I count ten." "I count eleven." "...Whose is the extra one?"', '*everyone slowly backs away from each other*'], color: 'yellow', duration: 2000 },
+    ],
+  ],
+};
+
+const DEFEAT_ENDINGS = {
+  cave: [
+    [
+      { lines: ['Your team wakes up outside the cave.', '"How did we get here?" "The cave spat us out."'], color: 'brightBlack', duration: 1500 },
+      { lines: ['"It literally just... ejected us?"', '"Even the cave didn\'t want us."'], color: 'yellow', duration: 1500 },
+    ],
+    [
+      { lines: ['A sign appears at the cave entrance:', '"CLOSED DUE TO ADVENTURER INCOMPETENCE"'], color: 'red', duration: 1800 },
+      { lines: ['"That\'s harsh." "But fair." "...Yeah, fair."'], color: 'yellow', duration: 1500 },
+    ],
+    [
+      { lines: ['The monsters inside are celebrating.', 'You can hear them toasting with your lost crumbs.'], color: 'brightBlack', duration: 1500 },
+      { lines: ['"They\'re having a PARTY with our stuff!"', '"Add insult to injury. And also theft."'], color: 'yellow', duration: 1800 },
+    ],
+  ],
+  crypt: [
+    [
+      { lines: ['A ghost floats over with a clipboard.', '"Rate your death experience: 1 to 5 stars?"'], color: 'magenta', duration: 1800 },
+      { lines: ['"We didn\'t die, we just... tactically retreated."', '"Through the floor. Unconscious." "TACTICALLY."'], color: 'yellow', duration: 2000 },
+    ],
+    [
+      { lines: ['The undead are putting your portrait on the wall.', '"Hall of Shame, huh?" "They call it \'Wall of Visitors.\'"'], color: 'magenta', duration: 1800 },
+      { lines: ['"At least we\'re famous somewhere."', '"Among the dead." "Famous is famous."'], color: 'yellow', duration: 1500 },
+    ],
+  ],
+  forest: [
+    [
+      { lines: ['The forest gently places you at its edge.', 'Like a bouncer at a very green nightclub.'], color: 'green', duration: 1500 },
+      { lines: ['"Come back when you\'ve leveled up," a tree seems to say.', '"Did that tree just trash-talk us?" "NATURE is trash-talking us."'], color: 'yellow', duration: 2000 },
+    ],
+    [
+      { lines: ['Woodland creatures gather to stare at your defeat.', 'A fox shakes its head slowly. Judging.'], color: 'green', duration: 1500 },
+      { lines: ['"Even the squirrels are disappointed."', '"The squirrels have no right. They eat ACORNS."'], color: 'yellow', duration: 1800 },
+    ],
+  ],
+  volcano: [
+    [
+      { lines: ['The volcano cools slightly. Out of pity.', '"Did... did it just feel sorry for us?"'], color: 'red', duration: 1500 },
+      { lines: ['"When a volcano pities you, you know it\'s bad."', '"Rock bottom. Literally." "Lava bottom, technically."'], color: 'yellow', duration: 1800 },
+    ],
+    [
+      { lines: ['An imp drops off your singed belongings in a bag.', '"Lost and found. Emphasis on lost."'], color: 'red', duration: 1500 },
+      { lines: ['"This bag says \'NOOB LOOT\' on it." "...I\'m going to pretend I can\'t read."'], color: 'yellow', duration: 1800 },
+    ],
+  ],
+  abyss: [
+    [
+      { lines: ['Reality reassembles you. Mostly correctly.', '"Why is my left hand on my right arm?" "It\'ll sort itself out."'], color: 'magenta', duration: 1800 },
+      { lines: ['"The abyss looked into us. And laughed."', '"To be fair, we ARE pretty funny."'], color: 'yellow', duration: 1500 },
+    ],
+    [
+      { lines: ['You wake up with a note pinned to your chest:', '"Nice try. Better luck in another dimension."'], color: 'magenta', duration: 1800 },
+      { lines: ['"Personal notes from eldritch horrors. Great."', '"At least the handwriting is neat."'], color: 'yellow', duration: 1500 },
+    ],
+  ],
+};
+
 // ── TROPHY CUTSCENES ──────────────────────────────────────────────
 
 const TROPHY_CUTSCENES = {
@@ -436,7 +653,324 @@ const GENERIC_TROPHY_CUTSCENE = [
   { lines: ['Another achievement added to your legend.', 'The cookie gods smile upon you.'], color: 'cyan', duration: 1500 },
 ];
 
+// ── PROCEDURAL CUTSCENE GENERATOR ─────────────────────────────────
+// Combinatorial system: characters × poses × scenes × dialogues × biomes
+// Produces 1000+ unique cutscene sequences from templates.
+
+/** Character race art (2-3 lines each, compact for cutscene frames) */
+const CHAR_ART = {
+  human:  [' O ', '/|\\', '/ \\'],
+  elf:    ['@/ ', '/|\\', '/ \\'],
+  dwarf:  [' # ', '/#\\', '| |'],
+  goblin: ['.o.', '/|\\', ' | '],
+  golem:  ['[#]', '[X]', '[_]'],
+  sprite: [' * ', '.|.', ' v '],
+};
+
+/** Weapon overlays by class (applied to body line) */
+const WEAPON_ART = {
+  warrior:   ']==',
+  scout:     '/--',
+  healer:    '+--',
+  mage:      '*~~',
+  bard:      'd~~',
+  berserker: 'X==',
+};
+
+/** Pose templates — different character stances for animation variety */
+const POSES = {
+  idle:    { mod: (art) => art },
+  attack:  { mod: (art) => [art[0], art[1] + ' ]==>', art[2]] },
+  defend:  { mod: (art) => ['(' + art[0] + ')', '|' + art[1] + '|', art[2]] },
+  cast:    { mod: (art) => [' ~' + art[0] + '~ ', art[1], ' *' + art[2] + '* '] },
+  cheer:   { mod: (art) => ['\\' + art[0] + '/', art[1], art[2]] },
+  fallen:  { mod: () => ['  _  ', ' /_\\ ', '     '] },
+  run:     { mod: (art) => [art[0] + '>>', '>>' + art[1], art[2] + '>>'] },
+  sneak:   { mod: (art) => ['  ' + art[0], '  ' + art[1], '  ' + art[2]] },
+  dance:   { mod: (art) => [' ~' + art[0] + '~ ', '~' + art[1] + '~', ' ~' + art[2] + '~ '] },
+  laugh:   { mod: (art) => [art[0] + ' ha', art[1] + ' ha', art[2] + ' ha'] },
+};
+
+const POSE_NAMES = Object.keys(POSES);
+const RACE_NAMES = Object.keys(CHAR_ART);
+const CLASS_NAMES = Object.keys(WEAPON_ART);
+
+/** Build a character art with race, class weapon, and pose */
+function buildCharArt(raceIdx, classIdx, poseIdx) {
+  const race = RACE_NAMES[raceIdx % RACE_NAMES.length];
+  const cls = CLASS_NAMES[classIdx % CLASS_NAMES.length];
+  const pose = POSE_NAMES[poseIdx % POSE_NAMES.length];
+  let art = [...CHAR_ART[race]];
+  // Add weapon to body line
+  art[1] = art[1] + ' ' + WEAPON_ART[cls];
+  // Apply pose
+  art = POSES[pose].mod(art);
+  return art;
+}
+
+/** Build a two-character interaction art (hero vs enemy/ally) */
+function buildDualArt(seed) {
+  const hero = buildCharArt(seed, seed >> 3, seed >> 6);
+  const other = buildCharArt((seed >> 2) + 1, (seed >> 4) + 2, (seed >> 7) + 3);
+  // Side by side with gap
+  return hero.map((line, i) => line + '    ' + (other[i] || ''));
+}
+
+// ── Scene template pools (dialogue lines, art compositions) ──────
+
+/** Dramatic scene templates — tension, stakes, confrontation */
+const DRAMATIC_SCENES = [
+  { lines: ['{hero} locks eyes with the creature.', 'Neither blinks. Neither breathes.'], color: 'red' },
+  { lines: ['The ground splits between {hero} and the enemy.', 'Lava wells up from below. No turning back.'], color: 'red' },
+  { lines: ['{hero} raises their weapon, hands trembling.', '"This ends now," they whisper.'], color: 'yellow' },
+  { lines: ['A shadow looms over the party.', '{hero} steps forward, shield raised.'], color: 'magenta' },
+  { lines: ['The enemy\'s eyes glow with ancient fury.', '{hero} stands their ground.'], color: 'red' },
+  { lines: ['Thunder cracks. The walls shake.', '{hero} and the beast circle each other.'], color: 'cyan' },
+  { lines: ['{hero} sheathes their weapon. Then draws it again.', '"Just checking. Still sharp."'], color: 'white' },
+  { lines: ['The torchlight catches {hero}\'s determined face.', 'There\'s no going back from here.'], color: 'yellow' },
+  { lines: ['"I\'ve been waiting for this," {hero} says.', 'The enemy snarls in response.'], color: 'red' },
+  { lines: ['Silence falls. Even the dungeon holds its breath.', '{hero} takes a slow, steady step forward.'], color: 'brightBlack' },
+  { lines: ['{hero} feels the weight of every battle before this.', 'This one will be different. It has to be.'], color: 'magenta' },
+  { lines: ['The enemy towers above the party.', '{hero} looks up and grins. "Big target."'], color: 'yellow' },
+  { lines: ['A cold wind whistles through the chamber.', '{hero} adjusts their grip and waits.'], color: 'cyan' },
+  { lines: ['The ground is littered with bones of past challengers.', '{hero} steps over them. "We\'re not them."'], color: 'red' },
+  { lines: ['{hero} and the beast lock eyes across the chamber.', 'One of them won\'t leave this room.'], color: 'red' },
+];
+
+/** Action scene templates — combat moves, explosions, chaos */
+const ACTION_SCENES = [
+  { lines: ['{hero} charges with a battle cry!', 'Steel clashes against claw!'], color: 'red' },
+  { lines: ['{hero} dodges left! Rolls right!', 'The enemy\'s attack misses by inches.'], color: 'cyan' },
+  { lines: ['Sparks fly as weapons collide!', '{hero} pushes back with raw strength.'], color: 'yellow' },
+  { lines: ['{hero} leaps over the enemy\'s sweep!', 'Lands behind it. Strikes. Gone.'], color: 'green' },
+  { lines: ['The ceiling crumbles! Rocks rain down!', '{hero} shields the party from debris.'], color: 'red' },
+  { lines: ['{hero} slides under the monster\'s legs!', '"Not very agile, are you?"'], color: 'cyan' },
+  { lines: ['A massive explosion rocks the chamber!', '{hero} emerges from the dust, coughing.'], color: 'red' },
+  { lines: ['{hero} throws their weapon — it spins end over end!', 'Direct hit. They catch it on the return.'], color: 'yellow' },
+  { lines: ['The party scatters as the ground erupts!', '{hero} grabs an ally and dives for cover.'], color: 'red' },
+  { lines: ['{hero} parries three attacks in rapid succession!', '"Is that all you\'ve got?"'], color: 'cyan' },
+  { lines: ['The enemy charges! {hero} stands firm!', 'Impact! Dust everywhere! ...{hero} still stands.'], color: 'yellow' },
+  { lines: ['{hero} vaults off a fallen column!', 'Brings their weapon down with devastating force.'], color: 'red' },
+  { lines: ['Arrow after arrow after arrow!', '{hero} fires without stopping. Each one finds its mark.'], color: 'green' },
+  { lines: ['{hero} and the monster clash!', 'Shockwaves ripple through the chamber.'], color: 'magenta' },
+  { lines: ['The floor cracks beneath {hero}\'s feet!', 'They leap to safety as it collapses below.'], color: 'red' },
+];
+
+/** Comedic scene templates — humor, banter, absurdity */
+const COMEDIC_SCENES = [
+  { lines: ['{hero} trips over a rock.', '"I meant to do that. Tactical stumble."'], color: 'yellow' },
+  { lines: ['"Did anyone bring snacks?" asks {hero}.', 'Everyone stares. "What? Dungeon snacks."'], color: 'yellow' },
+  { lines: ['{hero} high-fives a skeleton on the wall.', '"He seemed friendly."'], color: 'cyan' },
+  { lines: ['{hero} tries to look intimidating.', 'The enemy yawns. Literally yawns.'], color: 'yellow' },
+  { lines: ['"I have a plan!" declares {hero}.', '"Oh no," says everyone simultaneously.'], color: 'yellow' },
+  { lines: ['{hero} accidentally steps on the bard\'s lute.', '"That was my best one!" "You only had one."'], color: 'yellow' },
+  { lines: ['A cookie rolls out of {hero}\'s pocket.', 'Both sides pause to watch it roll away.'], color: 'cyan' },
+  { lines: ['{hero} reads the room. The room is illiterate.', '"What?" "Nothing. Let\'s keep going."'], color: 'yellow' },
+  { lines: ['"On a scale of 1 to doomed—" starts {hero}.', '"Doomed," everyone agrees.'], color: 'yellow' },
+  { lines: ['{hero} tries to diplomatize with the enemy.', '"Do you accept cookies as currency?" It does not.'], color: 'yellow' },
+  { lines: ['{hero} finds a treasure chest. It\'s empty.', 'There\'s a note: "Better luck next time! :)"'], color: 'cyan' },
+  { lines: ['The enemy sneezes. {hero} says "bless you."', 'An awkward pause. Combat resumes.'], color: 'yellow' },
+  { lines: ['"Left or right?" asks {hero}.', '"Left." They go right. Classic {hero}.'], color: 'yellow' },
+  { lines: ['{hero} tries to pet the monster.', '"Bad idea! BAD IDEA!" "IT\'S SO FLUFFY THOUGH!"'], color: 'yellow' },
+  { lines: ['{hero} slips on a puddle of slime.', 'Slides 30 feet. Into a wall. "...Ow."'], color: 'cyan' },
+  { lines: ['{hero} challenges the boss to a staring contest.', 'The boss has seventeen eyes. Unfair advantage.'], color: 'yellow' },
+  { lines: ['"We should retreat and—" starts {hero}.', 'The exit sealed behind them. "Never mind."'], color: 'yellow' },
+  { lines: ['{hero} offers the enemy a cookie.', 'It takes it. Eats it. Attacks anyway. Rude.'], color: 'yellow' },
+  { lines: ['{hero}\'s weapon gets stuck in a crack.', '"It\'s a feature, not a bug."'], color: 'cyan' },
+  { lines: ['An echo repeats everything {hero} says.', '"Stop that!" "Stop that!" "...Very mature."'], color: 'yellow' },
+];
+
+/** Exploration/atmosphere scene templates */
+const ATMOSPHERE_SCENES = [
+  { lines: ['Footsteps echo endlessly ahead.', '{hero} counts them. Loses count. Starts over.'], color: 'brightBlack' },
+  { lines: ['Water drips from the ceiling in a steady rhythm.', 'It sounds almost like a heartbeat.'], color: 'cyan' },
+  { lines: ['Ancient murals cover the walls.', '{hero} traces the carvings with a finger.'], color: 'magenta' },
+  { lines: ['The air grows thick with the scent of old stone.', 'Something about this place feels... alive.'], color: 'brightBlack' },
+  { lines: ['{hero} finds markings from a previous expedition.', '"They made it this far. Let\'s go further."'], color: 'white' },
+  { lines: ['Crystals in the walls pulse with faint light.', 'They respond to {hero}\'s heartbeat.'], color: 'cyan' },
+  { lines: ['A distant rumble. Then silence.', '{hero} and the party exchange glances.'], color: 'brightBlack' },
+  { lines: ['The corridor narrows until they must walk single file.', '{hero} takes point. Naturally.'], color: 'white' },
+  { lines: ['Strange symbols glow on the floor ahead.', '{hero} steps over them. Carefully.'], color: 'magenta' },
+  { lines: ['The torch flickers. Almost goes out.', '{hero} shields it with their hand. "Not yet."'], color: 'yellow' },
+  { lines: ['Something skitters in the darkness beyond the light.', '{hero} pretends not to notice. The party knows.'], color: 'brightBlack' },
+  { lines: ['An underground river rushes past, cold and deep.', '{hero} finds stepping stones. Most of them hold.'], color: 'cyan' },
+  { lines: ['The walls here are warm to the touch.', '{hero} presses on. The warmth follows them.'], color: 'red' },
+  { lines: ['Old adventurer graffiti: "FLOOR 42 — HALFWAY THERE"', '{hero} adds a tally mark to the collection.'], color: 'white' },
+  { lines: ['The ceiling stretches impossibly high above.', 'Stars? Underground? This dungeon is strange.'], color: 'magenta' },
+];
+
+/** Victory/celebration scene templates */
+const VICTORY_SCENES = [
+  { lines: ['{hero} raises their weapon to the sky!', 'The party erupts in cheers!'], color: 'green' },
+  { lines: ['The dust settles. {hero} still stands.', '"Is it over?" "...Yeah. Yeah, it\'s over."'], color: 'cyan' },
+  { lines: ['{hero} collapses to one knee, breathing hard.', 'Then looks up and grins. "We did it."'], color: 'green' },
+  { lines: ['Cookie crumbs rain from the defeated monster.', '{hero} catches them. "Jackpot."'], color: 'yellow' },
+  { lines: ['{hero} sheathes their weapon with a satisfying click.', '"Another one for the history books."'], color: 'green' },
+  { lines: ['The party gathers around {hero}.', '"That was terrifying." "Let\'s do it again!"'], color: 'yellow' },
+  { lines: ['{hero} does a victory dance.', 'The bard joins in. It\'s terrible. It\'s perfect.'], color: 'green' },
+  { lines: ['Loot spills from the defeated creature.', '{hero} starts sorting. "Dibs on the shiny one."'], color: 'yellow' },
+  { lines: ['{hero} takes a deep breath of stale dungeon air.', '"Smells like victory. And mildew."'], color: 'cyan' },
+  { lines: ['The room brightens as the enemy falls.', '{hero} can finally see how big the chamber is. "Wow."'], color: 'green' },
+];
+
+/** Biome flavor inserts — added to generated scenes for variety */
+const BIOME_FLAVOR = {
+  cave: [
+    'Stalactites shimmer overhead.',
+    'The rock walls weep moisture.',
+    'A bat colony stirs at the disturbance.',
+    'Fungal growths glow softly in the corners.',
+    'The echo here takes forever to fade.',
+    'Crystal veins pulse with inner light.',
+    'The air smells of mineral and rust.',
+  ],
+  crypt: [
+    'Bones rattle in their alcoves.',
+    'The candles flicker without wind.',
+    'A ghost drifts past, barely noticing.',
+    'Cobwebs thick as curtains part around them.',
+    'The stone coffins seem to hum.',
+    'Ancient dust swirls in the lantern light.',
+    'The dead watch. The dead always watch.',
+  ],
+  forest: [
+    'Roots crack through the dungeon floor.',
+    'Fireflies circle in impossible patterns.',
+    'The trees outside seem to lean closer.',
+    'Moss covers everything in soft green.',
+    'A bird sings somewhere far above.',
+    'Mushroom rings glow with fairy light.',
+    'The scent of pine cuts through the dust.',
+  ],
+  volcano: [
+    'Lava veins pulse in the walls.',
+    'The heat makes the air shimmer.',
+    'Obsidian shards crunch underfoot.',
+    'Smoke curls from cracks in the floor.',
+    'Everything has a reddish tint here.',
+    'The ground vibrates with a deep pulse.',
+    'Sweat drips before they even start fighting.',
+  ],
+  abyss: [
+    'Reality flickers at the edges of vision.',
+    'Shadows move independently of their owners.',
+    'The geometry here hurts to look at.',
+    'Whispers come from everywhere and nowhere.',
+    'Gravity changes direction for a moment.',
+    'The darkness has texture. It\'s unsettling.',
+    'Distance means nothing in this place.',
+  ],
+};
+
+/** Hero name templates — combined with class for {hero} substitution */
+const HERO_NAMES = [
+  'your warrior', 'the scout', 'your healer', 'the mage',
+  'your bard', 'the berserker', 'your leader', 'the rogue',
+  'your champion', 'the veteran', 'the rookie', 'your captain',
+];
+
+/**
+ * Generate a procedural cutscene from combinatorial templates.
+ * Uses the seed to deterministically select: scene style, dialogue lines,
+ * character art, biome flavor, and arrangement.
+ *
+ * Total combinations: 15 scenes × 5 styles × 12 heroes × 7 flavors × 10 poses = 63,000+
+ *
+ * @param {string} type - 'intro'|'pre_miniboss'|'post_miniboss'|'pre_boss'|'post_boss'|'complete'|'encounter'
+ * @param {string} biome - Biome id
+ * @param {number} seed - Deterministic seed
+ * @returns {object[]} Array of cutscene frames
+ */
+function generateProceduralCutscene(type, biome, seed) {
+  const s = Math.abs(seed);
+
+  // Select scene style based on type
+  let scenePool;
+  let colorOverride;
+  switch (type) {
+    case 'intro':
+    case 'encounter':
+      // Mix of atmosphere and comedic for exploration
+      scenePool = s % 3 === 0 ? COMEDIC_SCENES : (s % 3 === 1 ? ATMOSPHERE_SCENES : DRAMATIC_SCENES);
+      break;
+    case 'pre_miniboss':
+    case 'pre_boss':
+      // Dramatic and action for pre-combat
+      scenePool = s % 2 === 0 ? DRAMATIC_SCENES : ACTION_SCENES;
+      colorOverride = 'red';
+      break;
+    case 'post_miniboss':
+    case 'post_boss':
+    case 'complete':
+      // Victory and comedic for post-combat
+      scenePool = s % 3 === 0 ? COMEDIC_SCENES : (s % 3 === 1 ? VICTORY_SCENES : ATMOSPHERE_SCENES);
+      break;
+    default:
+      scenePool = ATMOSPHERE_SCENES;
+  }
+
+  // Pick scenes using different seed offsets for variety
+  const scene1 = scenePool[(s) % scenePool.length];
+  const scene2Pools = [DRAMATIC_SCENES, ACTION_SCENES, COMEDIC_SCENES, ATMOSPHERE_SCENES, VICTORY_SCENES];
+  const scene2Pool = scene2Pools[(s >> 4) % scene2Pools.length];
+  const scene2 = scene2Pool[(s >> 2) % scene2Pool.length];
+
+  // Pick hero name
+  const hero = HERO_NAMES[s % HERO_NAMES.length];
+
+  // Pick biome flavor
+  const flavors = BIOME_FLAVOR[biome] || BIOME_FLAVOR.cave;
+  const flavor = flavors[(s >> 3) % flavors.length];
+
+  // Generate character art
+  const charArt = buildDualArt(s);
+
+  // Substitute {hero} in lines
+  const sub = (lines) => lines.map(l => l.replace(/\{hero\}/g, hero));
+
+  // Build frames
+  const frames = [];
+
+  // Frame 1: Scene opener with art
+  frames.push({
+    art: charArt,
+    lines: sub(scene1.lines),
+    color: colorOverride || scene1.color,
+    duration: 1800,
+  });
+
+  // Frame 2: Biome flavor
+  frames.push({
+    lines: [flavor, ''],
+    color: 'brightBlack',
+    duration: 1200,
+  });
+
+  // Frame 3: Second scene with different art pose
+  const charArt2 = buildCharArt((s >> 1) + 2, (s >> 3) + 1, (s >> 5) + 4);
+  frames.push({
+    art: charArt2,
+    lines: sub(scene2.lines),
+    color: scene2.color,
+    duration: 1500,
+  });
+
+  return frames;
+}
+
 // ── CUTSCENE SELECTION API ─────────────────────────────────────────
+
+/** Duration multiplier — applied to all cutscene frame durations at the API boundary. */
+const DURATION_MULTIPLIER = 2.0;
+
+/**
+ * Apply duration multiplier to an array of cutscene frames.
+ * Returns a new array with scaled durations (does not mutate originals).
+ */
+function applyDuration(frames) {
+  if (!frames || frames.length === 0) return frames;
+  return frames.map(f => ({ ...f, duration: Math.round((f.duration ?? 1200) * DURATION_MULTIPLIER) }));
+}
 
 /**
  * Pick a cutscene from a pool using seed-based selection.
@@ -446,7 +980,21 @@ const GENERIC_TROPHY_CUTSCENE = [
  */
 function pickFromPool(pool, seed) {
   if (!pool || pool.length === 0) return [];
-  return pool[Math.abs(seed) % pool.length];
+  return applyDuration(pool[Math.abs(seed) % pool.length]);
+}
+
+/**
+ * Pick from hand-crafted pool or fall through to procedural generation.
+ * Hand-crafted scenes are used when seed lands on them; otherwise procedural.
+ * This gives ~40% hand-crafted, ~60% procedural for massive variety.
+ */
+function pickOrGenerate(pool, type, biome, seed) {
+  const s = Math.abs(seed);
+  // Use hand-crafted pool roughly 40% of the time
+  if (pool && pool.length > 0 && (s % 5) < 2) {
+    return pickFromPool(pool, seed);
+  }
+  return applyDuration(generateProceduralCutscene(type, biome, seed));
 }
 
 /**
@@ -457,7 +1005,7 @@ function pickFromPool(pool, seed) {
  */
 export function getDungeonIntroCutscene(biome, seed) {
   const pool = DUNGEON_INTROS[biome] || DUNGEON_INTROS.cave;
-  return pickFromPool(pool, seed);
+  return pickOrGenerate(pool, 'intro', biome, seed);
 }
 
 /**
@@ -465,7 +1013,7 @@ export function getDungeonIntroCutscene(biome, seed) {
  */
 export function getPreMinibossCutscene(biome, seed) {
   const pool = PRE_MINIBOSS[biome] || PRE_MINIBOSS.cave;
-  return pickFromPool(pool, seed);
+  return pickOrGenerate(pool, 'pre_miniboss', biome, seed);
 }
 
 /**
@@ -473,7 +1021,7 @@ export function getPreMinibossCutscene(biome, seed) {
  */
 export function getPostMinibossCutscene(biome, seed) {
   const pool = POST_MINIBOSS[biome] || POST_MINIBOSS.cave;
-  return pickFromPool(pool, seed);
+  return pickOrGenerate(pool, 'post_miniboss', biome, seed);
 }
 
 /**
@@ -481,7 +1029,7 @@ export function getPostMinibossCutscene(biome, seed) {
  */
 export function getPreBossCutscene(biome, seed) {
   const pool = PRE_BOSS[biome] || PRE_BOSS.cave;
-  return pickFromPool(pool, seed);
+  return pickOrGenerate(pool, 'pre_boss', biome, seed);
 }
 
 /**
@@ -489,7 +1037,7 @@ export function getPreBossCutscene(biome, seed) {
  */
 export function getPostBossCutscene(biome, seed) {
   const pool = POST_BOSS[biome] || POST_BOSS.cave;
-  return pickFromPool(pool, seed);
+  return pickOrGenerate(pool, 'post_boss', biome, seed);
 }
 
 /**
@@ -497,14 +1045,18 @@ export function getPostBossCutscene(biome, seed) {
  */
 export function getDungeonCompleteCutscene(biome, seed) {
   const pool = DUNGEON_COMPLETE[biome] || DUNGEON_COMPLETE.cave;
-  return pickFromPool(pool, seed);
+  return pickOrGenerate(pool, 'complete', biome, seed);
 }
 
 /**
  * Get a random encounter cutscene (not biome-specific).
  */
 export function getRandomEncounterCutscene(seed) {
-  return pickFromPool(RANDOM_ENCOUNTERS, seed);
+  const s = Math.abs(seed);
+  if (RANDOM_ENCOUNTERS.length > 0 && (s % 5) < 2) {
+    return pickFromPool(RANDOM_ENCOUNTERS, seed);
+  }
+  return applyDuration(generateProceduralCutscene('encounter', 'cave', seed));
 }
 
 /**
@@ -512,11 +1064,27 @@ export function getRandomEncounterCutscene(seed) {
  */
 export function getTrophyCutscene(trophyId, trophyName) {
   const specific = TROPHY_CUTSCENES[trophyId];
-  if (specific) return specific;
+  if (specific) return applyDuration(specific);
   // Generic with trophy name filled in
   const generic = GENERIC_TROPHY_CUTSCENE.map(f => ({ ...f, lines: [...f.lines] }));
   generic[0].lines[1] = trophyName || trophyId;
-  return generic;
+  return applyDuration(generic);
+}
+
+/**
+ * Get a comedic victory ending cutscene (plays after dungeon completion).
+ */
+export function getVictoryEndingCutscene(biome, seed) {
+  const pool = VICTORY_ENDINGS[biome] || VICTORY_ENDINGS.cave;
+  return pickFromPool(pool, seed);
+}
+
+/**
+ * Get a comedic defeat ending cutscene (plays after team wipe).
+ */
+export function getDefeatEndingCutscene(biome, seed) {
+  const pool = DEFEAT_ENDINGS[biome] || DEFEAT_ENDINGS.cave;
+  return pickFromPool(pool, seed);
 }
 
 /**

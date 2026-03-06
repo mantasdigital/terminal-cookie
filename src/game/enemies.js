@@ -68,10 +68,10 @@ export function generateEnemy({ biome, level, rng, isBoss = false, usedNames }) 
   // Stat scaling: hp*(1+level*0.15), atk*(1+level*0.13), def*(1+level*0.10)
   let hp  = Math.round(template.base_hp  * (1 + level * 0.15));
   let atk = Math.round(template.base_atk * (1 + level * 0.13));
-  let def = Math.round(template.base_def * (1 + level * 0.10));
+  let def = Math.round(template.base_def * (1 + level * 0.07));
 
   // Mutations: 0-3 for normal, 3-5 for boss
-  const mutationCount = isBoss ? rng.int(3, 5) : rng.int(0, 3);
+  const mutationCount = isBoss ? rng.int(3, 5) : rng.int(0, 2);
   const mutations = pickMutations(rng, mutationCount);
 
   // Apply mutation stat multipliers

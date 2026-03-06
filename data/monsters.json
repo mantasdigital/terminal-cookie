@@ -54,6 +54,61 @@
         "body": [" /  > ^)"],
         "legs": ["/__/ ||"]
       }
+    },
+    {
+      "name": "Mushroom Lurker",
+      "base_hp": 18,
+      "base_atk": 5,
+      "base_def": 5,
+      "ascii_parts": {
+        "head": ["  .oOo. "],
+        "body": ["  |:::| "],
+        "legs": [" /    \\ "]
+      }
+    },
+    {
+      "name": "Glow Beetle",
+      "base_hp": 10,
+      "base_atk": 7,
+      "base_def": 2,
+      "ascii_parts": {
+        "head": [" <o  o> "],
+        "body": [" |*==*| "],
+        "legs": [" \\/  \\/ "]
+      }
+    },
+    {
+      "name": "Cave Ogre",
+      "base_hp": 35,
+      "base_atk": 8,
+      "base_def": 5,
+      "ascii_parts": {
+        "head": ["  (o_o) "],
+        "body": [" /|==|\\ "],
+        "legs": ["  |  |  "]
+      }
+    },
+    {
+      "name": "Drip Wraith",
+      "base_hp": 14,
+      "base_atk": 8,
+      "base_def": 1,
+      "ascii_parts": {
+        "head": ["  ,..,  "],
+        "body": [" :    : "],
+        "legs": [" `~~~~` "]
+      }
+    },
+    {
+      "name": "Rubble Crab",
+      "base_hp": 22,
+      "base_atk": 6,
+      "base_def": 8,
+      "ascii_parts": {
+        "head": [" v(oo)v "],
+        "body": [" [====] "],
+        "legs": [" //  \\\\ "]
+      }
     }
   ],
   "crypt": [
@@ -110,6 +165,61 @@
         "head": [" /^~^\\ ", " |o o| "],
         "body": [" |~~~| "],
         "legs": [" /   \\ "]
+      }
+    },
+    {
+      "name": "Skull Swarm",
+      "base_hp": 8,
+      "base_atk": 9,
+      "base_def": 1,
+      "ascii_parts": {
+        "head": [" @@ @@ "],
+        "body": ["@@ @@ @@"],
+        "legs": [" @@ @@ "]
+      }
+    },
+    {
+      "name": "Coffin Mimic",
+      "base_hp": 26,
+      "base_atk": 7,
+      "base_def": 7,
+      "ascii_parts": {
+        "head": [" .----."],
+        "body": [" |XXXX|"],
+        "legs": [" '----'"]
+      }
+    },
+    {
+      "name": "Plague Rat",
+      "base_hp": 11,
+      "base_atk": 6,
+      "base_def": 2,
+      "ascii_parts": {
+        "head": [" (\\._./)"],
+        "body": [" ('> <')"],
+        "legs": ["  /| |\\"]
+      }
+    },
+    {
+      "name": "Death Knight",
+      "base_hp": 32,
+      "base_atk": 10,
+      "base_def": 8,
+      "ascii_parts": {
+        "head": [" {===} ", " |^_^| "],
+        "body": [" |]=[| "],
+        "legs": [" /| |\\ "]
+      }
+    },
+    {
+      "name": "Wisp Lantern",
+      "base_hp": 13,
+      "base_atk": 7,
+      "base_def": 4,
+      "ascii_parts": {
+        "head": ["  .--.  "],
+        "body": [" (o~~o) "],
+        "legs": ["  `--`  "]
       }
     }
   ],
@@ -168,6 +278,61 @@
         "body": ["/|--|\\"],
         "legs": [" |  |  "]
       }
+    },
+    {
+      "name": "Bark Scorpion",
+      "base_hp": 17,
+      "base_atk": 9,
+      "base_def": 5,
+      "ascii_parts": {
+        "head": ["  /`\\   "],
+        "body": [" {o  o} "],
+        "legs": [" ~====~ "]
+      }
+    },
+    {
+      "name": "Pixie Swarm",
+      "base_hp": 9,
+      "base_atk": 5,
+      "base_def": 1,
+      "ascii_parts": {
+        "head": [" *  * * "],
+        "body": ["* ** *  "],
+        "legs": [" *  * * "]
+      }
+    },
+    {
+      "name": "Root Golem",
+      "base_hp": 38,
+      "base_atk": 7,
+      "base_def": 9,
+      "ascii_parts": {
+        "head": [" [ooo] "],
+        "body": [" |/\\/| "],
+        "legs": [" /|||\\ "]
+      }
+    },
+    {
+      "name": "Fang Boar",
+      "base_hp": 24,
+      "base_atk": 10,
+      "base_def": 4,
+      "ascii_parts": {
+        "head": [" /\\o/\\ "],
+        "body": ["(=====)"],
+        "legs": [" || || "]
+      }
+    },
+    {
+      "name": "Spore Cloud",
+      "base_hp": 15,
+      "base_atk": 6,
+      "base_def": 3,
+      "ascii_parts": {
+        "head": ["  .ooo. "],
+        "body": [" :o.o.o:"],
+        "legs": ["  `ooo` "]
+      }
     }
   ],
   "volcano": [
@@ -225,6 +390,61 @@
         "body": ["/|~~|\\"],
         "legs": [" ^^^^  "]
       }
+    },
+    {
+      "name": "Slag Beetle",
+      "base_hp": 19,
+      "base_atk": 7,
+      "base_def": 7,
+      "ascii_parts": {
+        "head": [" <#  #> "],
+        "body": [" |~##~| "],
+        "legs": [" \\/  \\/ "]
+      }
+    },
+    {
+      "name": "Flame Wraith",
+      "base_hp": 16,
+      "base_atk": 10,
+      "base_def": 2,
+      "ascii_parts": {
+        "head": ["  /^\\   "],
+        "body": [" {~.~} "],
+        "legs": ["  ^^^  "]
+      }
+    },
+    {
+      "name": "Obsidian Sentinel",
+      "base_hp": 34,
+      "base_atk": 8,
+      "base_def": 10,
+      "ascii_parts": {
+        "head": [" [VVV] "],
+        "body": [" |###| "],
+        "legs": [" [___] "]
+      }
+    },
+    {
+      "name": "Caldera Worm",
+      "base_hp": 28,
+      "base_atk": 9,
+      "base_def": 3,
+      "ascii_parts": {
+        "head": ["  /OO>  "],
+        "body": [" /~~~~\\ "],
+        "legs": [" ~~~~~~ "]
+      }
+    },
+    {
+      "name": "Sulfur Sprite",
+      "base_hp": 11,
+      "base_atk": 8,
+      "base_def": 2,
+      "ascii_parts": {
+        "head": ["  *~*  "],
+        "body": [" (o.o) "],
+        "legs": ["  \\|/  "]
+      }
     }
   ],
   "abyss": [
@@ -281,6 +501,61 @@
         "head": [" (:::) ", "/(::::)\\"],
         "body": ["|(::::)|"],
         "legs": [" \\:::/ "]
+      }
+    },
+    {
+      "name": "Null Shade",
+      "base_hp": 14,
+      "base_atk": 9,
+      "base_def": 1,
+      "ascii_parts": {
+        "head": ["  .  .  "],
+        "body": [" :    : "],
+        "legs": ["  `  `  "]
+      }
+    },
+    {
+      "name": "Mind Leech",
+      "base_hp": 16,
+      "base_atk": 8,
+      "base_def": 3,
+      "ascii_parts": {
+        "head": [" /~~~~\\ "],
+        "body": [" |<oo>| "],
+        "legs": [" \\~~~~/ "]
+      }
+    },
+    {
+      "name": "Rift Sentinel",
+      "base_hp": 30,
+      "base_atk": 8,
+      "base_def": 8,
+      "ascii_parts": {
+        "head": [" {===}  "],
+        "body": [" |><>|  "],
+        "legs": [" /|  |\\ "]
+      }
+    },
+    {
+      "name": "Gravity Worm",
+      "base_hp": 24,
+      "base_atk": 10,
+      "base_def": 4,
+      "ascii_parts": {
+        "head": ["  ~OO~  "],
+        "body": [" ~~~~~  "],
+        "legs": ["  ~~~~~ "]
+      }
+    },
+    {
+      "name": "Dread Maw",
+      "base_hp": 36,
+      "base_atk": 12,
+      "base_def": 5,
+      "ascii_parts": {
+        "head": [" /VVVV\\", " |    | "],
+        "body": [" |^^^^| "],
+        "legs": [" \\____/ "]
       }
     }
   ]

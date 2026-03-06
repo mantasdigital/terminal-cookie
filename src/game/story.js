@@ -128,8 +128,10 @@ export function createStoryManager(state) {
      * @returns {number} Amount of crumbs to lose
      */
     calculateDeathPenalty(crumbs, dungeonLevel) {
-      const rate = Math.min(0.50, 0.20 + dungeonLevel * 0.02);
-      return Math.floor(crumbs * rate);
+      const rate = Math.min(0.75, 0.30 + dungeonLevel * 0.03);
+      const percentPenalty = Math.floor(crumbs * rate);
+      const minPenalty = Math.min(crumbs, 5 + dungeonLevel * 2);
+      return Math.max(percentPenalty, minPenalty);
     },
 
     /**

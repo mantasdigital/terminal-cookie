@@ -34,7 +34,7 @@ export function resolveRoll(rawRoll, stat) {
 export function calcDamage(attackerAtk, roll, defenderDef, isCrit) {
   let dmg = attackerAtk + roll - defenderDef;
   if (isCrit) dmg *= 2;
-  return Math.max(0, Math.floor(dmg));
+  return Math.max(isCrit ? 2 : 1, Math.floor(dmg));
 }
 
 /**
@@ -112,7 +112,7 @@ export function createCombat({ team, enemies, rng }) {
 
       if (roll.fumble) {
         // Fumble: miss + self damage (painful — costs 1/3 of ATK)
-        const selfDmg = Math.max(2, Math.floor(attacker.stats.atk / 3));
+        const selfDmg = Math.max(1, Math.floor(attacker.stats.atk / 4));
         attacker.currentHp = Math.max(0, attacker.currentHp - selfDmg);
         result = {
           type: 'fumble',

@@ -33,6 +33,7 @@ import {
   getDungeonIntroCutscene, getPreMinibossCutscene, getPostMinibossCutscene,
   getPreBossCutscene, getPostBossCutscene, getDungeonCompleteCutscene,
   getRandomEncounterCutscene, getTrophyCutscene, shouldTriggerRandomEncounter,
+  getVictoryEndingCutscene, getDefeatEndingCutscene,
 } from './cutscenes.js';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
@@ -708,7 +709,7 @@ export async function runGame(options = {}) {
               const completeBiome = dp.biome ?? 'cave';
               const completeSeed = dp.dungeonSeed ?? 0;
               state.dungeonProgress = null;
-              const frames = getDungeonCompleteCutscene(completeBiome, completeSeed);
+              const frames = [...getDungeonCompleteCutscene(completeBiome, completeSeed), ...getVictoryEndingCutscene(completeBiome, completeSeed + 7)];
               startCutscene(frames, GameState.DUNGEON_SUMMARY);
               return;
             }
@@ -1099,7 +1100,11 @@ export async function runGame(options = {}) {
         state._dungeonRunStats.deathPenalty = penalty;
         state._dungeonRunStats.alliesLost += (state.team ?? []).length;
       }
-      await engine.transition(GameState.DUNGEON_SUMMARY);
+      // Play comedic defeat ending cutscene before summary
+      const defeatBiome = state.dungeonProgress?.biome ?? 'cave';
+      const defeatSeed = state.lastDungeonSeed ?? 0;
+      const defeatFrames = getDefeatEndingCutscene(defeatBiome, defeatSeed);
+      startCutscene(defeatFrames, GameState.DUNGEON_SUMMARY);
     }
   }
 
@@ -1752,7 +1757,7 @@ export async function runGame(options = {}) {
             const completeBiome = dp.biome ?? 'cave';
             const completeSeed = dp.dungeonSeed ?? 0;
             state.dungeonProgress = null;
-            const frames = getDungeonCompleteCutscene(completeBiome, completeSeed);
+            const frames = [...getDungeonCompleteCutscene(completeBiome, completeSeed), ...getVictoryEndingCutscene(completeBiome, completeSeed + 7)];
             startCutscene(frames, GameState.DUNGEON_SUMMARY);
           }
         }
