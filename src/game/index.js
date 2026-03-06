@@ -185,13 +185,18 @@ export async function runGame(options = {}) {
         local.pendingActions = external.pendingActions;
         // Summon window when new pending actions arrive from MCP
         if (external.pendingActions.length > hadPending) {
-          if (settings.get('focus.autoFocus') && platform.canFocus) {
+          const wantFocus = settings.get('focus.autoFocus') || settings.get('focus.stickyTop');
+          if (wantFocus && platform.canFocus) {
             summonWindow(platform);
           }
           if (settings.get('focus.bell')) {
             bell();
           }
           flashTitle('Cookie needs input!');
+          // OS notification so the user sees it even if window raise fails
+          if (wantFocus && platform.canNotify) {
+            osNotify('Terminal Cookie', 'AI needs your input!', platform);
+          }
         }
       }
       if (external.passiveLog) local.passiveLog = external.passiveLog;

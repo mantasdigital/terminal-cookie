@@ -47,13 +47,34 @@ function summonMac(terminal) {
   const termKey = terminal.toLowerCase();
   const appName = MAC_TERMINAL_MAP[termKey] || 'Terminal';
   try {
-    execSync(`osascript -e 'tell application "${appName}" to activate'`, { stdio: 'ignore', timeout: 3000 });
+    // Activate the app AND raise its frontmost window above all other windows
+    execSync(`osascript -e '
+tell application "${appName}" to activate
+delay 0.1
+tell application "System Events"
+  tell process "${appName}"
+    try
+      set frontmost to true
+      perform action "AXRaise" of window 1
+    end try
+  end tell
+end tell'`, { stdio: 'ignore', timeout: 5000 });
     return true;
   } catch {
     // Fallback to generic Terminal if specific app failed
     if (appName !== 'Terminal') {
       try {
-        execSync(`osascript -e 'tell application "Terminal" to activate'`, { stdio: 'ignore', timeout: 3000 });
+        execSync(`osascript -e '
+tell application "Terminal" to activate
+delay 0.1
+tell application "System Events"
+  tell process "Terminal"
+    try
+      set frontmost to true
+      perform action "AXRaise" of window 1
+    end try
+  end tell
+end tell'`, { stdio: 'ignore', timeout: 5000 });
         return true;
       } catch {
         return false;

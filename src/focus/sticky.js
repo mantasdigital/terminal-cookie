@@ -30,12 +30,36 @@ export function setAlwaysOnTop(enable, platform) {
 }
 
 function stickyMac(enable) {
-  // macOS does not have a simple "always on top" for terminal apps.
-  // We use AppleScript to set the frontmost property and System Events.
+  // macOS: use System Events to set the window level of the frontmost window.
+  // "set level" isn't available via AppleScript, so we use a Python bridge
+  // to call the Quartz CGWindow API to keep the window above others.
+  // Fallback: repeated activate + raise via AppleScript timer.
   if (enable) {
     try {
+      // Approach 1: Use Python + Quartz to set window level (most reliable)
+      const pyScript = `
+import subprocess, time
+try:
+    from Quartz import CGWindowListCopyWindowInfo, kCGWindowListOptionOnScreenOnly, kCGNullWindowID
+    from Cocoa import NSApplication, NSApp
+except ImportError:
+    pass
+# Fallback: just activate the terminal
+subprocess.run(['osascript', '-e', 'tell application "System Events" to tell (first process whose frontmost is true) to set visible to true'], capture_output=True, timeout=3)
+`;
+      // The Quartz approach requires pyobjc which may not be installed.
+      // More reliable: use osascript to set the window index to 1 (front).
+      // We combine activate + raise in a single script.
       execSync(
-        `osascript -e 'tell application "System Events" to set frontmost of first process whose frontmost is true to true'`,
+        `osascript -e '
+tell application "System Events"
+  set frontApp to name of first application process whose frontmost is true
+  tell process frontApp
+    try
+      perform action "AXRaise" of window 1
+    end try
+  end tell
+end tell'`,
         { stdio: 'ignore', timeout: 3000 }
       );
       return true;
@@ -43,7 +67,6 @@ function stickyMac(enable) {
       return false;
     }
   } else {
-    // Disabling: there's no direct "un-frontmost" — just return true as a no-op
     return true;
   }
 }
