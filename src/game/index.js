@@ -37,6 +37,10 @@ import {
 } from './cutscenes.js';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
+import { detectPlatform } from '../focus/detect-os.js';
+import { summonWindow } from '../focus/summon.js';
+import { setAlwaysOnTop } from '../focus/sticky.js';
+import { bell, flashTitle, osNotify } from '../focus/notify.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SETTINGS_PATH = join(__dirname, '..', '..', 'saves', 'settings.json');
@@ -63,6 +67,12 @@ export async function runGame(options = {}) {
   // ── Settings ────────────────────────────────────────────────────
   const settings = createSettings(SETTINGS_PATH);
   settings.load();
+
+  // ── Focus / window management ─────────────────────────────────
+  const platform = detectPlatform();
+  if (settings.get('focus.stickyTop') && platform.canSticky) {
+    setAlwaysOnTop(true, platform);
+  }
 
   // ── Load or create save ─────────────────────────────────────────
   let saveData = null;
@@ -170,7 +180,20 @@ export async function runGame(options = {}) {
       if (external.dungeonProgress !== undefined && !local.dungeonProgress) {
         local.dungeonProgress = external.dungeonProgress;
       }
-      if (external.pendingActions) local.pendingActions = external.pendingActions;
+      if (external.pendingActions) {
+        const hadPending = (local.pendingActions ?? []).length;
+        local.pendingActions = external.pendingActions;
+        // Summon window when new pending actions arrive from MCP
+        if (external.pendingActions.length > hadPending) {
+          if (settings.get('focus.autoFocus') && platform.canFocus) {
+            summonWindow(platform);
+          }
+          if (settings.get('focus.bell')) {
+            bell();
+          }
+          flashTitle('Cookie needs input!');
+        }
+      }
       if (external.passiveLog) local.passiveLog = external.passiveLog;
       if (external.totalToolCalls != null) local.totalToolCalls = Math.max(local.totalToolCalls ?? 0, external.totalToolCalls);
       if (external.tokenUsage != null) local.tokenUsage = Math.max(local.tokenUsage ?? 0, external.tokenUsage);
@@ -1887,6 +1910,16 @@ export async function runGame(options = {}) {
           voiceController = null;
         }
       }
+      // Handle focus setting toggles
+      if (result.key === 'focus.stickyTop') {
+        if (platform.canSticky) setAlwaysOnTop(settings.get('focus.stickyTop'), platform);
+      }
+      if (result.key === 'focus.autoFocus') {
+        if (settings.get('focus.autoFocus') && platform.canFocus) summonWindow(platform);
+      }
+      if (result.key === 'focus.bell') {
+        if (settings.get('focus.bell')) bell();
+      }
     } else if (result === 'reset_settings') {
       settings.reset();
       settings.save();
@@ -2114,6 +2147,9 @@ export async function runGame(options = {}) {
     if (loopTimer) clearTimeout(loopTimer);
     liveState.stop();
     if (voiceController) voiceController.stop();
+    if (settings.get('focus.stickyTop') && platform.canSticky) {
+      setAlwaysOnTop(false, platform);
+    }
     input.stop();
     resize.destroy();
     renderer.showCursor();

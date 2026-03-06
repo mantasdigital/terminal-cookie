@@ -5,6 +5,7 @@
 
 import { GameState } from '../core/engine.js';
 import { titleScreen, masterCookie, miniCookie, dungeonMap, monsterArt, lootIcon, itemArt, teamMember } from '../ui/ascii.js';
+import { Sprite, AnimationScene, createDamageNumber, createAttackEffect, createHitFlash } from '../ui/animate.js';
 import { renderHelp } from '../ui/help.js';
 import { buildPortrait } from './team.js';
 import { resolveRoll } from './combat.js';
@@ -275,6 +276,18 @@ const ui = {
   slotPickerMode: 'new', // 'new' or 'load'
   slotPickerIndex: 0,
   slotPickerData: [],  // populated by listSlots()
+};
+
+// ── Combat animation state ──────────────────────────────────────────
+// Persists across frames so animations play over multiple render calls.
+const combatAnim = {
+  scene: new AnimationScene(),
+  lastRollId: null,           // track which roll we've already animated
+  battleFeed: [],             // detailed color-coded narrative entries
+  enemyArtFrame: 0,           // idle animation frame counter
+  enemyArtTimer: 0,           // ms since last art frame toggle
+  ENEMY_ART_INTERVAL: 500,    // toggle idle frame every 500ms
+  FEED_MAX: 10,               // max battle feed entries
 };
 
 function notify(renderer, msg, level = 'info') {
@@ -1367,50 +1380,159 @@ function renderDie(value) {
   ];
 }
 
+/**
+ * Build a color-coded live battle feed entry from a combat roll.
+ * Shows attacker, target, damage, and HP change inline.
+ * @param {object} roll - _lastCombatRoll data
+ * @param {object} combat - active combat instance
+ * @param {boolean} isTeamAttack - true if attacker is on team side
+ * @returns {{ text: string, color: string }|null}
+ */
+function buildFeedEntry(roll, combat, isTeamAttack) {
+  if (!roll || !roll.attacker) return null;
+
+  const attackerName = roll.attacker.split(' ').pop(); // short name
+  const targetName = roll.target ? roll.target.split(' ').pop() : '?';
+
+  // Find target combatant for HP display
+  const target = (combat.combatants ?? []).find(c => c.name === roll.target);
+  const hpAfter = target ? target.currentHp : '?';
+  const hpBefore = target ? Math.min(target.maxHp, hpAfter + (roll.damage || 0)) : '?';
+
+  if (roll.fumble) {
+    return {
+      text: `${attackerName} fumbles! Self-dmg ${roll.damage}`,
+      color: 'brightRed',
+    };
+  }
+
+  if (roll.crit) {
+    return {
+      text: `CRIT! ${attackerName}->${targetName} ${roll.damage}! (${hpBefore}->${hpAfter})`,
+      color: 'yellow',
+    };
+  }
+
+  if (roll.damage > 0) {
+    return {
+      text: `${attackerName} hits ${targetName} for ${roll.damage} (${hpBefore}->${hpAfter})`,
+      color: isTeamAttack ? 'green' : 'red',
+    };
+  }
+
+  return {
+    text: `${attackerName}->${targetName} blocked!`,
+    color: 'brightBlack',
+  };
+}
+
 const combatScreen = {
   render(state, renderer) {
     renderer.clear();
     const cols = renderer.capabilities.cols;
     const rows = renderer.capabilities.rows;
     const combat = state.activeCombat;
+    const FRAME_MS = 33; // ~30fps tick for animation updates
 
     renderer.showHeader(`=== Auto-Battle - Round ${combat?.round ?? 1} ===`);
 
     if (!combat) {
+      combatAnim.scene.reset();
+      combatAnim.lastRollId = null;
+      combatAnim.battleFeed = [];
       renderer.bufferWrite(3, 4, 'Preparing for battle...');
       renderer.render();
       return;
     }
 
-    // Enemies (top portion, compact)
     const enemies = (combat.combatants ?? []).filter(c => c.side === 'enemy');
-    const halfCols = Math.max(cols - 42, Math.floor(cols * 0.55));
+    const team = (combat.combatants ?? []).filter(c => c.side === 'team');
+
+    // Layout constants — adapt to terminal width
+    const artAreaWidth = Math.min(32, Math.floor(cols * 0.35));
+    const rightPanelWidth = 38;
+    const midCol = Math.max(artAreaWidth + 2, cols - rightPanelWidth - 2);
+    const rightCol = Math.max(midCol + 2, cols - rightPanelWidth);
+
+    // ── LEFT SIDE: Enemy ASCII Art ─────────────────────────────────
+    const firstLivingEnemy = enemies.find(e => e.currentHp > 0) || enemies[0];
+    if (firstLivingEnemy && firstLivingEnemy.ascii) {
+      const enemyArt = firstLivingEnemy.ascii;
+      // Toggle idle art frame (if array of frame arrays)
+      combatAnim.enemyArtTimer += FRAME_MS;
+      if (combatAnim.enemyArtTimer >= combatAnim.ENEMY_ART_INTERVAL) {
+        combatAnim.enemyArtTimer = 0;
+        combatAnim.enemyArtFrame = (combatAnim.enemyArtFrame + 1) % 2;
+      }
+      const artLines = Array.isArray(enemyArt) ? enemyArt : [];
+      const artColor = firstLivingEnemy.currentHp <= 0 ? 'brightBlack' : 'red';
+      for (let i = 0; i < Math.min(artLines.length, 7); i++) {
+        renderer.bufferWrite(2 + i, 2, renderer.color(
+          truncate(artLines[i], artAreaWidth), artColor));
+      }
+      // Enemy name under art
+      const enemyLabel = truncate(firstLivingEnemy.name, artAreaWidth);
+      renderer.bufferWrite(2 + Math.min(artLines.length, 7), 2,
+        renderer.color(enemyLabel, firstLivingEnemy.currentHp > 0 ? 'red' : 'brightBlack'));
+    }
+
+    // ── LEFT SIDE: Enemy list with HP bars ─────────────────────────
+    const enemyListRow = 11;
+    renderer.bufferWrite(enemyListRow, 2, renderer.bold(renderer.color('-- Enemies --', 'red')));
     for (let i = 0; i < Math.min(enemies.length, 3); i++) {
       const e = enemies[i];
       const nameColor = e.currentHp > 0 ? 'red' : 'brightBlack';
       const dead = e.currentHp <= 0 ? ' [DEAD]' : '';
-      renderer.bufferWrite(2 + i * 2, 4, renderer.color(truncate(e.name + dead, halfCols - 6), nameColor));
-      if (e.currentHp > 0) renderer.bufferWrite(3 + i * 2, 6, hpBar(e.currentHp, e.maxHp, 12));
+      const nameRow = enemyListRow + 1 + i * 2;
+      renderer.bufferWrite(nameRow, 2,
+        renderer.color(truncate(e.name + dead, artAreaWidth), nameColor));
+      if (e.currentHp > 0) {
+        renderer.bufferWrite(nameRow + 1, 4, hpBar(e.currentHp, e.maxHp, Math.min(12, artAreaWidth - 4)));
+      }
     }
 
-    // Team (bottom portion, compact)
-    const team = (combat.combatants ?? []).filter(c => c.side === 'team');
-    const teamRow = 2 + Math.min(enemies.length, 3) * 2 + 1;
-    renderer.bufferWrite(teamRow, 4, renderer.dim('--- Your Team ---'));
+    // ── LEFT SIDE: Team with HP bars + attacker art ────────────────
+    const teamStartRow = enemyListRow + 1 + Math.min(enemies.length, 3) * 2 + 1;
+    renderer.bufferWrite(teamStartRow, 2, renderer.bold(renderer.color('-- Your Team --', 'green')));
+    const lastRoll = state._lastCombatRoll;
+    const currentAttacker = lastRoll?.attacker ?? null;
+
     for (let i = 0; i < Math.min(team.length, 4); i++) {
       const m = team[i];
-      const nameColor = m.currentHp > 0 ? 'green' : 'brightBlack';
+      const isAttacker = currentAttacker && m.name === currentAttacker;
+      const nameColor = m.currentHp <= 0 ? 'brightBlack' : (isAttacker ? 'brightGreen' : 'green');
       const dead = m.currentHp <= 0 ? ' [DEAD]' : '';
-      renderer.bufferWrite(teamRow + 1 + i * 2, 4, renderer.color(truncate(m.name + dead, halfCols - 6), nameColor));
-      if (m.currentHp > 0) renderer.bufferWrite(teamRow + 2 + i * 2, 6, hpBar(m.currentHp, m.maxHp, 12));
+      const indicator = isAttacker ? '> ' : '  ';
+      const nameRow = teamStartRow + 1 + i * 2;
+      renderer.bufferWrite(nameRow, 2,
+        renderer.color(indicator + truncate(m.name + dead, artAreaWidth - 2), nameColor));
+      if (m.currentHp > 0) {
+        renderer.bufferWrite(nameRow + 1, 4, hpBar(m.currentHp, m.maxHp, Math.min(12, artAreaWidth - 4)));
+      }
     }
 
-    // Right panel: dice + log
-    const rightCol = Math.max(halfCols + 2, cols - 38);
+    // Show attacker's character art briefly (3-line portrait next to team area)
+    if (currentAttacker) {
+      const attackerMember = team.find(m => m.name === currentAttacker && m.currentHp > 0);
+      if (attackerMember) {
+        const race = (attackerMember.race || 'human').toLowerCase();
+        const cls = (attackerMember.class || 'warrior').toLowerCase();
+        const personality = (attackerMember.personality || 'brave').toLowerCase();
+        const portrait = teamMember(race, cls, personality);
+        const portraitLines = portrait.split('\n');
+        const portraitCol = artAreaWidth + 4;
+        if (portraitCol + 12 < midCol) {
+          for (let i = 0; i < portraitLines.length; i++) {
+            renderer.bufferWrite(teamStartRow + 1 + i, portraitCol,
+              renderer.color(portraitLines[i], 'brightGreen'));
+          }
+        }
+      }
+    }
+
+    // ── RIGHT PANEL: Dice + Roll Info ──────────────────────────────
     const diceCol = rightCol;
 
-    // Last roll dice display
-    const lastRoll = state._lastCombatRoll;
     if (lastRoll) {
       const die = renderDie(lastRoll.raw);
       for (let i = 0; i < die.length; i++) {
@@ -1421,23 +1543,85 @@ const combatScreen = {
                        `Roll: ${lastRoll.raw} (+${lastRoll.modifier}) = ${lastRoll.modified}`;
       renderer.bufferWrite(6, diceCol, rollInfo);
       if (lastRoll.attacker) {
-        renderer.bufferWrite(7, diceCol, renderer.dim(truncate(`${lastRoll.attacker} -> ${lastRoll.target}`, 36)));
+        renderer.bufferWrite(7, diceCol, renderer.dim(truncate(`${lastRoll.attacker} -> ${lastRoll.target}`, rightPanelWidth - 2)));
       }
       if (lastRoll.damage !== undefined) {
         renderer.bufferWrite(8, diceCol, lastRoll.damage > 0
           ? renderer.color(`${lastRoll.damage} damage`, 'red')
           : renderer.dim('0 damage (blocked)'));
       }
+
+      // ── Attack animation trigger ───────────────────────────────
+      // Create animation sprites when a new roll comes in
+      const rollId = `${lastRoll.attacker}_${lastRoll.target}_${lastRoll.raw}_${lastRoll.damage}`;
+      if (rollId !== combatAnim.lastRollId) {
+        combatAnim.lastRollId = rollId;
+
+        // Determine effect type and positions
+        const isTeamAttack = team.some(m => m.name === lastRoll.attacker);
+        const effectFromRow = isTeamAttack ? teamStartRow + 1 : 3;
+        const effectFromCol = isTeamAttack ? artAreaWidth : artAreaWidth;
+        const effectToRow = isTeamAttack ? 4 : teamStartRow + 2;
+        const effectToCol = isTeamAttack ? 6 : 6;
+
+        if (lastRoll.fumble) {
+          // Fumble: "!" above attacker
+          const fxSprite = createAttackEffect('fumble', effectFromRow, effectFromCol, effectToRow, effectToCol);
+          combatAnim.scene.addSprite(fxSprite);
+        } else if (lastRoll.crit) {
+          // Critical: bold yellow effect
+          const fxSprite = createAttackEffect('crit', effectFromRow, effectFromCol, effectToRow, effectToCol);
+          combatAnim.scene.addSprite(fxSprite);
+          // Damage number
+          const dmgSprite = createDamageNumber(lastRoll.damage, effectToRow - 1, effectToCol + 2, true);
+          combatAnim.scene.addSprite(dmgSprite);
+          // Hit flash
+          const flashSprite = createHitFlash(effectToRow, effectToCol, true);
+          combatAnim.scene.addSprite(flashSprite);
+        } else if (lastRoll.damage > 0) {
+          // Normal hit
+          const fxSprite = createAttackEffect('slash', effectFromRow, effectFromCol, effectToRow, effectToCol);
+          combatAnim.scene.addSprite(fxSprite);
+          // Damage number
+          const dmgSprite = createDamageNumber(lastRoll.damage, effectToRow - 1, effectToCol + 2, false);
+          combatAnim.scene.addSprite(dmgSprite);
+        }
+
+        // ── Update live battle feed ──────────────────────────────
+        const feedEntry = buildFeedEntry(lastRoll, combat, isTeamAttack);
+        if (feedEntry) {
+          combatAnim.battleFeed.push(feedEntry);
+          if (combatAnim.battleFeed.length > combatAnim.FEED_MAX) {
+            combatAnim.battleFeed.shift();
+          }
+        }
+      }
     }
 
-    // Battle log (right side, below dice)
+    // ── Tick animation scene ───────────────────────────────────────
+    combatAnim.scene.update(FRAME_MS);
+    combatAnim.scene.render(renderer);
+
+    // ── RIGHT PANEL: Battle Log ────────────────────────────────────
     const log = combat.log ?? [];
     const logStartRow = 10;
     renderer.bufferWrite(logStartRow, diceCol, renderer.bold('-- Battle Log --'));
-    const maxLogLines = rows - logStartRow - 4;
-    const recentLog = log.slice(-Math.min(maxLogLines, 8));
+    const maxLogLines = Math.min(6, rows - logStartRow - 12);
+    const recentLog = log.slice(-Math.max(maxLogLines, 4));
     for (let i = 0; i < recentLog.length; i++) {
-      renderer.bufferWrite(logStartRow + 1 + i, diceCol, renderer.dim(truncate(recentLog[i], 36)));
+      renderer.bufferWrite(logStartRow + 1 + i, diceCol,
+        renderer.dim(truncate(recentLog[i], rightPanelWidth - 2)));
+    }
+
+    // ── RIGHT PANEL: Live Battle Feed ──────────────────────────────
+    const feedStartRow = logStartRow + 1 + Math.max(maxLogLines, 4) + 1;
+    renderer.bufferWrite(feedStartRow, diceCol, renderer.bold('-- Live Feed --'));
+    const maxFeedLines = Math.max(4, rows - feedStartRow - 5);
+    const recentFeed = combatAnim.battleFeed.slice(-Math.min(maxFeedLines, combatAnim.FEED_MAX));
+    for (let i = 0; i < recentFeed.length; i++) {
+      const entry = recentFeed[i];
+      renderer.bufferWrite(feedStartRow + 1 + i, diceCol,
+        renderer.color(truncate(entry.text, rightPanelWidth - 2), entry.color));
     }
 
     // Auto-battle indicator
@@ -2086,14 +2270,79 @@ const helpScreen = {
 
 // ── CUTSCENE SCREEN ─────────────────────────────────────────────────
 
+// ── Cutscene animation state ────────────────────────────────────────
+// Tracks the AnimationScene for the current cutscene frame's sprites.
+const cutsceneAnim = {
+  scene: null,              // AnimationScene or null
+  frameIndex: -1,           // which cutscene frame was last initialized
+};
+
+/**
+ * Initialize an AnimationScene from a cutscene frame's sprites/animations.
+ * @param {object} frame - cutscene frame with optional sprites[] and animations[]
+ * @returns {AnimationScene}
+ */
+function initCutsceneAnimScene(frame) {
+  const scene = new AnimationScene();
+
+  // Create sprites
+  for (const sd of (frame.sprites || [])) {
+    const sprite = new Sprite({
+      id: sd.id,
+      art: sd.art || [],
+      row: sd.row ?? 5,
+      col: sd.col ?? 10,
+      color: sd.color || null,
+    });
+    scene.addSprite(sprite);
+  }
+
+  // Schedule animations
+  for (const anim of (frame.animations || [])) {
+    const delay = anim.delay ?? 0;
+    scene.addEvent(delay, () => {
+      const sprite = scene.getSprite(anim.spriteId);
+      if (!sprite) return;
+      switch (anim.action) {
+        case 'moveTo':
+          sprite.moveTo(anim.row ?? sprite.row, anim.col ?? sprite.col, anim.duration ?? 500);
+          break;
+        case 'shake':
+          sprite.shake(anim.amplitude ?? 2, anim.duration ?? 300);
+          break;
+        case 'flash':
+          sprite.flash(anim.color ?? 'yellow', anim.duration ?? 200);
+          break;
+        case 'setArt':
+          if (anim.art) sprite.setArt(anim.art);
+          break;
+        case 'setColor':
+          if (anim.color) sprite.setColor(anim.color);
+          break;
+        case 'hide':
+          sprite.visible = false;
+          break;
+        case 'show':
+          sprite.visible = true;
+          break;
+      }
+    });
+  }
+
+  return scene;
+}
+
 const cutsceneScreen = {
   render(state, renderer) {
     renderer.clear();
     const cols = renderer.capabilities.cols;
     const rows = renderer.capabilities.rows;
     const cs = state._cutscene;
+    const FRAME_MS = 33;
 
     if (!cs || !cs.frames || cs.currentFrame >= cs.frames.length) {
+      cutsceneAnim.scene = null;
+      cutsceneAnim.frameIndex = -1;
       renderer.bufferWrite(Math.floor(rows / 2), 0, renderer.centerText('...', cols));
       renderer.render();
       return;
@@ -2103,6 +2352,20 @@ const cutsceneScreen = {
     const frameColor = frame.color || 'white';
     const artLines = frame.art || [];
     const textLines = frame.lines || [];
+    const hasSprites = Array.isArray(frame.sprites) && frame.sprites.length > 0;
+
+    // ── Initialize animation scene for this frame if needed ────────
+    if (hasSprites && cutsceneAnim.frameIndex !== cs.currentFrame) {
+      cutsceneAnim.scene = initCutsceneAnimScene(frame);
+      cutsceneAnim.frameIndex = cs.currentFrame;
+    }
+    // Reset scene if frame changed and no sprites
+    if (!hasSprites && cutsceneAnim.frameIndex !== cs.currentFrame) {
+      cutsceneAnim.scene = null;
+      cutsceneAnim.frameIndex = cs.currentFrame;
+    }
+
+    // ── Standard static rendering (always runs for backward compat) ─
     const totalLines = artLines.length + (artLines.length > 0 ? 1 : 0) + textLines.length;
     const startRow = Math.max(2, Math.floor((rows - totalLines) / 2) - 1);
 
@@ -2128,6 +2391,12 @@ const cutsceneScreen = {
 
     // Decorative bottom border
     renderer.bufferWrite(row + 1, 0, renderer.centerText(border, cols));
+
+    // ── Render animated sprites on top ─────────────────────────────
+    if (cutsceneAnim.scene) {
+      cutsceneAnim.scene.update(FRAME_MS);
+      cutsceneAnim.scene.render(renderer);
+    }
 
     // Progress indicator
     const progress = `[ ${cs.currentFrame + 1} / ${cs.frames.length} ]`;
