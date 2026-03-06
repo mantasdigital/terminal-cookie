@@ -143,9 +143,21 @@ export function createEngine(options = {}) {
      * instead of a Math.max merge.
      */
     resetForNewGame() {
+      // Preserve account-level stats that survive across games
+      const preserved = {
+        tokenUsage: state.tokenUsage,
+        tokenUsageDaily: state.tokenUsageDaily,
+        tokenUsageMonthly: state.tokenUsageMonthly,
+        totalToolCalls: state.totalToolCalls,
+      };
       const newSeed = generateSeed();
       const fresh = defaultGameState(newSeed);
       fresh.newGameId = Date.now();
+      // Restore preserved stats
+      if (preserved.tokenUsage != null) fresh.tokenUsage = preserved.tokenUsage;
+      if (preserved.tokenUsageDaily) fresh.tokenUsageDaily = preserved.tokenUsageDaily;
+      if (preserved.tokenUsageMonthly) fresh.tokenUsageMonthly = preserved.tokenUsageMonthly;
+      if (preserved.totalToolCalls != null) fresh.totalToolCalls = preserved.totalToolCalls;
       // Clear all existing keys, then apply fresh state
       for (const key of Object.keys(state)) {
         delete state[key];
