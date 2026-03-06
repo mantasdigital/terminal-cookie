@@ -27,7 +27,7 @@ import { getScreen, getUIState, resetUIState } from './screens.js';
 import { classifyPrompt } from '../prompts/classifier.js';
 import { getWidget } from '../prompts/widgets.js';
 import { createLiveState } from '../save/live-state.js';
-import { getTalismanBonuses, applyTalismanRegen, awardDeathReward, upgradeTalisman, canUpgrade, salvageLoot } from './talisman.js';
+import { getTalismanBonuses, applyTalismanRegen, awardDeathReward, upgradeTalisman, canUpgrade, getUpgradeCost, salvageLoot } from './talisman.js';
 import { checkTrophies, awardTrophy, hasTrophy, getBuyableTrophies } from './trophies.js';
 import {
   getDungeonIntroCutscene, getPreMinibossCutscene, getPostMinibossCutscene,
@@ -1054,13 +1054,29 @@ export async function runGame(options = {}) {
       }
     }
 
-    // Auto-buy heal potions when any team member is below 50% HP
+    // Smart auto-shop: spend up to 20% of current crumbs per tick
+    const shopBudget = Math.floor(state.crumbs * 0.20);
+    let shopSpent = 0;
+    const canSpend = (cost) => cost <= (shopBudget - shopSpent) && state.crumbs >= cost;
+    const doSpend = (cost) => { state.crumbs -= cost; shopSpent += cost; state._lastCrumbSpend = Date.now(); state._lastCrumbSpendAmount = cost; };
+
+    // 1. Auto-upgrade talisman (highest priority — permanent investment)
+    const talismanLevel = state.talisman?.level ?? 1;
+    const talismanCost = getUpgradeCost(talismanLevel);
+    if (talismanCost > 0 && canUpgrade(state.talisman, state.crumbs) && canSpend(talismanCost)) {
+      const result = upgradeTalisman(state);
+      if (result.success) {
+        shopSpent += result.cost;
+        logAdventure(`Auto-upgraded Talisman to level ${result.newLevel} (${result.cost}c)`, 'shop');
+        renderer.showNotification(`Auto: Talisman -> Lv${result.newLevel}!`, 'success');
+      }
+    }
+
+    // 2. Auto-buy heal potions when any team member is below 50% HP
     const needsHeal = team.some(m => m.alive && m.currentHp > 0 && m.currentHp < m.maxHp * 0.5);
     const healCost = 15;
-    if (needsHeal && state.crumbs >= healCost) {
-      state.crumbs -= healCost;
-      state._lastCrumbSpend = Date.now();
-      state._lastCrumbSpendAmount = healCost;
+    if (needsHeal && canSpend(healCost)) {
+      doSpend(healCost);
       for (const m of team.filter(m => m.currentHp > 0)) {
         m.currentHp = Math.min(m.maxHp, m.currentHp + 20);
       }
@@ -1068,44 +1084,36 @@ export async function runGame(options = {}) {
       renderer.showNotification('Auto: team healed +20 HP!', 'success');
     }
 
-    // Auto-buy combat buffs before dungeon if we can afford them and don't have them yet
+    // 3. Auto-buy combat buffs (only if team alive)
     const buffs = state.shopBuffs ?? {};
     const aliveCount = team.filter(m => m.alive && m.currentHp > 0).length;
-    if (aliveCount > 0 && dungeonTimer) {
+    if (aliveCount > 0) {
       // Buy whetstone (+3 ATK) if no ATK buff yet
-      if (!buffs.atk && state.crumbs >= 25) {
-        state.crumbs -= 25;
-        state._lastCrumbSpend = Date.now();
-        state._lastCrumbSpendAmount = 25;
+      if (!buffs.atk && canSpend(25)) {
+        doSpend(25);
         state.shopBuffs = state.shopBuffs ?? {};
         state.shopBuffs.atk = (state.shopBuffs.atk ?? 0) + 3;
         logAdventure('Auto-bought Whetstone: +3 ATK for next combat', 'shop');
       }
       // Buy iron shield (+3 DEF) if no DEF buff yet
-      if (!buffs.def && state.crumbs >= 25) {
-        state.crumbs -= 25;
-        state._lastCrumbSpend = Date.now();
-        state._lastCrumbSpendAmount = 25;
+      if (!buffs.def && canSpend(25)) {
+        doSpend(25);
         state.shopBuffs = state.shopBuffs ?? {};
         state.shopBuffs.def = (state.shopBuffs.def ?? 0) + 3;
         logAdventure('Auto-bought Iron Shield Oil: +3 DEF for next combat', 'shop');
       }
-      // Buy lucky charm (+5 LCK) if no LCK buff yet and enough crumbs
-      if (!buffs.lck && state.crumbs >= 40) {
-        state.crumbs -= 40;
-        state._lastCrumbSpend = Date.now();
-        state._lastCrumbSpendAmount = 40;
+      // Buy lucky charm (+5 LCK) if no LCK buff yet
+      if (!buffs.lck && canSpend(40)) {
+        doSpend(40);
         state.shopBuffs = state.shopBuffs ?? {};
         state.shopBuffs.lck = (state.shopBuffs.lck ?? 0) + 5;
         logAdventure('Auto-bought Lucky Charm: +5 LCK for next combat', 'shop');
       }
-      // Enchant a random inventory item if affordable and have items
+      // Enchant a random equipped or inventory item
       const enchantableInv = (state.inventory ?? []).filter(i => i.slot !== 'consumable');
-      if (enchantableInv.length > 0 && state.crumbs >= 50) {
+      if (enchantableInv.length > 0 && canSpend(50)) {
         const target = enchantableInv[rng.int(0, enchantableInv.length - 1)];
-        state.crumbs -= 50;
-        state._lastCrumbSpend = Date.now();
-        state._lastCrumbSpendAmount = 50;
+        doSpend(50);
         enchantItem(target, 1);
         state.stats.highestEnchant = Math.max(state.stats.highestEnchant ?? 0, target.enchantLevel ?? 1);
         logAdventure(`Auto-enchanted ${target.name} with scroll (+2 power)`, 'enchant');
