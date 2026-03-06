@@ -552,8 +552,14 @@ export async function runGame(options = {}) {
             const level = dp?.level ?? 1;
             const defeatedEnemies = activeCombat.combatants.filter(c => c.side === 'enemy');
             const drops = [];
+            const currentRoom = dp?.rooms?.find(r => r.id === dp?.currentRoom);
+            const roomType = currentRoom?.type ?? 'monster';
             for (const enemy of defeatedEnemies) {
-              drops.push(...generateEnemyDrops({ enemy, level, rng }));
+              const enemyDrops = generateEnemyDrops({ enemy, level, rng });
+              for (const item of enemyDrops) {
+                item.source = roomType === 'boss' ? 'boss' : roomType === 'miniboss' ? 'miniboss' : null;
+              }
+              drops.push(...enemyDrops);
             }
             state.pendingLoot = drops;
             for (const m of (state.team ?? []).filter(t => t.currentHp > 0)) {
@@ -589,6 +595,7 @@ export async function runGame(options = {}) {
               state._dungeonRunStats.success = false;
               state._dungeonRunStats.deathPenalty = penalty;
               state._dungeonRunStats.alliesLost += (state.team ?? []).length;
+              state._dungeonRunStats.fallenNames.push(...(state.team ?? []).map(m => `${m.name} the ${m.class}`));
             }
             workModeLog(`Auto: team defeated, salvaged ${salvaged.length} items`);
             await engine.transition(GameState.DUNGEON_SUMMARY);
@@ -1110,7 +1117,14 @@ export async function runGame(options = {}) {
       const defeatedEnemies = activeCombat.combatants.filter(c => c.side === 'enemy');
       const drops = [];
       for (const enemy of defeatedEnemies) {
-        drops.push(...generateEnemyDrops({ enemy, level, rng }));
+        const enemyDrops = generateEnemyDrops({ enemy, level, rng });
+        // Tag loot with source for display
+        const currentRoom = dp?.rooms?.find(r => r.id === dp?.currentRoom);
+        const roomType = currentRoom?.type ?? 'monster';
+        for (const item of enemyDrops) {
+          item.source = roomType === 'boss' ? 'boss' : roomType === 'miniboss' ? 'miniboss' : null;
+        }
+        drops.push(...enemyDrops);
       }
       state.pendingLoot = drops;
 
@@ -1157,7 +1171,10 @@ export async function runGame(options = {}) {
       // Permanent death: remove fallen team members after victory
       const fallen = (state.team ?? []).filter(m => m.currentHp <= 0);
       if (fallen.length > 0) {
-        if (state._dungeonRunStats) state._dungeonRunStats.alliesLost += fallen.length;
+        if (state._dungeonRunStats) {
+          state._dungeonRunStats.alliesLost += fallen.length;
+          state._dungeonRunStats.fallenNames.push(...fallen.map(m => `${m.name} the ${m.class}`));
+        }
         for (const dead of fallen) {
           // Return equipped items to inventory
           const eq = dead.equipment ?? {};
@@ -1223,6 +1240,7 @@ export async function runGame(options = {}) {
         state._dungeonRunStats.success = false;
         state._dungeonRunStats.deathPenalty = penalty;
         state._dungeonRunStats.alliesLost += (state.team ?? []).length;
+        state._dungeonRunStats.fallenNames.push(...(state.team ?? []).map(m => `${m.name} the ${m.class}`));
       }
       // Play comedic defeat ending cutscene before summary
       const defeatBiome = state.dungeonProgress?.biome ?? 'cave';
@@ -1251,6 +1269,7 @@ export async function runGame(options = {}) {
       lootSold: 0,
       xpEarned: 0,
       alliesLost: 0,
+      fallenNames: [],
     };
     const dungeonLevel = (state.stats.dungeonsCleared ?? 0) + 1;
     const dungeonSeed = rng.int(1, 999999);
@@ -1280,6 +1299,7 @@ export async function runGame(options = {}) {
           const talismanLoot = getTalismanBonuses(state.talisman?.level ?? 1).lootQuality;
           const villageLoot = getVillageBonuses(state).lootQuality;
           room.loot = [generateLoot({ level: dungeonLevel, rng, qualityBonus: bonuses.lootFindBonus + talismanLoot + villageLoot, usedSignatures })].filter(Boolean);
+          for (const item of room.loot) { item.source = 'chest'; }
         } else if (room.type === 'trap') {
           room.content = 'trap';
         } else if (room.type === 'shrine') {
@@ -1779,7 +1799,9 @@ export async function runGame(options = {}) {
             }
           }
         } else if (room?.content === 'loot') {
-          state.pendingLoot = room.loot ?? [];
+          const roomLoot = room.loot ?? [];
+          for (const item of roomLoot) { item.source = 'chest'; }
+          state.pendingLoot = roomLoot;
           clearRoom(dp, dp.currentRoom);
           // 30% chance of spin wheel instead of normal loot
           if (rng.chance(0.3)) {
@@ -1792,6 +1814,7 @@ export async function runGame(options = {}) {
               const item = generateLoot({ level, rng, qualityBonus: bonuses.lootFindBonus + talismanLoot });
               if (item) {
                 item.rarity = rarities[i];
+                item.source = 'chest';
                 prizes.push(item);
               }
             }

@@ -35,6 +35,48 @@ const SESSION_TTL_MS = 300_000;
 let _leaderboardCache = null;
 try { _leaderboardCache = loadLeaderboard(); } catch { _leaderboardCache = { entries: [] }; }
 
+// ── Dungeon Art Data ────────────────────────────────────────────────
+let _dungeonArtData = null;
+function getDungeonArt() {
+  if (!_dungeonArtData) {
+    try {
+      const artPath = join(PROJECT_ROOT, 'data', 'dungeon-art.json');
+      if (existsSync(artPath)) {
+        _dungeonArtData = JSON.parse(readFileSync(artPath, 'utf-8'));
+      }
+    } catch { /* silent */ }
+  }
+  return _dungeonArtData;
+}
+
+function pickDungeonArt(biome, roomType, seed) {
+  const data = getDungeonArt();
+  if (!data?.environments?.[biome]?.[roomType]) return null;
+  const pool = data.environments[biome][roomType];
+  return pool[seed % pool.length];
+}
+
+function pickDecoration(biome, seed) {
+  const data = getDungeonArt();
+  if (!data?.decorations?.[biome]) return null;
+  const pool = data.decorations[biome];
+  return pool[seed % pool.length];
+}
+
+function pickTransition(type, seed) {
+  const data = getDungeonArt();
+  if (!data?.transitions?.[type]) return null;
+  const pool = data.transitions[type];
+  return pool[seed % pool.length];
+}
+
+function pickWeather(biome, seed) {
+  const data = getDungeonArt();
+  if (!data?.weather?.[biome]) return null;
+  const pool = data.weather[biome];
+  return pool[seed % pool.length];
+}
+
 /**
  * Check if any MCP/Claude AI sessions are currently active.
  * Results are cached for 5 seconds to avoid 30+ fs reads/sec.
@@ -276,6 +318,25 @@ const ui = {
   slotPickerMode: 'new', // 'new' or 'load'
   slotPickerIndex: 0,
   slotPickerData: [],  // populated by listSlots()
+
+  // Loot screen animation state
+  _lootScene: null,
+  _lastLootId: null,
+  _lootAnimDone: false,
+
+  // Dungeon summary animation state
+  _summaryScene: null,
+  _lastSummaryId: null,
+  _summaryAnimDone: false,
+  _summaryStartTime: 0,
+  _summaryCountDuration: 2000,
+
+  // Dungeon exploration visual state
+  _dungeonRoomId: null,
+  _dungeonRevealScene: null,
+  _dungeonRevealTime: 0,
+  _lastStoryCount: 0,
+  _dungeonEventScene: null,
 };
 
 // ── Combat animation state ──────────────────────────────────────────
@@ -1230,10 +1291,29 @@ const tavernScreen = {
 
 // ── DUNGEON SCREEN ──────────────────────────────────────────────────
 
+/** Map biome names to ANSI color names for environment art. */
+const BIOME_COLORS = {
+  cave: 'brightBlack',
+  forest: 'green',
+  crypt: 'magenta',
+  volcano: 'red',
+  abyss: 'cyan',
+};
+
+/** Map room content types to transition animation keys. */
+const CONTENT_TRANSITION = {
+  enemy: 'enemy_appears',
+  loot: 'discover_loot',
+  trap: 'trap_sprung',
+  shrine: 'discover_loot',
+  npc: 'enter_room',
+};
+
 const dungeonScreen = {
   render(state, renderer) {
     renderer.clear();
     const cols = renderer.capabilities.cols;
+    const rows = renderer.capabilities.rows;
     const dp = state.dungeonProgress;
 
     renderer.showHeader('=== Dungeon ===');
@@ -1244,7 +1324,10 @@ const dungeonScreen = {
       return;
     }
 
-    // Dungeon map
+    const biome = dp.biome ?? 'cave';
+    const biomeColor = BIOME_COLORS[biome] ?? 'brightBlack';
+
+    // Dungeon map (left side)
     if (dp.rooms) {
       const mapArt = dungeonMap(dp.rooms, dp.currentRoom ?? 0);
       const mapLines = mapArt.split('\n');
@@ -1253,63 +1336,179 @@ const dungeonScreen = {
       }
     }
 
-    // Room description
+    // Room description (right panel)
     const room = dp.rooms?.find(r => r.id === dp.currentRoom);
     const roomCol = Math.min(35, Math.floor(cols / 2));
+    let contentStartRow = 5; // default row for room content
+
     if (room) {
       renderer.bufferWrite(2, roomCol, renderer.bold(`Room: ${room.name ?? 'Unknown'}`));
       renderer.bufferWrite(3, roomCol, room.description ?? 'An empty chamber.');
 
+      // ── Environment Art (below room description) ──────────────
+      const roomId = dp.currentRoom ?? 0;
+      const envArt = pickDungeonArt(biome, room.type ?? 'corridor', roomId);
+      let envArtHeight = 0;
+      if (envArt && envArt.art) {
+        const isRevealing = ui._dungeonRevealScene && !ui._dungeonRevealScene.isFinished();
+        const maxArtLines = Math.min(envArt.art.length, 4);
+        for (let i = 0; i < maxArtLines; i++) {
+          const artLine = truncate(envArt.art[i], cols - roomCol - 2);
+          if (isRevealing) {
+            renderer.bufferWrite(5 + i, roomCol, renderer.dim(artLine));
+          } else {
+            renderer.bufferWrite(5 + i, roomCol, renderer.color(artLine, biomeColor));
+          }
+        }
+        envArtHeight = maxArtLines + 1; // +1 for spacing
+        contentStartRow = 5 + envArtHeight;
+      }
+
+      // ── Room Reveal Animation (detect room changes) ───────────
+      if (ui._dungeonRoomId !== roomId) {
+        ui._dungeonRoomId = roomId;
+        ui._dungeonRevealTime = Date.now();
+
+        // Create reveal animation scene
+        const revealScene = new AnimationScene();
+
+        // Environment art reveal sprite (starts dim, becomes full color)
+        if (envArt && envArt.art) {
+          const revealSprite = new Sprite({
+            art: envArt.art.slice(0, 4),
+            row: 5,
+            col: roomCol,
+            color: biomeColor,
+            id: 'env_reveal',
+          });
+          revealSprite.setLifetime(500);
+          revealSprite.flash(biomeColor, 500);
+          revealScene.addSprite(revealSprite);
+        }
+
+        // Transition sprite based on room content
+        const transType = CONTENT_TRANSITION[room.content] ?? 'enter_room';
+        const transArt = pickTransition(transType, roomId);
+        if (transArt) {
+          const centerRow = Math.floor(rows / 2) - 1;
+          const centerCol = Math.max(roomCol, Math.floor(cols / 2) - Math.floor((transArt[0]?.length ?? 10) / 2));
+          const transSprite = new Sprite({
+            art: transArt,
+            row: centerRow,
+            col: centerCol,
+            color: biomeColor,
+            id: 'room_transition',
+          });
+          transSprite.setLifetime(600);
+          // Fade effect: schedule color change after 300ms
+          revealScene.addEvent(300, () => {
+            const s = revealScene.getSprite('room_transition');
+            if (s) s.opacity = 0.4;
+          });
+          revealScene.addSprite(transSprite);
+        }
+
+        ui._dungeonRevealScene = revealScene;
+      }
+
       // Room content
       if (room.content === 'enemy') {
-        renderer.bufferWrite(5, roomCol, renderer.color('Enemy spotted!', 'red'));
+        renderer.bufferWrite(contentStartRow, roomCol, renderer.color('Enemy spotted!', 'red'));
         if (room.enemy) {
           const art = monsterArt(room.enemy.template ?? 'slime', room.enemy.mutations ?? []);
           const artLines = art.split('\n');
           for (let i = 0; i < artLines.length; i++) {
-            renderer.bufferWrite(6 + i, roomCol, artLines[i]);
+            renderer.bufferWrite(contentStartRow + 1 + i, roomCol, artLines[i]);
           }
         }
       } else if (room.content === 'loot') {
-        renderer.bufferWrite(5, roomCol, renderer.color('Treasure found!', 'yellow'));
+        renderer.bufferWrite(contentStartRow, roomCol, renderer.color('Treasure found!', 'yellow'));
       } else if (room.content === 'trap') {
-        renderer.bufferWrite(5, roomCol, renderer.color('A trap!', 'red'));
+        renderer.bufferWrite(contentStartRow, roomCol, renderer.color('A trap!', 'red'));
       } else if (room.content === 'shrine') {
-        renderer.bufferWrite(5, roomCol, renderer.color('A mysterious shrine...', 'cyan'));
+        renderer.bufferWrite(contentStartRow, roomCol, renderer.color('A mysterious shrine...', 'cyan'));
       } else if (room.content === 'npc') {
-        renderer.bufferWrite(5, roomCol, renderer.color('A mysterious figure...', 'magenta'));
+        renderer.bufferWrite(contentStartRow, roomCol, renderer.color('A mysterious figure...', 'magenta'));
         if (state.activeNPC) {
-          renderer.bufferWrite(6, roomCol, renderer.bold(state.activeNPC.name));
-          renderer.bufferWrite(7, roomCol, truncate(`"${state.activeNPC.dialogue}"`, cols - roomCol - 2));
+          renderer.bufferWrite(contentStartRow + 1, roomCol, renderer.bold(state.activeNPC.name));
+          renderer.bufferWrite(contentStartRow + 2, roomCol, truncate(`"${state.activeNPC.dialogue}"`, cols - roomCol - 2));
+        }
+      }
+
+      // ── Weather Overlay (top-right, subtle) ───────────────────
+      const weatherArt = pickWeather(biome, Date.now() / 5000 | 0);
+      if (weatherArt) {
+        for (let i = 0; i < Math.min(weatherArt.length, 2); i++) {
+          const wLine = weatherArt[i];
+          const wCol = Math.max(0, cols - wLine.length - 1);
+          renderer.bufferWrite(2 + i, wCol, renderer.dim(wLine));
         }
       }
 
       // Story log — latest 3 entries
       const storyLog = state.storyLog || [];
       const recentStory = storyLog.slice(-3);
+      const storyRow = Math.max(contentStartRow + 3, 10);
       if (recentStory.length > 0) {
-        const storyRow = 10;
         renderer.bufferWrite(storyRow, roomCol, renderer.dim('-- Story --'));
         for (let i = 0; i < recentStory.length; i++) {
           renderer.bufferWrite(storyRow + 1 + i, roomCol, renderer.dim(truncate(recentStory[i].text, cols - roomCol - 2)));
         }
       }
 
+      // ── Event Animation (new story entry) ─────────────────────
+      const storyCount = storyLog.length;
+      if (storyCount > ui._lastStoryCount && ui._lastStoryCount > 0) {
+        const data = getDungeonArt();
+        const eventKeys = data?.events ? Object.keys(data.events) : [];
+        if (eventKeys.length > 0) {
+          const eventType = eventKeys[storyCount % eventKeys.length];
+          const eventPool = data.events[eventType];
+          if (eventPool && eventPool.length > 0) {
+            const eventArt = eventPool[storyCount % eventPool.length];
+            const evtSprite = new Sprite({
+              art: eventArt,
+              row: Math.max(storyRow - 2, 5),
+              col: Math.max(roomCol + 10, Math.floor(cols * 0.6)),
+              color: biomeColor,
+              id: 'story_event',
+            });
+            evtSprite.setLifetime(800);
+            evtSprite.floatUp(800);
+            const evtScene = new AnimationScene();
+            evtScene.addSprite(evtSprite);
+            ui._dungeonEventScene = evtScene;
+          }
+        }
+      }
+      ui._lastStoryCount = storyCount;
+
       // Fork options
       const conns = room.connections ?? [];
       if (conns.length > 1) {
-        renderer.bufferWrite(14, roomCol, 'Choose a path:');
+        const forkRow = storyRow + recentStory.length + 2;
+        renderer.bufferWrite(forkRow, roomCol, 'Choose a path:');
         for (let i = 0; i < conns.length; i++) {
           const target = dp.rooms?.find(r => r.id === conns[i]);
           const prefix = i === ui.dungeonChoice ? '> ' : '  ';
-          renderer.bufferWrite(15 + i, roomCol, `${prefix}${target?.name ?? 'Path ' + (i + 1)}`);
+          renderer.bufferWrite(forkRow + 1 + i, roomCol, `${prefix}${target?.name ?? 'Path ' + (i + 1)}`);
         }
+      }
+    }
+
+    // ── Decoration (below map, left side) ─────────────────────────
+    const dungeonLevel = dp.level ?? dp.floor ?? 1;
+    const decoArt = pickDecoration(biome, (dp.currentRoom ?? 0) + dungeonLevel);
+    if (decoArt) {
+      const decoStartRow = 15;
+      for (let i = 0; i < Math.min(decoArt.length, 3); i++) {
+        renderer.bufferWrite(decoStartRow + i, 2, renderer.dim(truncate(decoArt[i], 30)));
       }
     }
 
     // Active skill modifiers
     const team = state.team ?? [];
-    const partyRow = renderer.capabilities.rows - 4;
+    const partyRow = rows - 4;
     const mods = state.skillModifiers || [];
     if (mods.length > 0) {
       const modRow = partyRow - 2;
@@ -1324,6 +1523,23 @@ const dungeonScreen = {
       renderer.bufferWrite(partyRow, col, `${m.name} ${hpBar(m.currentHp, m.maxHp, 8)}`);
     }
 
+    // ── Reveal Animation Overlay ──────────────────────────────────
+    if (ui._dungeonRevealScene && !ui._dungeonRevealScene.isFinished()) {
+      const now = Date.now();
+      const delta = Math.min(now - (ui._dungeonRevealTime || now), 50);
+      ui._dungeonRevealTime = now;
+      ui._dungeonRevealScene.update(delta);
+      ui._dungeonRevealScene.render(renderer);
+    }
+
+    // ── Event Animation Overlay ───────────────────────────────────
+    if (ui._dungeonEventScene && !ui._dungeonEventScene.isFinished()) {
+      ui._dungeonEventScene.update(33); // ~30fps tick
+      ui._dungeonEventScene.render(renderer);
+    } else if (ui._dungeonEventScene) {
+      ui._dungeonEventScene = null;
+    }
+
     const autoDungeon = state.settings?.game?.autoDungeon ?? true;
     renderer.showStatus(autoDungeon ? 'Auto-dungeon ON | Q=menu W=save ?=help' : 'Arrows=navigate Enter=interact Q=menu W=save ?=help');
     renderAIBadge(state, renderer);
@@ -1333,8 +1549,8 @@ const dungeonScreen = {
     if (ui.helpVisible) {
       const help = renderHelp('DUNGEON');
       const helpLines = help.split('\n');
-      const startRow = Math.max(0, Math.floor((renderer.capabilities.rows - helpLines.length) / 2));
-      const startCol = Math.max(0, Math.floor((renderer.capabilities.cols - (helpLines[0]?.length ?? 0)) / 2));
+      const startRow = Math.max(0, Math.floor((rows - helpLines.length) / 2));
+      const startCol = Math.max(0, Math.floor((cols - (helpLines[0]?.length ?? 0)) / 2));
       for (let i = 0; i < helpLines.length; i++) {
         renderer.bufferWrite(startRow + i, startCol, helpLines[i]);
       }
@@ -1346,6 +1562,14 @@ const dungeonScreen = {
     { const sr = handleSecurityInput(key, engine); if (sr === 'handled') return; if (sr) return sr; }
     if (key === '?') { ui.helpVisible = !ui.helpVisible; return; }
     if (ui.helpVisible) { if (key === 'escape') ui.helpVisible = false; return; }
+
+    // Skip reveal animation on Enter/Space/Escape
+    if (ui._dungeonRevealScene && !ui._dungeonRevealScene.isFinished()) {
+      if (key === 'enter' || key === 'space' || key === 'escape') {
+        ui._dungeonRevealScene = null;
+        return;
+      }
+    }
 
     const state = engine.getState();
     const dp = state.dungeonProgress;
@@ -1702,45 +1926,174 @@ const lootScreen = {
       return;
     }
 
-    renderer.showHeader('=== Loot Found! ===');
-
+    // ── Normal loot display ──
     const loot = state.pendingLoot ?? [];
     if (loot.length === 0) {
+      renderer.showHeader('=== Loot Found! ===');
       renderer.bufferWrite(3, 4, 'Nothing found.');
       renderer.bufferWrite(5, 4, 'Press Enter to continue...');
       renderer.render();
       return;
     }
 
-    for (let i = 0; i < loot.length; i++) {
-      const item = loot[i];
-      const prefix = i === ui.lootIndex ? '> ' : '  ';
-      const icon = coloredIcon(renderer, item.slot ?? 'weapon', item.rarity ?? 'common');
-      const selected = i === ui.lootIndex;
-      const rarityColor = { uncommon: 'green', rare: 'cyan', epic: 'magenta', legendary: 'yellow' };
-      const nameStr = item.rarity && item.rarity !== 'common'
-        ? renderer.color(item.name ?? 'Unknown Item', rarityColor[item.rarity] || 'brightBlack')
-        : (item.name ?? 'Unknown Item');
-      const line = `${prefix}${icon} ${nameStr}`;
-      renderer.bufferWrite(3 + i * 4, 4, selected ? renderer.bold(line) : line);
+    // Rarity helpers (case-insensitive)
+    const _rRank = r => ({ common: 0, uncommon: 1, rare: 2, epic: 3, legendary: 4 })[(r ?? 'common').toLowerCase()] ?? 0;
+    const _rCol = r => ({ uncommon: 'green', rare: 'cyan', epic: 'magenta', legendary: 'yellow' })[(r ?? 'common').toLowerCase()] || 'brightBlack';
+    const _srcTag = (src) => {
+      const labels = { boss: '[BOSS DROP]', miniboss: '[MINIBOSS]', chest: '[TREASURE]' };
+      const clrs = { boss: 'yellow', miniboss: 'cyan', chest: 'green' };
+      if (!src || !labels[src]) return '';
+      return ' ' + renderer.color(labels[src], clrs[src]);
+    };
+    const _rarityLabel = r => {
+      const rank = _rRank(r);
+      return rank >= 4 ? 'LEGENDARY DROP!' : rank >= 3 ? 'EPIC FIND!' : rank >= 2 ? 'RARE TREASURE!' : rank >= 1 ? 'NICE LOOT!' : 'LOOT FOUND!';
+    };
 
-      // Item stats
-      if (item.stats) {
-        const statLine = Object.entries(item.stats).map(([k, v]) => `${k}: ${v > 0 ? '+' : ''}${v}`).join('  ');
-        renderer.bufferWrite(4 + i * 4, 10, statLine);
-      }
-      renderer.bufferWrite(5 + i * 4, 10, renderer.dim(`${item.rarity ?? 'common'} / val: ${item.value ?? 0}c`));
+    // Find best item (highest rarity, then highest power/value)
+    let bestIdx = 0;
+    for (let i = 1; i < loot.length; i++) {
+      const rB = _rRank(loot[bestIdx].rarity), rC = _rRank(loot[i].rarity);
+      if (rC > rB || (rC === rB && (loot[i].power ?? loot[i].value ?? 0) > (loot[bestIdx].power ?? loot[bestIdx].value ?? 0))) bestIdx = i;
     }
 
-    // Show fallen allies warning
+    const lootId = loot.map(l => (l.name ?? '') + (l.id ?? '')).join('|');
+    const totalRows = renderer.capabilities.rows ?? 30;
+
+    // Initialize rain animation when loot changes
+    if (ui._lastLootId !== lootId) {
+      ui._lastLootId = lootId;
+      ui._lootAnimDone = false;
+      ui._lootScene = new AnimationScene();
+      const scene = ui._lootScene;
+      for (let i = 0; i < loot.length; i++) {
+        const finalRow = 4 + i * 3;
+        const sprite = new Sprite({
+          art: ['.'],
+          row: -2 - i,
+          col: 6,
+          color: _rCol(loot[i].rarity),
+          id: `loot_rain_${i}`,
+        });
+        const delay = i * 200;
+        scene.addEvent(delay, () => { sprite.visible = true; sprite.moveTo(finalRow, 6, 350); });
+        if (i === bestIdx) {
+          scene.addEvent(delay + 400, () => { sprite.flash('yellow', 500); });
+        }
+        scene.addSprite(sprite);
+      }
+      scene.addEvent(loot.length * 200 + 500, () => { ui._lootAnimDone = true; });
+    }
+
+    // Phase 1: Rain animation
+    if (ui._lootScene && !ui._lootAnimDone) {
+      ui._lootScene.update(33);
+      const elapsed = ui._lootScene.elapsed;
+      const sparkles = ['*', '+', '.', "'"];
+      const sparkle = sparkles[Math.floor(elapsed / 150) % sparkles.length];
+      const hColors = ['yellow', 'white', 'cyan', 'green'];
+      const hColor = hColors[Math.floor(elapsed / 300) % hColors.length];
+      renderer.bufferWrite(1, 0, renderer.centerText(
+        renderer.color(`${sparkle}  Loot Incoming  ${sparkle}`, hColor), cols));
+
+      for (let i = 0; i < loot.length; i++) {
+        const sprite = ui._lootScene.getSprite(`loot_rain_${i}`);
+        if (!sprite || !sprite.visible) continue;
+        const item = loot[i];
+        const icon = coloredIcon(renderer, item.slot ?? 'weapon', item.rarity ?? 'common');
+        const nameStr = _rRank(item.rarity) > 0
+          ? renderer.color(item.name ?? 'Item', _rCol(item.rarity))
+          : (item.name ?? 'Item');
+        const srcTag = _srcTag(item.source);
+        const isBest = i === bestIdx;
+        let text = `${icon} ${nameStr}${srcTag}`;
+        if (isBest && Math.floor(elapsed / 250) % 2 === 0) text = renderer.bold(text);
+        const drawRow = Math.round(sprite.row);
+        if (drawRow >= 0 && drawRow < totalRows) renderer.bufferWrite(drawRow, Math.round(sprite.col), text);
+      }
+
+      renderer.showStatus('Enter/Space=skip');
+      renderAIBadge(state, renderer);
+      renderWorkModeBadge(state, renderer);
+      renderer.render();
+      return;
+    }
+
+    // Phase 2: Interactive loot selection
+    const bestItem = loot[bestIdx];
+    const bestRank = _rRank(bestItem.rarity);
+
+    // Header
+    if (bestRank >= 3) {
+      const label = _rarityLabel(bestItem.rarity);
+      const glowColor = Math.floor(Date.now() / 400) % 2 === 0 ? 'yellow' : 'white';
+      renderer.bufferWrite(1, 0, renderer.centerText(
+        renderer.color(`*** ${label} ***`, glowColor), cols));
+    } else {
+      renderer.showHeader('=== Loot Found! ===');
+    }
+
+    // Best item showcase (epic+ with ASCII art)
+    let listStartRow = 3;
+    if (bestRank >= 3 && loot.length > 0) {
+      const art = itemArt(bestItem.slot ?? 'weapon', bestItem.rarity ?? 'Common');
+      const artLines = art.lines ?? [];
+      const artColor = art.color;
+      const artStartCol = Math.max(2, Math.floor(cols / 2) - 16);
+      for (let a = 0; a < artLines.length; a++) {
+        const line = artColor ? renderer.color(artLines[a], artColor) : artLines[a];
+        renderer.bufferWrite(2 + a, artStartCol, line);
+      }
+      const nameCol = artStartCol + 8;
+      const glowColor = Math.floor(Date.now() / 400) % 2 === 0 ? 'yellow' : 'white';
+      renderer.bufferWrite(2, nameCol, renderer.color(_rarityLabel(bestItem.rarity), glowColor));
+      renderer.bufferWrite(3, nameCol, renderer.bold(
+        renderer.color(bestItem.name ?? 'Item', _rCol(bestItem.rarity))));
+      if (bestItem.statBonus) {
+        const statStr = Object.entries(bestItem.statBonus).map(([k, v]) => `${k}:+${v}`).join(' ');
+        renderer.bufferWrite(4, nameCol, renderer.color(statStr, 'white'));
+      }
+      renderer.bufferWrite(5, nameCol, renderer.dim(
+        `${bestItem.rarity ?? 'Common'} | pwr:${bestItem.power ?? 0} | val:${bestItem.value ?? 0}c`));
+      const bSrcTag = _srcTag(bestItem.source);
+      if (bSrcTag) renderer.bufferWrite(6, nameCol, bSrcTag);
+      renderer.bufferWrite(7, 4, renderer.dim('-'.repeat(Math.min(cols - 8, 50))));
+      listStartRow = 8;
+    }
+
+    // Item list
+    for (let i = 0; i < loot.length; i++) {
+      const item = loot[i];
+      const selected = i === ui.lootIndex;
+      const isBest = i === bestIdx;
+      const prefix = selected ? renderer.color('>', 'yellow') + ' ' : '  ';
+      const icon = coloredIcon(renderer, item.slot ?? 'weapon', item.rarity ?? 'common');
+      let nameStr = _rRank(item.rarity) > 0
+        ? renderer.color(item.name ?? 'Unknown Item', _rCol(item.rarity))
+        : (item.name ?? 'Unknown Item');
+      if (isBest && Math.floor(Date.now() / 500) % 2 === 0) nameStr = renderer.bold(nameStr);
+      const srcTag = _srcTag(item.source);
+      const bestTag = isBest ? ' ' + renderer.color('* BEST', 'yellow') : '';
+      const line = `${prefix}${icon} ${nameStr}${srcTag}${bestTag}`;
+      renderer.bufferWrite(listStartRow + i * 3, 4, selected ? renderer.bold(line) : line);
+
+      if (item.statBonus) {
+        const statLine = Object.entries(item.statBonus).map(([k, v]) => `${k}: ${v > 0 ? '+' : ''}${v}`).join('  ');
+        renderer.bufferWrite(listStartRow + i * 3 + 1, 10, statLine);
+      }
+      renderer.bufferWrite(listStartRow + i * 3 + 2, 10,
+        renderer.dim(`${item.rarity ?? 'common'} | pwr:${item.power ?? '?'} | val:${item.value ?? 0}c`));
+    }
+
+    // Fallen allies warning
     const team = state.team ?? [];
     const alive = team.filter(m => m.currentHp > 0).length;
     const dead = team.length - alive;
     let extraRow = 0;
-    const warnStart = 3 + loot.length * 4 + 1;
+    const warnStart = listStartRow + loot.length * 3 + 1;
     if (dead > 0 || (state.stats?.permanentDeaths ?? 0) > 0) {
       if (dead > 0) {
-        renderer.bufferWrite(warnStart + extraRow, 4, renderer.color(`${dead} ally fell — gear saved to inventory.`, 'red'));
+        renderer.bufferWrite(warnStart + extraRow, 4, renderer.color(`${dead} ally fell -- gear saved to inventory.`, 'red'));
         extraRow++;
       }
       if (alive === 0) {
@@ -1749,7 +2102,6 @@ const lootScreen = {
       }
     }
 
-    // Actions for selected item
     const actionsRow = warnStart + extraRow + 1;
     renderer.bufferWrite(actionsRow, 6, '[E] Equip   [S] Sell   [D] Discard   [Enter] Next');
 
@@ -1782,6 +2134,16 @@ const lootScreen = {
       return;
     }
 
+    // Skip loot animation on Enter/Space/Escape
+    if (ui._lootScene && !ui._lootAnimDone) {
+      if (key === 'enter' || key === 'space' || key === 'escape') {
+        ui._lootAnimDone = true;
+        ui._lootScene = null;
+        return; // consume the keypress — just skip to interactive
+      }
+      return; // ignore other keys during animation
+    }
+
     const state = engine.getState();
     const loot = state.pendingLoot ?? [];
 
@@ -1806,6 +2168,9 @@ const lootScreen = {
           await engine.transition(GameState.TAVERN);
         }
         ui.lootIndex = 0;
+        ui._lootScene = null;
+        ui._lastLootId = null;
+        ui._lootAnimDone = false;
         break;
       case 'q':
         return 'go_to_menu';
@@ -1926,61 +2291,243 @@ const dungeonSummaryScreen = {
   render(state, renderer) {
     renderer.clear();
     const cols = renderer.capabilities.cols;
+    const termRows = renderer.capabilities.rows;
     const stats = state._dungeonRunStats ?? {};
     const success = stats.success !== false;
 
+    // Generate a stable summary ID
+    const summaryId = `${stats.roomsCleared ?? 0}_${stats.monstersSlain ?? 0}_${stats.bossesSlain ?? 0}_${success}`;
+
+    // Target values for counting animation
+    const crumbsBefore = stats.crumbsBefore ?? 0;
+    const crumbsNow = state.crumbs ?? 0;
+    const targetCrumbs = Math.max(0, crumbsNow - crumbsBefore);
+    const targetRooms = stats.roomsCleared ?? 0;
+    const targetMonsters = stats.monstersSlain ?? 0;
+    const targetBosses = stats.bossesSlain ?? 0;
+
+    // Initialize animation when summary changes
+    if (ui._lastSummaryId !== summaryId) {
+      ui._lastSummaryId = summaryId;
+      ui._summaryAnimDone = false;
+      ui._summaryStartTime = Date.now();
+      ui._summaryScene = new AnimationScene();
+      const scene = ui._summaryScene;
+
+      if (success) {
+        // Victory confetti particles
+        const confettiChars = ['*', '+', '.', 'o', '~', '^'];
+        const confettiColors = ['yellow', 'cyan', 'green', 'magenta', 'red', 'white'];
+        for (let i = 0; i < 30; i++) {
+          const ch = confettiChars[Math.floor(Math.random() * confettiChars.length)];
+          const clr = confettiColors[Math.floor(Math.random() * confettiColors.length)];
+          const startCol = Math.floor(Math.random() * (cols - 2)) + 1;
+          const confStartRow = -1 - Math.floor(Math.random() * 5);
+          const endRow = Math.floor(Math.random() * (termRows - 4)) + 2;
+
+          const sprite = new Sprite({
+            art: [ch],
+            row: confStartRow,
+            col: startCol,
+            color: clr,
+            id: `confetti_${i}`,
+          });
+
+          const delay = Math.floor(Math.random() * 2000);
+          const fallDur = 800 + Math.floor(Math.random() * 1200);
+          scene.addEvent(delay, () => {
+            sprite.moveTo(endRow, startCol + Math.floor(Math.random() * 5) - 2, fallDur);
+            sprite.setLifetime(fallDur + 500);
+          });
+          scene.addSprite(sprite);
+        }
+
+        // Boss slain banner (if applicable)
+        if (targetBosses > 0) {
+          const bossText = '>>> BOSS SLAIN! <<<';
+          const bossCol = Math.max(0, Math.floor((cols - bossText.length) / 2));
+          const bossBanner = new Sprite({
+            art: [bossText],
+            row: -2,
+            col: bossCol,
+            color: 'yellow',
+            id: 'boss_banner',
+          });
+          scene.addEvent(800, () => {
+            bossBanner.moveTo(2, bossCol, 400);
+          });
+          scene.addEvent(1300, () => {
+            bossBanner.flash('white', 300);
+          });
+          bossBanner.setLifetime(4000);
+          scene.addSprite(bossBanner);
+        }
+      } else {
+        // Defeat: R.I.P. art fades in via dim then full
+        const deathArt = [
+          '     ___________',
+          '    /           \\',
+          '   |   R.I.P.   |',
+          '   |  Your team  |',
+          '   |  has fallen |',
+          '   |_____________|',
+        ];
+        const artWidth = 19;
+        const artCol = Math.max(0, Math.floor((cols - artWidth) / 2));
+        const ripSprite = new Sprite({
+          art: deathArt,
+          row: 2,
+          col: artCol,
+          color: 'red',
+          id: 'rip_art',
+        });
+        ripSprite.opacity = 0.3;
+        scene.addEvent(200, () => {
+          ripSprite.opacity = 0.5;
+        });
+        scene.addEvent(600, () => {
+          ripSprite.opacity = 1;
+        });
+        scene.addSprite(ripSprite);
+
+        // Death penalty shake effect
+        const penalty = stats.deathPenalty ?? 0;
+        if (penalty > 0) {
+          const penText = `-${penalty} crumbs`;
+          const penSprite = new Sprite({
+            art: [penText],
+            row: 9,
+            col: Math.max(0, Math.floor((cols - penText.length) / 2)),
+            color: 'red',
+            id: 'penalty_shake',
+          });
+          scene.addEvent(1000, () => {
+            penSprite.shake(3, 800);
+          });
+          penSprite.setLifetime(3000);
+          scene.addSprite(penSprite);
+        }
+      }
+
+      // Mark animation done after count-up completes
+      scene.addEvent(2500, () => {
+        ui._summaryAnimDone = true;
+      });
+    }
+
+    // Calculate elapsed time for count-up
+    const elapsed = Date.now() - ui._summaryStartTime;
+    const countDur = ui._summaryCountDuration;
+    const animProgress = Math.min(1, elapsed / countDur);
+    // Ease-out quad for smooth counting
+    const easedProgress = ui._summaryAnimDone ? 1 : animProgress * (2 - animProgress);
+
+    // Interpolated display values
+    const dispCrumbs = Math.floor(targetCrumbs * easedProgress);
+    const dispRooms = Math.floor(targetRooms * easedProgress);
+    const dispMonsters = Math.floor(targetMonsters * easedProgress);
+    const dispBosses = Math.floor(targetBosses * easedProgress);
+
+    // Update and render the animation scene
+    if (ui._summaryScene) {
+      ui._summaryScene.update(33);
+      ui._summaryScene.render(renderer);
+    }
+
+    // Source tag helper for summary
+    const _summSrcTag = (src) => {
+      const labels = { boss: '[BOSS DROP]', miniboss: '[MINIBOSS]', chest: '[TREASURE]' };
+      const clrs = { boss: 'yellow', miniboss: 'cyan', chest: 'green' };
+      if (!src || !labels[src]) return '';
+      return ' ' + renderer.color(labels[src], clrs[src]);
+    };
+
     if (success) {
-      renderer.showHeader('=== Dungeon Cleared! ===');
+      // Color-cycling VICTORY header
+      const victoryColors = ['yellow', 'green', 'cyan', 'white', 'magenta'];
+      const vIdx = Math.floor(Date.now() / 200) % victoryColors.length;
+      const victoryText = '=== VICTORY! Dungeon Cleared! ===';
+      renderer.bufferWrite(1, 0, renderer.centerText(
+        renderer.color(victoryText, victoryColors[vIdx]), cols));
     } else {
       renderer.showHeader('=== Defeat ===');
-      // R.I.P. art for death
-      const deathArt = [
-        '     ___________',
-        '    /           \\',
-        '   |   R.I.P.   |',
-        '   |  Your team  |',
-        '   |  has fallen |',
-        '   |_____________|',
-      ];
-      for (let i = 0; i < deathArt.length; i++) {
-        renderer.bufferWrite(2 + i, 0, renderer.centerText(deathArt[i], cols));
+      // R.I.P. art rendered by sprite in animation scene; static fallback after anim
+      if (ui._summaryAnimDone) {
+        const deathArt = [
+          '     ___________',
+          '    /           \\',
+          '   |   R.I.P.   |',
+          '   |  Your team  |',
+          '   |  has fallen |',
+          '   |_____________|',
+        ];
+        for (let i = 0; i < deathArt.length; i++) {
+          renderer.bufferWrite(2 + i, 0, renderer.centerText(renderer.color(deathArt[i], 'red'), cols));
+        }
       }
     }
 
-    const startRow = success ? 3 : 10;
+    const startRow = success ? (targetBosses > 0 ? 4 : 3) : 10;
     let row = startRow;
 
-    // Crumbs earned
-    const crumbsBefore = stats.crumbsBefore ?? 0;
-    const crumbsNow = state.crumbs ?? 0;
-    const crumbsEarned = Math.max(0, crumbsNow - crumbsBefore);
+    // Run Summary header
     renderer.bufferWrite(row++, 4, renderer.bold('-- Run Summary --'));
     row++;
 
-    renderer.bufferWrite(row++, 6, `Crumbs earned:   ${renderer.color(formatCrumbs(crumbsEarned), crumbsEarned > 0 ? 'green' : 'brightBlack')}`);
-    renderer.bufferWrite(row++, 6, `Rooms cleared:   ${stats.roomsCleared ?? 0}`);
-    renderer.bufferWrite(row++, 6, `Monsters slain:  ${stats.monstersSlain ?? 0}`);
-    if ((stats.bossesSlain ?? 0) > 0) {
-      renderer.bufferWrite(row++, 6, renderer.color(`Bosses slain:    ${stats.bossesSlain}`, 'yellow'));
+    // Animated stat count-up (values interpolate from 0 to target)
+    const crumbColor = success ? (targetCrumbs > 0 ? 'green' : 'brightBlack') : 'red';
+    renderer.bufferWrite(row++, 6, `Crumbs earned:   ${renderer.color(formatCrumbs(dispCrumbs), crumbColor)}`);
+    renderer.bufferWrite(row++, 6, `Rooms cleared:   ${success ? dispRooms : renderer.color(String(dispRooms), 'red')}`);
+    renderer.bufferWrite(row++, 6, `Monsters slain:  ${success ? dispMonsters : renderer.color(String(dispMonsters), 'red')}`);
+    if (targetBosses > 0) {
+      renderer.bufferWrite(row++, 6, renderer.color(`Bosses slain:    ${dispBosses}`, 'yellow'));
     }
     row++;
 
-    // Loot
+    // Loot section — sorted by rarity, items appear one by one
     const loot = stats.lootCollected ?? [];
+    const _sRank = r => ({ common: 0, uncommon: 1, rare: 2, epic: 3, legendary: 4 })[(r ?? 'common').toLowerCase()] ?? 0;
+    const _sCol = r => ({ uncommon: 'green', rare: 'cyan', epic: 'magenta', legendary: 'yellow' })[(r ?? 'common').toLowerCase()] || 'brightBlack';
+
     if (loot.length > 0) {
+      // Sort by rarity (highest first) for display
+      const sortedLoot = [...loot].sort((a, b) => _sRank(b.rarity) - _sRank(a.rarity));
+
+      // Find best item
+      let bestLootIdx = 0;
+      for (let i = 1; i < sortedLoot.length; i++) {
+        const rB = _sRank(sortedLoot[bestLootIdx].rarity), rC = _sRank(sortedLoot[i].rarity);
+        if (rC > rB || (rC === rB && (sortedLoot[i].power ?? sortedLoot[i].value ?? 0) > (sortedLoot[bestLootIdx].power ?? sortedLoot[bestLootIdx].value ?? 0))) bestLootIdx = i;
+      }
+
       renderer.bufferWrite(row++, 6, `Loot found:      ${loot.length} item(s)`);
       row++;
-      const maxLoot = Math.min(loot.length, 5);
+
+      const maxLoot = Math.min(sortedLoot.length, 6);
+      const lootStartMs = countDur + 200;
       for (let i = 0; i < maxLoot; i++) {
-        const item = loot[i];
+        const itemAppearMs = lootStartMs + i * 200;
+        if (elapsed < itemAppearMs && !ui._summaryAnimDone) continue;
+
+        const item = sortedLoot[i];
         const icon = coloredIcon(renderer, item.slot ?? 'weapon', item.rarity ?? 'common');
-        const rarityColor = { uncommon: 'green', rare: 'cyan', epic: 'magenta', legendary: 'yellow' };
-        const name = item.rarity && item.rarity !== 'common'
-          ? renderer.color(item.name ?? 'Item', rarityColor[item.rarity] || 'brightBlack')
+        let name = _sRank(item.rarity) > 0
+          ? renderer.color(item.name ?? 'Item', _sCol(item.rarity))
           : (item.name ?? 'Item');
-        renderer.bufferWrite(row++, 8, `${icon} ${name}`);
+
+        const isBest = i === bestLootIdx;
+        if (isBest && Math.floor(Date.now() / 400) % 2 === 0) {
+          name = renderer.bold(renderer.color(item.name ?? 'Item', 'yellow'));
+        }
+
+        const srcTag = _summSrcTag(item.source);
+        const bestMark = isBest ? ' ' + renderer.color('MVP ITEM', 'yellow') : '';
+        renderer.bufferWrite(row, 8, `${icon} ${name}${srcTag}${bestMark}`);
+        row++;
       }
-      if (loot.length > 5) renderer.bufferWrite(row++, 8, renderer.dim(`... +${loot.length - 5} more`));
+      if (sortedLoot.length > 6 && (elapsed >= lootStartMs + maxLoot * 200 || ui._summaryAnimDone)) {
+        renderer.bufferWrite(row++, 8, renderer.dim(`... +${sortedLoot.length - 6} more`));
+      }
     } else {
       renderer.bufferWrite(row++, 6, renderer.dim('No loot found'));
     }
@@ -1990,10 +2537,24 @@ const dungeonSummaryScreen = {
       renderer.bufferWrite(row++, 6, `Loot sold for:   ${stats.lootSold} crumbs`);
     }
 
-    // Allies lost
+    // Allies lost — show names one by one with staggered reveal
     if (stats.alliesLost > 0) {
       row++;
       renderer.bufferWrite(row++, 6, renderer.color(`Allies lost:     ${stats.alliesLost}`, 'red'));
+      const fallenNames = stats.fallenNames ?? [];
+      if (fallenNames.length > 0) {
+        const fallenStartMs = countDur + 800;
+        const maxFallen = Math.min(fallenNames.length, 6);
+        for (let i = 0; i < maxFallen; i++) {
+          const nameAppearMs = fallenStartMs + i * 300;
+          if (elapsed < nameAppearMs && !ui._summaryAnimDone) continue;
+          renderer.bufferWrite(row, 8, renderer.color(`  x ${fallenNames[i]}`, 'red'));
+          row++;
+        }
+        if (fallenNames.length > 6 && ui._summaryAnimDone) {
+          renderer.bufferWrite(row++, 8, renderer.dim(`... +${fallenNames.length - 6} more`));
+        }
+      }
     }
 
     // Death-specific info
@@ -2001,7 +2562,12 @@ const dungeonSummaryScreen = {
       row++;
       const penalty = stats.deathPenalty ?? 0;
       if (penalty > 0) {
-        renderer.bufferWrite(row++, 6, renderer.color(`Death penalty:   -${penalty} crumbs`, 'red'));
+        // Shake effect rendered by sprite during animation; static fallback after
+        if (ui._summaryAnimDone) {
+          renderer.bufferWrite(row++, 6, renderer.color(`Death penalty:   -${penalty} crumbs`, 'red'));
+        } else {
+          row++; // reserve the row, sprite handles it
+        }
       }
       const talismanReward = state.lastTalismanDeathReward ?? 0;
       if (talismanReward > 0) {
@@ -2027,7 +2593,11 @@ const dungeonSummaryScreen = {
     if (autoMode) {
       renderer.bufferWrite(row, 0, renderer.centerText(renderer.dim('Continuing automatically...'), cols));
     } else {
-      renderer.bufferWrite(row, 0, renderer.centerText('[Enter] Continue to Tavern   [Q] Menu', cols));
+      if (ui._summaryAnimDone) {
+        renderer.bufferWrite(row, 0, renderer.centerText('[Enter] Continue to Tavern   [Q] Menu', cols));
+      } else {
+        renderer.bufferWrite(row, 0, renderer.centerText(renderer.dim('Enter/Space/Esc = skip animation'), cols));
+      }
     }
 
     renderer.showStatus('Enter=continue Q=menu');
@@ -2040,6 +2610,15 @@ const dungeonSummaryScreen = {
   async handleInput(key, engine) {
     const state = engine.getState();
     const isDefeat = state._dungeonRunStats && state._dungeonRunStats.success === false;
+
+    // Skip animation on Enter/Space/Escape
+    if (!ui._summaryAnimDone) {
+      if (key === 'enter' || key === 'space' || key === 'escape') {
+        ui._summaryAnimDone = true;
+        ui._summaryScene = null;
+        return; // consume keypress — just skip to final state
+      }
+    }
 
     switch (key) {
       case 'enter': case 'space':
@@ -2470,6 +3049,18 @@ export function resetUIState() {
   ui.securityLogVisible = false;
   ui.modeSelectVisible = false;
   ui.modeSelection = 0;
+  ui._lootScene = null;
+  ui._lastLootId = null;
+  ui._lootAnimDone = false;
+  ui._summaryScene = null;
+  ui._lastSummaryId = null;
+  ui._summaryAnimDone = false;
+  ui._summaryStartTime = 0;
+  ui._dungeonRoomId = null;
+  ui._dungeonRevealScene = null;
+  ui._dungeonRevealTime = 0;
+  ui._lastStoryCount = 0;
+  ui._dungeonEventScene = null;
 }
 
 export { screens };
