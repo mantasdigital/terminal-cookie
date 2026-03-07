@@ -71,7 +71,7 @@ export function explodeCookie() {
     ].join('\n'),
     // Frame 2: breaking apart
     [
-      '      . --  \" -  .',
+      '      . --  " -  .',
       '    .   ::  ::   .',
       '   /  (::    ::)   \\',
       '  |     *(  )*    |',
@@ -602,15 +602,208 @@ const FALLBACK_MONSTER = [
   '   ^ ^',
 ];
 
+// ── PROCEDURAL MONSTER GENERATION ────────────────────────────────
+// Modular parts system: 30 heads × 25 bodies × 20 legs × decorations = 15,000+ unique combinations
+
+const PROC_HEADS = [
+  // Eyes and faces - wide variety
+  ['  (o.o)  '],
+  ['  (O_O)  '],
+  ['  {>.<}  '],
+  ['  [o o]  '],
+  ['  <*.* > '],
+  ['   /O\\   '],
+  ['  (x_x)  '],
+  ['  |o.o|  '],
+  ['  (=.=)  '],
+  ['  <o_o>  '],
+  ['  {O.O}  '],
+  ['  [>_<]  '],
+  ['  (o O)  '],
+  ['  |*.*|  '],
+  ['  <@.@>  '],
+  ['   .^.   ', '  (o o)  '],
+  ['  /\\_/\\  ', '  (O O)  '],
+  ['   ___   ', '  (o_o)  '],
+  ['  ~\\/~   ', '  {o.o}  '],
+  ['  /===\\  ', '  |O O|  '],
+  ['  .---.  ', '  |o_o|  '],
+  ['  ,---.  ', '  (>.>)  '],
+  ['  /^^^\\  ', '  |*_*|  '],
+  ['  \\vvv/  ', '  (O.o)  '],
+  ['  /ooo\\  ', '  |^ ^|  '],
+  ['  {===}  ', '  |o.o|  '],
+  ['  <--->  ', '  (O_o)  '],
+  ['  /\\ /\\  ', '  (o.o)  '],
+  ['  |^^^|  ', '  |o o|  '],
+  ['   ***   ', '  (O_O)  '],
+];
+
+const PROC_BODIES = [
+  // Torsos - humanoid, beast, amorphous
+  ['  /|~|\\  ', '  | | |  '],
+  ['  [===]  ', '  |   |  '],
+  [' /|||||\\', '  |||||  '],
+  ['  {~~~}  ', '  {   }  '],
+  ['  |XXX|  ', '  |   |  '],
+  ['  /===\\  ', '  \\===/  '],
+  [' <|===|> ', '  |===|  '],
+  ['  |/\\/|  ', '  |/\\/|  '],
+  ['  (~~~)  ', '  (   )  '],
+  ['  |###|  ', '  |# #|  '],
+  ['  {ooo}  ', '  { o }  '],
+  ['  |+-+|  ', '  |   |  '],
+  [' /\\  /\\ ', ' /    \\ '],
+  ['  |<=>|  ', '  |   |  '],
+  ['  [*+*]  ', '  [   ]  '],
+  ['  |^^^|  ', '  |vvv|  '],
+  ['  /oOo\\  ', '  \\oOo/  '],
+  [' {|==|}  ', '  |==|   '],
+  ['  |~#~|  ', '  |~#~|  '],
+  ['  [/\\/]  ', '  [/\\/]  '],
+  ['  |<><|  ', '  |><>|  '],
+  ['  (###)  ', '  (   )  '],
+  ['  |=*=|  ', '  |   |  '],
+  ['  {|||} ', '  {|||} '],
+  ['  |oXo|  ', '  |oXo|  '],
+];
+
+const PROC_LEGS = [
+  // Feet, roots, tails, bases
+  ['  / \\    '],
+  ['  || ||  '],
+  ['  /| |\\  '],
+  ['  ^^^^   '],
+  ['  ~~~~   '],
+  ['  [__]   '],
+  ['  |  |   '],
+  ['  /\\ /\\  '],
+  ['  vv vv  '],
+  ['  `` ``  '],
+  ['  //  \\\\ '],
+  ['   ||    '],
+  ['  _/\\_   '],
+  ['  \\  /   '],
+  ['  ^  ^   '],
+  ['  |__|   '],
+  ['  /||\\   '],
+  ['  =/\\=   '],
+  ['  {__}   '],
+  ['  |/\\|   '],
+];
+
+const PROC_DECOR = [
+  // Decorations appended or prepended
+  { type: 'crown', lines: ['  \\|/  '] },
+  { type: 'horns', lines: [' )   ( '] },
+  { type: 'halo', lines: ['   o   '] },
+  { type: 'flames', lines: [' ~*~*~ '] },
+  { type: 'sparks', lines: [' + . + '] },
+  { type: 'drip', lines: [' .  .  .'] },
+  { type: 'frost', lines: [' *  *  *'] },
+  { type: 'thorns', lines: ['  >/<  '] },
+  { type: 'smoke', lines: ['  ~~~  '] },
+  { type: 'eyes', lines: [' o   o '] },
+  { type: 'wings_top', lines: ['>\\ . /<'] },
+  { type: 'aura', lines: ['. . . .'] },
+  { type: 'tail', lines: ['     ~~'] },
+  { type: 'shadow', lines: ['  ___  '] },
+  { type: 'crystals', lines: [' /\\ /\\ '] },
+];
+
+/**
+ * Generate procedural monster art from a numeric seed.
+ * Produces deterministic, unique ASCII art from modular parts.
+ * With 30 heads × 25 bodies × 20 legs × 15 decorations = 225,000 base combinations.
+ * Plus biome tinting and size variants = effectively unlimited unique art.
+ * @param {number} seed - Deterministic seed for generation
+ * @param {string} [biome='cave'] - Biome for thematic tinting
+ * @returns {string[]} Array of ASCII art lines
+ */
+export function proceduralMonsterArt(seed, biome = 'cave') {
+  // Simple seeded pseudo-random
+  let s = Math.abs(seed) || 1;
+  function next() { s = (s * 16807 + 12345) & 0x7fffffff; return s; }
+  function pick(arr) { return arr[next() % arr.length]; }
+
+  const head = pick(PROC_HEADS);
+  const body = pick(PROC_BODIES);
+  const legs = pick(PROC_LEGS);
+
+  let art = [...head, ...body, ...legs];
+
+  // 60% chance: add a decoration on top
+  if (next() % 100 < 60) {
+    const decor = pick(PROC_DECOR);
+    art = [...decor.lines, ...art];
+  }
+
+  // 30% chance: add bottom decoration
+  if (next() % 100 < 30) {
+    const decor = pick(PROC_DECOR);
+    art = [...art, ...decor.lines];
+  }
+
+  // Size variant: 20% chance to be "wide" (add side chars)
+  if (next() % 100 < 20) {
+    art = art.map(l => '|' + l + '|');
+  }
+
+  // 15% chance: mirror-style symmetry enhancement
+  if (next() % 100 < 15) {
+    art = art.map(l => {
+      const trimmed = l.trimEnd();
+      const half = trimmed.substring(0, Math.ceil(trimmed.length / 2));
+      const mirrored = half + half.split('').reverse().join('');
+      return mirrored;
+    });
+  }
+
+  // Biome flavor: add subtle theme markers
+  const BIOME_ACCENTS = {
+    cave: '.',
+    crypt: ':',
+    forest: '~',
+    volcano: '^',
+    abyss: '*',
+  };
+  const accent = BIOME_ACCENTS[biome] || '.';
+
+  // 40% chance: scatter biome accents
+  if (next() % 100 < 40) {
+    art = art.map(l => l.replace(/ {2}/g, ` ${accent}`));
+  }
+
+  // Enforce max 7 lines x 30 chars
+  return art.slice(0, 7).map(l => l.substring(0, 30));
+}
+
+/** Simple string hash for deterministic seed from template name */
+function hashStr(str) {
+  let hash = 5381;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) + hash + str.charCodeAt(i)) & 0x7fffffff;
+  }
+  return hash;
+}
+
 /**
  * Build a monster from a base template plus mutations.
- * Falls back to generic art for unknown templates.
+ * Falls back to procedural generation for unknown templates.
  * @param {string} template - Any monster template key
  * @param {string[]} [mutations=[]] - Giant|Armored|Swift|Venomous|Ethereal|Enraged|Cookie-Cursed|Regenerating
+ * @param {number} [seed=0] - Seed for procedural generation fallback
+ * @param {string} [biome='cave'] - Biome for procedural generation
  * @returns {string}
  */
-export function monsterArt(template, mutations = []) {
-  let art = [...(MONSTER_TEMPLATES[template] || FALLBACK_MONSTER)];
+export function monsterArt(template, mutations = [], seed = 0, biome = 'cave') {
+  let art;
+  if (MONSTER_TEMPLATES[template]) {
+    art = [...MONSTER_TEMPLATES[template]];
+  } else {
+    // Use procedural generation for unknown templates
+    art = proceduralMonsterArt(seed || (template ? hashStr(template) : Date.now()), biome);
+  }
 
   for (const mut of mutations) {
     switch (mut) {

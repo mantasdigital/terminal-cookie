@@ -200,10 +200,14 @@ export function buildPortrait(member) {
   const accRarity = eq.accessory?.rarity?.toLowerCase() ?? null;
   const accGlyph = accRarity ? (ACCESSORY_VISUALS[accRarity] ?? '') : '';
 
-  return [
+  const lines = [
     `  ${parts.head}${accGlyph ? ' ' + accGlyph : ''}`,
     `  ${body}${wpnGlyph}`,
     `  ${parts.legs}`,
     ` [${classTag}]`,
   ];
+
+  // Pad all lines to consistent width for proper alignment
+  const maxLen = Math.max(...lines.map(l => l.length));
+  return lines.map(l => l.padEnd(maxLen));
 }

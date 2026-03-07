@@ -5,7 +5,7 @@
 
 import { GameState } from '../core/engine.js';
 import { titleScreen, masterCookie, miniCookie, dungeonMap, monsterArt, lootIcon, itemArt, teamMember } from '../ui/ascii.js';
-import { Sprite, AnimationScene, createDamageNumber, createAttackEffect, createHitFlash } from '../ui/animate.js';
+import { Sprite, AnimationScene, createDamageNumber, createAttackEffect, createHitFlash, createBlockEffect, createHurtShake, createDeathEffect, createHealEffect } from '../ui/animate.js';
 import { renderHelp } from '../ui/help.js';
 import { buildPortrait } from './team.js';
 import { resolveRoll } from './combat.js';
@@ -1673,37 +1673,37 @@ function renderDie(value) {
 function buildFeedEntry(roll, combat, isTeamAttack) {
   if (!roll || !roll.attacker) return null;
 
-  const attackerName = roll.attacker.split(' ').pop(); // short name
+  const attackerName = roll.attacker.split(' ').pop();
   const targetName = roll.target ? roll.target.split(' ').pop() : '?';
 
-  // Find target combatant for HP display
   const target = (combat.combatants ?? []).find(c => c.name === roll.target);
   const hpAfter = target ? target.currentHp : '?';
   const hpBefore = target ? Math.min(target.maxHp, hpAfter + (roll.damage || 0)) : '?';
 
   if (roll.fumble) {
     return {
-      text: `${attackerName} fumbles! Self-dmg ${roll.damage}`,
+      text: `!! ${attackerName} fumbles! Self-dmg ${roll.damage}`,
       color: 'brightRed',
     };
   }
 
   if (roll.crit) {
     return {
-      text: `CRIT! ${attackerName}->${targetName} ${roll.damage}! (${hpBefore}->${hpAfter})`,
+      text: `** CRIT! ${attackerName}=>${targetName} ${roll.damage}! (${hpBefore}>${hpAfter})`,
       color: 'yellow',
     };
   }
 
   if (roll.damage > 0) {
+    const arrow = isTeamAttack ? '>>' : '<<';
     return {
-      text: `${attackerName} hits ${targetName} for ${roll.damage} (${hpBefore}->${hpAfter})`,
+      text: `${arrow} ${attackerName}->${targetName} ${roll.damage}dmg (${hpBefore}>${hpAfter})`,
       color: isTeamAttack ? 'green' : 'red',
     };
   }
 
   return {
-    text: `${attackerName}->${targetName} blocked!`,
+    text: `() ${attackerName}->${targetName} blocked!`,
     color: 'brightBlack',
   };
 }
@@ -1748,8 +1748,11 @@ const combatScreen = {
       }
       const artLines = Array.isArray(enemyArt) ? enemyArt : [];
       const artColor = firstLivingEnemy.currentHp <= 0 ? 'brightBlack' : 'red';
+      // Subtle idle breathing: shift top line by 1 on alternate frames
+      const breathOffset = combatAnim.enemyArtFrame === 1 && firstLivingEnemy.currentHp > 0 ? 1 : 0;
       for (let i = 0; i < Math.min(artLines.length, 7); i++) {
-        renderer.bufferWrite(2 + i, 2, renderer.color(
+        const colShift = (i === 0) ? breathOffset : 0;
+        renderer.bufferWrite(2 + i, 2 + colShift, renderer.color(
           truncate(artLines[i], artAreaWidth), artColor));
       }
       // Enemy name under art
@@ -1847,26 +1850,38 @@ const combatScreen = {
         const effectToCol = isTeamAttack ? 6 : 6;
 
         if (lastRoll.fumble) {
-          // Fumble: "!" above attacker
           const fxSprite = createAttackEffect('fumble', effectFromRow, effectFromCol, effectToRow, effectToCol);
           combatAnim.scene.addSprite(fxSprite);
         } else if (lastRoll.crit) {
-          // Critical: bold yellow effect
-          const fxSprite = createAttackEffect('crit', effectFromRow, effectFromCol, effectToRow, effectToCol);
+          // Pick varied crit effect based on roll
+          const critTypes = ['crit', 'fire', 'thunder', 'smite'];
+          const critType = critTypes[Math.abs(lastRoll.raw) % critTypes.length];
+          const fxSprite = createAttackEffect(critType, effectFromRow, effectFromCol, effectToRow, effectToCol);
           combatAnim.scene.addSprite(fxSprite);
-          // Damage number
           const dmgSprite = createDamageNumber(lastRoll.damage, effectToRow - 1, effectToCol + 2, true);
           combatAnim.scene.addSprite(dmgSprite);
-          // Hit flash
           const flashSprite = createHitFlash(effectToRow, effectToCol, true);
           combatAnim.scene.addSprite(flashSprite);
+          // Hurt shake on target
+          if (isTeamAttack && firstLivingEnemy?.ascii) {
+            const shakeArt = Array.isArray(firstLivingEnemy.ascii) ? firstLivingEnemy.ascii.slice(0, 3) : [];
+            if (shakeArt.length > 0) {
+              combatAnim.scene.addSprite(createHurtShake(shakeArt, 2, 2));
+            }
+          }
         } else if (lastRoll.damage > 0) {
-          // Normal hit
-          const fxSprite = createAttackEffect('slash', effectFromRow, effectFromCol, effectToRow, effectToCol);
+          // Vary normal attack effects
+          const atkTypes = ['slash', 'bash', 'cleave', 'arrow', 'backstab'];
+          const atkType = atkTypes[Math.abs(lastRoll.raw + (lastRoll.damage || 0)) % atkTypes.length];
+          const fxSprite = createAttackEffect(atkType, effectFromRow, effectFromCol, effectToRow, effectToCol);
           combatAnim.scene.addSprite(fxSprite);
-          // Damage number
           const dmgSprite = createDamageNumber(lastRoll.damage, effectToRow - 1, effectToCol + 2, false);
           combatAnim.scene.addSprite(dmgSprite);
+          const flashSprite = createHitFlash(effectToRow, effectToCol, false);
+          combatAnim.scene.addSprite(flashSprite);
+        } else {
+          // Blocked/0 damage — show block effect
+          combatAnim.scene.addSprite(createBlockEffect(effectToRow, effectToCol, lastRoll.raw <= 3));
         }
 
         // ── Update live battle feed ──────────────────────────────

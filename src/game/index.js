@@ -524,8 +524,8 @@ export async function runGame(options = {}) {
       }
 
       if (currentState === GameState.DUNGEON) {
-        // Simulate enter key to interact every 2s
-        if (now - workModeLastRoomAdvance >= 2000) {
+        // Simulate enter key to interact every 4s
+        if (now - workModeLastRoomAdvance >= 4000) {
           workModeLastRoomAdvance = now;
           // Set a random fork choice before interacting
           const dp = state.dungeonProgress;
@@ -660,7 +660,7 @@ export async function runGame(options = {}) {
           return;
         }
 
-        if (now - workModeLastLootAction >= 500) {
+        if (now - workModeLastLootAction >= 1000) {
           workModeLastLootAction = now;
           const loot = state.pendingLoot ?? [];
           if (loot.length > 0) {
@@ -690,7 +690,7 @@ export async function runGame(options = {}) {
       }
 
       if (currentState === GameState.DEATH) {
-        if (now - workModeLastDeathRecover >= 2000) {
+        if (now - workModeLastDeathRecover >= 4000) {
           workModeLastDeathRecover = now;
           // Clear team and recover
           state.team = [];
@@ -765,7 +765,7 @@ export async function runGame(options = {}) {
 
     try {
       if (currentState === GameState.DUNGEON) {
-        if (now - autoDungeonLastRoomAdvance >= 2000) {
+        if (now - autoDungeonLastRoomAdvance >= 4000) {
           autoDungeonLastRoomAdvance = now;
           const dp = state.dungeonProgress;
           if (dp) {
@@ -835,7 +835,7 @@ export async function runGame(options = {}) {
           return;
         }
 
-        if (now - autoDungeonLastLootAction >= 500) {
+        if (now - autoDungeonLastLootAction >= 1000) {
           autoDungeonLastLootAction = now;
           const loot = state.pendingLoot ?? [];
           if (loot.length > 0) {
@@ -861,7 +861,7 @@ export async function runGame(options = {}) {
       }
 
       if (currentState === GameState.DEATH) {
-        if (now - autoDungeonLastDeathRecover >= 2000) {
+        if (now - autoDungeonLastDeathRecover >= 4000) {
           autoDungeonLastDeathRecover = now;
           state.team = [];
           state.dungeonProgress = null;
@@ -2138,16 +2138,17 @@ export async function runGame(options = {}) {
     if (state.currentState === GameState.CUTSCENE && state._cutscene && !isSecurityPaused()) {
       cutsceneTimer += FRAME_MS;
       const frame = state._cutscene.frames[state._cutscene.currentFrame];
-      const frameDuration = frame?.duration ?? 1200;
+      const baseDuration = frame?.duration ?? 1200;
+      const frameDuration = (isWorkMode() || isAutoDungeon()) ? baseDuration * 2 : baseDuration;
       if (cutsceneTimer >= frameDuration) {
         advanceCutscene();
       }
     }
 
-    // Auto-combat tick — auto-attack every 600ms (paused during security alerts)
+    // Auto-combat tick — auto-attack every 780ms (paused during security alerts)
     if (activeCombat && !activeCombat.isFinished && state.currentState === GameState.COMBAT && !isSecurityPaused()) {
       combatAutoTimer += FRAME_MS;
-      if (combatAutoTimer >= 600) {
+      if (combatAutoTimer >= 780) {
         combatAutoTimer = 0;
         const attackResult = activeCombat.autoAttack();
         if (attackResult.roll) {

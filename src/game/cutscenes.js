@@ -705,15 +705,19 @@ function buildCharArt(raceIdx, classIdx, poseIdx) {
   art[1] = art[1] + ' ' + WEAPON_ART[cls];
   // Apply pose
   art = POSES[pose].mod(art);
-  return art;
+  // Pad all lines to consistent width for alignment
+  const maxLen = Math.max(...art.map(l => l.length));
+  return art.map(l => l.padEnd(maxLen));
 }
 
 /** Build a two-character interaction art (hero vs enemy/ally) */
 function buildDualArt(seed) {
   const hero = buildCharArt(seed, seed >> 3, seed >> 6);
   const other = buildCharArt((seed >> 2) + 1, (seed >> 4) + 2, (seed >> 7) + 3);
-  // Side by side with gap
-  return hero.map((line, i) => line + '    ' + (other[i] || ''));
+  // Pad hero lines so the gap + other character aligns consistently
+  const heroMax = Math.max(...hero.map(l => l.length));
+  const paddedHero = hero.map(l => l.padEnd(heroMax));
+  return paddedHero.map((line, i) => line + '    ' + (other[i] || ''));
 }
 
 // ── Scene template pools (dialogue lines, art compositions) ──────

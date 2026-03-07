@@ -104,7 +104,7 @@ export function generateEnemy({ biome, level, rng, isBoss = false, usedNames }) 
   }
 
   // Build ASCII art from template parts + mutation transforms
-  const ascii = buildEnemyAscii(template.ascii_parts, mutations);
+  const ascii = buildEnemyAscii(template.ascii_parts, mutations, rng.int(0, 999999));
 
   // Mutation properties
   const properties = {};
@@ -197,14 +197,46 @@ function pickMutations(rng, count) {
 
 /**
  * Build enemy ASCII art from parts + mutations.
+ * Includes procedural per-instance variation via seed.
  * Max 7 lines x 30 chars.
  */
-function buildEnemyAscii(parts, mutations) {
+function buildEnemyAscii(parts, mutations, seed = 0) {
   let lines = [
     ...(parts.head || []),
     ...(parts.body || []),
     ...(parts.legs || []),
   ];
+
+  // Procedural variation: subtle per-instance modifications
+  if (seed > 0) {
+    let s = seed;
+    function next() { s = (s * 16807 + 12345) & 0x7fffffff; return s; }
+
+    // 30% chance: swap a random non-space char for a thematic variant
+    if (next() % 100 < 30) {
+      const charSwaps = { '/': '\\', '|': '!', '-': '=', 'o': 'O', '.': '*', '#': '+', '~': '^' };
+      const lineIdx = next() % lines.length;
+      const line = lines[lineIdx];
+      const swapable = Object.keys(charSwaps);
+      for (let i = 0; i < line.length; i++) {
+        if (swapable.includes(line[i]) && next() % 100 < 15) {
+          lines[lineIdx] = line.substring(0, i) + charSwaps[line[i]] + line.substring(i + 1);
+          break;
+        }
+      }
+    }
+
+    // 20% chance: add a small accent mark
+    if (next() % 100 < 20) {
+      const accents = ["'", '`', ',', '.', '*', '+'];
+      const accent = accents[next() % accents.length];
+      const targetLine = next() % lines.length;
+      const pos = lines[targetLine].lastIndexOf(' ');
+      if (pos > 0 && pos < lines[targetLine].length - 1) {
+        lines[targetLine] = lines[targetLine].substring(0, pos) + accent + lines[targetLine].substring(pos + 1);
+      }
+    }
+  }
 
   for (const mut of mutations) {
     switch (mut) {

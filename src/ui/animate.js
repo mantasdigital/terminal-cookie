@@ -401,12 +401,22 @@ function createDamageNumber(value, row, col, isCrit) {
  */
 function createAttackEffect(type, fromRow, fromCol, toRow, toCol) {
   const EFFECTS = {
-    slash:  { art: ['-->'],  color: 'white',  durationMs: 300 },
-    magic:  { art: ['*~*'],  color: 'magenta', durationMs: 400 },
-    crit:   { art: ['===>'], color: 'yellow', durationMs: 350 },
-    fumble: { art: ['!'],    color: 'red',    durationMs: 400 },
-    arrow:  { art: ['--->'], color: 'cyan',   durationMs: 250 },
-    heal:   { art: ['+'],    color: 'green',  durationMs: 400 },
+    slash:    { art: ['-->'],    color: 'white',   durationMs: 300 },
+    magic:    { art: ['*~*'],    color: 'magenta',  durationMs: 400 },
+    crit:     { art: ['===>'],   color: 'yellow',  durationMs: 350 },
+    fumble:   { art: ['!'],      color: 'red',     durationMs: 400 },
+    arrow:    { art: ['--->'],   color: 'cyan',    durationMs: 250 },
+    heal:     { art: ['+'],      color: 'green',   durationMs: 400 },
+    bash:     { art: ['[###]'],  color: 'white',   durationMs: 350 },
+    cleave:   { art: ['/\\/\\'], color: 'red',     durationMs: 300 },
+    fire:     { art: ['~*~*~'], color: 'red',      durationMs: 400 },
+    ice:      { art: ['*=*=*'], color: 'cyan',     durationMs: 400 },
+    poison:   { art: ['~.~.~'], color: 'green',    durationMs: 450 },
+    thunder:  { art: ['/\\/'],  color: 'yellow',   durationMs: 300 },
+    backstab: { art: ['<--!'],  color: 'magenta',  durationMs: 250 },
+    shield:   { art: ['(O)'],   color: 'cyan',     durationMs: 400 },
+    curse:    { art: ['~x~'],   color: 'magenta',  durationMs: 450 },
+    smite:    { art: ['|V|'],   color: 'yellow',   durationMs: 350 },
   };
 
   const effect = EFFECTS[type] || EFFECTS.slash;
@@ -455,4 +465,87 @@ function createHitFlash(row, col, isCrit) {
   return sprite;
 }
 
-export { Sprite, AnimationScene, createDamageNumber, createAttackEffect, createHitFlash };
+/**
+ * Create a block/dodge indicator sprite.
+ * @param {number} row
+ * @param {number} col
+ * @param {boolean} isDodge - true for dodge, false for block
+ * @returns {Sprite}
+ */
+function createBlockEffect(row, col, isDodge) {
+  const sprite = new Sprite({
+    art: [isDodge ? '~miss~' : '[BLOCK]'],
+    row: row - 1,
+    col,
+    color: isDodge ? 'cyan' : 'white',
+    id: `block_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+  });
+  sprite.floatUp(500);
+  sprite.setLifetime(500);
+  return sprite;
+}
+
+/**
+ * Create an enemy hurt/shake effect sprite overlay.
+ * @param {string[]} art - Enemy art lines
+ * @param {number} row - Top row of enemy art
+ * @param {number} col - Left col of enemy art
+ * @returns {Sprite}
+ */
+function createHurtShake(art, row, col) {
+  const sprite = new Sprite({
+    art,
+    row,
+    col,
+    color: 'red',
+    id: `hurt_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+  });
+  sprite.shake(2, 300);
+  sprite.flash('brightRed', 300);
+  sprite.setLifetime(300);
+  return sprite;
+}
+
+/**
+ * Create a death/defeat animation sprite.
+ * @param {number} row
+ * @param {number} col
+ * @param {boolean} isEnemy
+ * @returns {Sprite}
+ */
+function createDeathEffect(row, col, isEnemy) {
+  const sprite = new Sprite({
+    art: isEnemy
+      ? ['  X_X  ', ' /xxx\\ ', '  xxx  ']
+      : ['  x_x  ', '  /|\\  ', '  ___  '],
+    row,
+    col,
+    color: isEnemy ? 'red' : 'brightBlack',
+    id: `death_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+  });
+  sprite.floatUp(800);
+  sprite.setLifetime(800);
+  return sprite;
+}
+
+/**
+ * Create a heal/buff visual effect.
+ * @param {number} row
+ * @param {number} col
+ * @param {number} amount
+ * @returns {Sprite}
+ */
+function createHealEffect(row, col, amount) {
+  const sprite = new Sprite({
+    art: [`+${amount}`],
+    row,
+    col,
+    color: 'green',
+    id: `heal_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+  });
+  sprite.floatUp(600);
+  sprite.setLifetime(600);
+  return sprite;
+}
+
+export { Sprite, AnimationScene, createDamageNumber, createAttackEffect, createHitFlash, createBlockEffect, createHurtShake, createDeathEffect, createHealEffect };
