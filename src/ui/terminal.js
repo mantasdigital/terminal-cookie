@@ -155,13 +155,33 @@ export function createRenderer(capabilities) {
 
   // ---- buffer write methods ----
 
+  // Find raw string index corresponding to a visual column (ANSI-aware)
+  function rawIndexAtVisualCol(str, visualCol) {
+    let visual = 0;
+    let raw = 0;
+    while (raw < str.length && visual < visualCol) {
+      if (str[raw] === '\x1b') {
+        const end = str.indexOf('m', raw);
+        raw = end !== -1 ? end + 1 : raw + 1;
+      } else {
+        visual++;
+        raw++;
+      }
+    }
+    return raw;
+  }
+
   function bufferWrite(row, col, text) {
     if (row < 0 || row >= caps.rows) return;
-    // Pad the row if needed
-    while (buffer[row].length < col) {
-      buffer[row] += ' ';
+    // Pad based on visual width (ANSI codes don't count)
+    const visualLen = stripAnsi(buffer[row]).length;
+    if (visualLen < col) {
+      buffer[row] += ' '.repeat(col - visualLen);
     }
-    buffer[row] = buffer[row].substring(0, col) + text + buffer[row].substring(col + stripAnsi(text).length);
+    const startRaw = rawIndexAtVisualCol(buffer[row], col);
+    const textVisualLen = stripAnsi(text).length;
+    const endRaw = rawIndexAtVisualCol(buffer[row], col + textVisualLen);
+    buffer[row] = buffer[row].substring(0, startRaw) + text + buffer[row].substring(endRaw);
     bufferDirty = true;
   }
 
