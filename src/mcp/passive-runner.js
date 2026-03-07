@@ -487,6 +487,10 @@ export function createPassiveRunner({ engine, rng, settings, scores, sessions })
         return resolveLootAction(action, choice);
       case 'boss_fight':
         return resolveBossFight(action, choice);
+      case 'vault_input':
+        // Vault entries must be entered in the terminal — never via AI
+        state.pendingActions.splice(idx, 0, action); // re-insert, not resolved
+        return { error: 'Vault credentials must be entered directly in the terminal via: terminal-cookie --vault' };
       default:
         return { result: `Action ${actionId} resolved with choice: ${choice}` };
     }

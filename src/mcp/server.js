@@ -293,7 +293,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const result = await tool.handler(params || {}, toolContext);
 
       // AI Activity Scanner — scan tool params and results for security risks
-      const aiMonitorEnabled = settings.get('security.aiMonitor') ?? true;
+      // Skip scanning vault tools — their params/results must never be inspected
+      const VAULT_TOOLS = new Set(['vault_store', 'vault_retrieve', 'vault_submit']);
+      const aiMonitorEnabled = (settings.get('security.aiMonitor') ?? true) && !VAULT_TOOLS.has(name);
       if (aiMonitorEnabled) {
         try {
           // Scan input params

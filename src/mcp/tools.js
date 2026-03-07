@@ -346,7 +346,7 @@ export function defineTools(options = {}) {
 
     {
       name: 'vault_store',
-      description: 'Store sensitive data in the encrypted vault.',
+      description: 'Queue a credential for secure storage. The actual value is NEVER passed through this tool — the user enters it directly in the terminal via `terminal-cookie --vault` or the game UI. This keeps credentials invisible to AI.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -354,28 +354,32 @@ export function defineTools(options = {}) {
             type: 'string',
             description: 'Label for the stored entry',
           },
-          value: {
-            type: 'string',
-            description: 'The sensitive value to store',
-          },
           type: {
             type: 'string',
             description: 'Type of data',
             enum: ['api_key', 'email', 'password', 'custom'],
           },
         },
-        required: ['label', 'value', 'type'],
+        required: ['label', 'type'],
         additionalProperties: false,
       },
       handler(params, ctx) {
-        const { vault } = ctx;
-        if (!vault || !vault.isUnlocked()) return { content: [{ type: 'text', text: 'Vault locked' }], isError: true };
-        try {
-          vault.store(params.label, params.value, params.type);
-          return { content: [{ type: 'text', text: `Stored "${params.label}"` }] };
-        } catch (err) {
-          return { content: [{ type: 'text', text: 'Store failed' }], isError: true };
-        }
+        const { engine } = ctx;
+        const state = engine.getStateRef();
+        if (!state.pendingActions) state.pendingActions = [];
+
+        const id = `vault_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+        state.pendingActions.push({
+          id,
+          type: 'vault_input',
+          description: `Enter value for "${params.label}" (${params.type})`,
+          label: params.label,
+          credType: params.type,
+          choices: ['enter_in_terminal'],
+          createdAt: Date.now(),
+        });
+
+        return { content: [{ type: 'text', text: `Queued "${params.label}" (${params.type}) for secure entry. User must enter the value via: terminal-cookie --vault` }] };
       },
     },
 
@@ -402,6 +406,93 @@ export function defineTools(options = {}) {
           return { content: [{ type: 'text', text: `${entry.label}(${entry.type}): ${redactor.redact(entry.value)}` }] };
         } catch (err) {
           return { content: [{ type: 'text', text: 'Retrieve failed' }], isError: true };
+        }
+      },
+    },
+
+    {
+      name: 'vault_submit',
+      description: 'Make an HTTP request using vault credentials. Use {{vault:label}} placeholders in url, headers, or body — they are resolved server-side. AI never sees the actual credential values.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          url: {
+            type: 'string',
+            description: 'Target URL (may contain {{vault:label}} placeholders)',
+          },
+          method: {
+            type: 'string',
+            enum: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+            description: 'HTTP method',
+          },
+          headers: {
+            type: 'object',
+            description: 'HTTP headers — use {{vault:label}} for credential values',
+            additionalProperties: { type: 'string' },
+          },
+          body: {
+            type: 'string',
+            description: 'Request body — use {{vault:label}} for credential values',
+          },
+        },
+        required: ['url', 'method'],
+        additionalProperties: false,
+      },
+      async handler(params, ctx) {
+        const { vault } = ctx;
+        if (!vault || !vault.isUnlocked()) {
+          return { content: [{ type: 'text', text: 'Vault locked. Unlock via: terminal-cookie --vault' }], isError: true };
+        }
+
+        // Resolve {{vault:label}} placeholders with actual vault values
+        function resolveRefs(str) {
+          if (!str) return str;
+          return str.replace(/\{\{vault:([^}]+)\}\}/g, (_match, label) => {
+            const entry = vault.retrieve(label.trim());
+            if (!entry) throw new Error(`Vault entry "${label.trim()}" not found`);
+            return entry.value;
+          });
+        }
+
+        // Check that at least one vault ref is used (prevent misuse as plain fetch)
+        const allText = `${params.url || ''}${JSON.stringify(params.headers || {})}${params.body || ''}`;
+        if (!allText.includes('{{vault:')) {
+          return { content: [{ type: 'text', text: 'vault_submit requires at least one {{vault:label}} placeholder. Use it for credential-bearing requests.' }], isError: true };
+        }
+
+        try {
+          const resolvedUrl = resolveRefs(params.url);
+          const resolvedHeaders = {};
+          if (params.headers) {
+            for (const [k, v] of Object.entries(params.headers)) {
+              resolvedHeaders[k] = resolveRefs(v);
+            }
+          }
+          const resolvedBody = resolveRefs(params.body);
+
+          const fetchOpts = { method: params.method, headers: resolvedHeaders };
+          if (resolvedBody && params.method !== 'GET') {
+            fetchOpts.body = resolvedBody;
+          }
+
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 30000);
+          fetchOpts.signal = controller.signal;
+
+          const response = await fetch(resolvedUrl, fetchOpts);
+          clearTimeout(timeout);
+
+          const responseText = await response.text();
+          // Redact response to strip any echoed credentials
+          const redactedResponse = redactor.redact(responseText);
+          const truncated = redactedResponse.length > 2000
+            ? redactedResponse.substring(0, 2000) + '\n...(truncated)'
+            : redactedResponse;
+
+          return { content: [{ type: 'text', text: `${response.status} ${response.statusText}\n${truncated}` }] };
+        } catch (err) {
+          const msg = err.name === 'AbortError' ? 'Request timed out (30s)' : err.message;
+          return { content: [{ type: 'text', text: `Request failed: ${msg}` }], isError: true };
         }
       },
     },

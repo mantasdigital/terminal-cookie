@@ -45,6 +45,7 @@ const flags = {
   submitScore: args.includes('--submit-score'),
   mergeLeaderboard: args.includes('--merge-leaderboard'),
   updateReadme: args.includes('--update-readme'),
+  vault: args.includes('--vault'),
 };
 
 // -- Logging ----------------------------------------------------------------
@@ -110,6 +111,7 @@ if (flags.help) {
     `  --submit-score      Submit your score to the leaderboard via git\n` +
     `  --merge-leaderboard Merge approved submissions into the leaderboard (repo owner)\n` +
     `  --update-readme     Update README.md leaderboard table from data (repo owner)\n` +
+    `  --vault             Manage vault credentials securely (AI never sees values)\n` +
     `  --version           Print version and exit\n` +
     `  --help              Show this help message\n\n` +
     `Aliases: tcookie\n`
@@ -410,6 +412,124 @@ if (flags.updateReadme) {
   const updated = readme.substring(0, startIdx + startMarker.length) + '\n' + newTable + '\n' + readme.substring(endIdx);
   writeFileSync(readmePath, updated, 'utf-8');
   process.stdout.write(`README.md leaderboard updated (${ranked.length} entries).\n`);
+  process.exit(0);
+}
+
+if (flags.vault) {
+  const { createInterface } = await import('node:readline');
+  const { createVault } = await import(join(PROJECT_ROOT, 'src', 'security', 'vault.js'));
+  const vault = createVault();
+
+  // Masked password input (shows asterisks)
+  function askMasked(prompt) {
+    return new Promise(resolve => {
+      process.stdout.write(prompt);
+      process.stdin.setRawMode(true);
+      process.stdin.resume();
+      process.stdin.setEncoding('utf-8');
+      let input = '';
+      const onData = (ch) => {
+        if (ch === '\n' || ch === '\r' || ch === '\u0004') {
+          process.stdin.setRawMode(false);
+          process.stdin.pause();
+          process.stdin.removeListener('data', onData);
+          process.stdout.write('\n');
+          resolve(input);
+        } else if (ch === '\u007f' || ch === '\b') {
+          if (input.length > 0) {
+            input = input.slice(0, -1);
+            process.stdout.write('\b \b');
+          }
+        } else if (ch === '\u0003') {
+          process.stdout.write('\n');
+          process.exit(0);
+        } else if (ch >= ' ') {
+          input += ch;
+          process.stdout.write('*');
+        }
+      };
+      process.stdin.on('data', onData);
+    });
+  }
+
+  // Unlock vault
+  const masterPw = await askMasked('Master password: ');
+  try {
+    vault.unlock(masterPw);
+  } catch (err) {
+    process.stderr.write(`Failed to unlock vault: ${err.message}\n`);
+    process.exit(1);
+  }
+  process.stdout.write('Vault unlocked.\n\n');
+
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  const ask = (q) => new Promise(resolve => rl.question(q, resolve));
+
+  process.stdout.write('Commands: store, list, delete, exit\n\n');
+
+  let running = true;
+  while (running) {
+    const cmd = await ask('vault> ');
+    const parts = cmd.trim().split(/\s+/);
+
+    switch (parts[0]) {
+      case 'exit':
+      case 'quit':
+      case '':
+        if (parts[0] === 'exit' || parts[0] === 'quit') {
+          vault.lock();
+          running = false;
+        }
+        break;
+
+      case 'list': {
+        const entries = vault.list();
+        if (entries.length === 0) {
+          process.stdout.write('  (empty)\n');
+        } else {
+          for (const e of entries) {
+            process.stdout.write(`  ${e.label} (${e.type})\n`);
+          }
+        }
+        break;
+      }
+
+      case 'store': {
+        const label = parts[1] || (await ask('  Label: ')).trim();
+        if (!label) { process.stdout.write('  Label is required.\n'); break; }
+        const type = parts[2] || (await ask('  Type (api_key/email/password/custom): ')).trim();
+        if (!type) { process.stdout.write('  Type is required.\n'); break; }
+        // Close readline temporarily for raw mode masked input
+        rl.pause();
+        const value = await askMasked('  Value: ');
+        rl.resume();
+        try {
+          vault.store(label, value, type);
+          process.stdout.write(`  Stored "${label}"\n`);
+        } catch (err) {
+          process.stderr.write(`  Error: ${err.message}\n`);
+        }
+        break;
+      }
+
+      case 'delete': {
+        const label = parts[1] || (await ask('  Label: ')).trim();
+        if (!label) { process.stdout.write('  Label is required.\n'); break; }
+        try {
+          vault.delete(label);
+          process.stdout.write(`  Deleted "${label}"\n`);
+        } catch (err) {
+          process.stderr.write(`  Error: ${err.message}\n`);
+        }
+        break;
+      }
+
+      default:
+        process.stdout.write('  Unknown command. Try: store, list, delete, exit\n');
+    }
+  }
+
+  rl.close();
   process.exit(0);
 }
 
