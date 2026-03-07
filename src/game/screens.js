@@ -770,7 +770,7 @@ const tavernScreen = {
         const selected = roster[ui.menuIndex];
         if (selected) {
           const previewCol = Math.max(cols - 28, Math.floor(cols * 0.6));
-          const portrait = buildPortrait(selected);
+          const portrait = buildPortrait(selected, 0);
           // Clear preview area
           const clearStr = ' '.repeat(Math.min(24, cols - previewCol));
           for (let j = 0; j < 14; j++) {
@@ -780,7 +780,7 @@ const tavernScreen = {
           renderer.bufferWrite(contentTop, previewCol, renderer.bold(selected.name));
           renderer.bufferWrite(contentTop + 1, previewCol, renderer.dim(`${selected.race} ${selected.class}`));
           renderer.bufferWrite(contentTop + 2, previewCol, renderer.dim(`(${selected.personality})`));
-          // Portrait (lines already have built-in 2-space indent)
+          // Portrait (no indent — flush with text above)
           for (let j = 0; j < portrait.length; j++) {
             renderer.bufferWrite(contentTop + 4 + j, previewCol, portrait[j]);
           }
@@ -793,7 +793,7 @@ const tavernScreen = {
           if (abilities.length > 0) {
             renderer.bufferWrite(contentTop + 11, previewCol, renderer.dim('Abilities:'));
             for (let a = 0; a < abilities.length; a++) {
-              renderer.bufferWrite(contentTop + 12 + a, previewCol, ' ' + abilities[a]);
+              renderer.bufferWrite(contentTop + 12 + a, previewCol, abilities[a]);
             }
           }
         }

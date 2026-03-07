@@ -183,7 +183,7 @@ const ACCESSORY_VISUALS = {
  * @param {object} member
  * @returns {string[]} Lines of the portrait
  */
-export function buildPortrait(member) {
+export function buildPortrait(member, indent = 2) {
   const parts = PORTRAIT_PARTS[member.race] ?? PORTRAIT_PARTS.Human;
   const classTag = member.class.substring(0, 3).toUpperCase();
   const eq = member.equipment ?? {};
@@ -200,11 +200,14 @@ export function buildPortrait(member) {
   const accRarity = eq.accessory?.rarity?.toLowerCase() ?? null;
   const accGlyph = accRarity ? (ACCESSORY_VISUALS[accRarity] ?? '') : '';
 
+  const pad = ' '.repeat(indent);
+  const classPad = ' '.repeat(Math.max(0, indent - 1));
+
   const lines = [
-    `  ${parts.head}${accGlyph ? ' ' + accGlyph : ''}`,
-    `  ${body}${wpnGlyph}`,
-    `  ${parts.legs}`,
-    ` [${classTag}]`,
+    `${pad}${parts.head}${accGlyph ? ' ' + accGlyph : ''}`,
+    `${pad}${body}${wpnGlyph}`,
+    `${pad}${parts.legs}`,
+    `${classPad}[${classTag}]`,
   ];
 
   // Pad all lines to consistent width for proper alignment
