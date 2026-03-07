@@ -771,27 +771,29 @@ const tavernScreen = {
         if (selected) {
           const previewCol = Math.max(cols - 28, Math.floor(cols * 0.6));
           const portrait = buildPortrait(selected);
+          // Clear preview area
+          const clearStr = ' '.repeat(Math.min(24, cols - previewCol));
+          for (let j = 0; j < 14; j++) {
+            renderer.bufferWrite(contentTop + j, previewCol, clearStr);
+          }
+          // All elements at same column for consistent alignment
           renderer.bufferWrite(contentTop, previewCol, renderer.bold(selected.name));
           renderer.bufferWrite(contentTop + 1, previewCol, renderer.dim(`${selected.race} ${selected.class}`));
           renderer.bufferWrite(contentTop + 2, previewCol, renderer.dim(`(${selected.personality})`));
-          // Clear portrait area then draw (prevent stale pixels)
-          const clearStr = ' '.repeat(Math.min(20, cols - previewCol));
-          for (let j = 0; j < 5; j++) {
-            renderer.bufferWrite(contentTop + 4 + j, previewCol, clearStr);
-          }
+          // Portrait (lines already have built-in 2-space indent)
           for (let j = 0; j < portrait.length; j++) {
-            renderer.bufferWrite(contentTop + 4 + j, previewCol + 2, portrait[j]);
+            renderer.bufferWrite(contentTop + 4 + j, previewCol, portrait[j]);
           }
-          // Stats summary under portrait
+          // Stats under portrait
           const sts = selected.stats;
-          renderer.bufferWrite(contentTop + 4 + portrait.length, previewCol,
+          renderer.bufferWrite(contentTop + 9, previewCol,
             renderer.dim(`HP:${sts.hp} ATK:${sts.atk} DEF:${sts.def} SPD:${sts.spd} LCK:${sts.lck}`));
-          // Show abilities
+          // Abilities
           const abilities = selected.abilities ?? [];
           if (abilities.length > 0) {
-            renderer.bufferWrite(contentTop + 10, previewCol, renderer.dim('Abilities:'));
+            renderer.bufferWrite(contentTop + 11, previewCol, renderer.dim('Abilities:'));
             for (let a = 0; a < abilities.length; a++) {
-              renderer.bufferWrite(contentTop + 11 + a, previewCol + 2, abilities[a]);
+              renderer.bufferWrite(contentTop + 12 + a, previewCol, ' ' + abilities[a]);
             }
           }
         }
