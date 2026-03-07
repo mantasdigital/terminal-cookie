@@ -190,7 +190,7 @@ export function buildPortrait(member) {
 
   // Weapon: show on right side of body
   const wpnRarity = eq.weapon?.rarity?.toLowerCase() ?? null;
-  const wpnGlyph = wpnRarity ? (WEAPON_VISUALS.weapon[wpnRarity] ?? '|-') : '  ';
+  const wpnGlyph = wpnRarity ? (WEAPON_VISUALS.weapon[wpnRarity] ?? '|-') : '';
 
   // Armor: replace body line
   const armRarity = eq.armor?.rarity?.toLowerCase() ?? null;

@@ -774,15 +774,24 @@ const tavernScreen = {
           renderer.bufferWrite(contentTop, previewCol, renderer.bold(selected.name));
           renderer.bufferWrite(contentTop + 1, previewCol, renderer.dim(`${selected.race} ${selected.class}`));
           renderer.bufferWrite(contentTop + 2, previewCol, renderer.dim(`(${selected.personality})`));
+          // Clear portrait area then draw (prevent stale pixels)
+          const clearStr = ' '.repeat(Math.min(20, cols - previewCol));
+          for (let j = 0; j < 5; j++) {
+            renderer.bufferWrite(contentTop + 4 + j, previewCol, clearStr);
+          }
           for (let j = 0; j < portrait.length; j++) {
             renderer.bufferWrite(contentTop + 4 + j, previewCol + 2, portrait[j]);
           }
+          // Stats summary under portrait
+          const sts = selected.stats;
+          renderer.bufferWrite(contentTop + 4 + portrait.length, previewCol,
+            renderer.dim(`HP:${sts.hp} ATK:${sts.atk} DEF:${sts.def} SPD:${sts.spd} LCK:${sts.lck}`));
           // Show abilities
           const abilities = selected.abilities ?? [];
           if (abilities.length > 0) {
-            renderer.bufferWrite(contentTop + 9, previewCol, renderer.dim('Abilities:'));
+            renderer.bufferWrite(contentTop + 10, previewCol, renderer.dim('Abilities:'));
             for (let a = 0; a < abilities.length; a++) {
-              renderer.bufferWrite(contentTop + 10 + a, previewCol + 2, abilities[a]);
+              renderer.bufferWrite(contentTop + 11 + a, previewCol + 2, abilities[a]);
             }
           }
         }
@@ -1473,11 +1482,14 @@ const dungeonScreen = {
       if (room.content === 'enemy') {
         renderer.bufferWrite(contentStartRow, roomCol, renderer.color('Enemy spotted!', 'red'));
         if (room.enemy) {
-          const art = monsterArt(room.enemy.template ?? 'slime', room.enemy.mutations ?? []);
-          const artLines = art.split('\n');
-          for (let i = 0; i < artLines.length; i++) {
-            renderer.bufferWrite(contentStartRow + 1 + i, roomCol, artLines[i]);
+          // Use enemy's own ascii art (same art that appears in combat)
+          const artLines = Array.isArray(room.enemy.ascii) ? room.enemy.ascii : (typeof room.enemy.ascii === 'string' ? room.enemy.ascii.split('\n') : []);
+          for (let i = 0; i < Math.min(artLines.length, 7); i++) {
+            renderer.bufferWrite(contentStartRow + 1 + i, roomCol, renderer.color(artLines[i], 'red'));
           }
+          // Show enemy name below art
+          renderer.bufferWrite(contentStartRow + 1 + Math.min(artLines.length, 7), roomCol,
+            renderer.dim(truncate(room.enemy.name ?? '', 28)));
         }
       } else if (room.content === 'loot') {
         renderer.bufferWrite(contentStartRow, roomCol, renderer.color('Treasure found!', 'yellow'));
