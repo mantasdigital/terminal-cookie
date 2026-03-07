@@ -873,6 +873,102 @@ const HERO_NAMES = [
   'your champion', 'the veteran', 'the rookie', 'your captain',
 ];
 
+// ── CONTEXT-AWARE HELPERS ──────────────────────────────────────────
+
+/**
+ * Extract an alive team member from context using seed for selection.
+ * @param {object} [context] - { alive, teamSize, avgLevel, avgHpPct, bossesDefeated, dungeonsCleared, fallenThisRun }
+ * @param {number} seed
+ * @returns {object|null} Team member or null
+ */
+function getContextHero(context, seed) {
+  const alive = context?.alive;
+  if (!alive || alive.length === 0) return null;
+  return alive[Math.abs(seed) % alive.length];
+}
+
+/**
+ * Get a second different team member from context.
+ */
+function getContextSecondHero(context, seed) {
+  const alive = context?.alive;
+  if (!alive || alive.length < 2) return null;
+  return alive[(Math.abs(seed) + 1) % alive.length];
+}
+
+/**
+ * Build character art from an actual team member's race and class.
+ */
+function buildMemberArt(member, poseIdx) {
+  const race = (member.race ?? 'Human').toLowerCase();
+  const cls = (member.class ?? 'Warrior').toLowerCase();
+  const raceIdx = RACE_NAMES.indexOf(race);
+  const classIdx = CLASS_NAMES.indexOf(cls);
+  return buildCharArt(
+    raceIdx >= 0 ? raceIdx : 0,
+    classIdx >= 0 ? classIdx : 0,
+    poseIdx % POSE_NAMES.length
+  );
+}
+
+/**
+ * Build dual art with a real team member on the left, random enemy on the right.
+ */
+function buildContextDualArt(member, seed) {
+  const hero = buildMemberArt(member, (seed >> 6) % POSE_NAMES.length);
+  const other = buildCharArt((seed >> 2) + 1, (seed >> 4) + 2, (seed >> 7) + 3);
+  const heroMax = Math.max(...hero.map(l => l.length));
+  const paddedHero = hero.map(l => l.padEnd(heroMax));
+  return paddedHero.map((line, i) => line + '    ' + (other[i] || ''));
+}
+
+// ── STATE-REACTIVE FRAMES ──────────────────────────────────────────
+// Bonus frames triggered by game state, appended to procedural cutscenes.
+
+const STATE_REACTIVE_FRAMES = {
+  fallen: [
+    { lines: ['The empty space in formation weighs heavy.', '{hero} carries their memory forward.'], color: 'brightBlack', duration: 1500 },
+    { lines: ['"We keep going. For them," {hero} says quietly.', 'The silence speaks louder than words.'], color: 'magenta', duration: 1500 },
+    { lines: ['{hero} touches the fallen ally\'s gear.', '"Your fight isn\'t over. We\'ll finish it."'], color: 'brightBlack', duration: 1500 },
+  ],
+  soloHero: [
+    { lines: ['{hero} stands alone against the darkness.', 'No allies. No retreat. Just will.'], color: 'red', duration: 1500 },
+    { lines: ['One warrior. A thousand shadows.', '{hero} grips their weapon and charges.'], color: 'yellow', duration: 1500 },
+  ],
+  critical: [
+    { lines: ['Blood drips from {hero}\'s clenched fist.', '"Just a scratch," they lie. Nobody corrects them.'], color: 'red', duration: 1500 },
+    { lines: ['{hero} leans against the wall, breathing hard.', 'The next fight could be the last.'], color: 'brightBlack', duration: 1500 },
+  ],
+  veteran: [
+    { lines: ['The monsters recognize {hero}. Fear flickers in their eyes.', 'Reputation is the sharpest weapon.'], color: 'cyan', duration: 1500 },
+    { lines: ['{hero} has walked this darkness countless times.', 'It still tries to be scary. It fails.'], color: 'green', duration: 1500 },
+  ],
+  legendary: [
+    { lines: ['The dungeon itself seems to bow before {hero}.', 'Legends don\'t ask for passage. They take it.'], color: 'magenta', duration: 1800 },
+    { lines: ['{hero}\'s name echoes from the walls.', 'Even the stones remember this warrior.'], color: 'yellow', duration: 1800 },
+  ],
+};
+
+/**
+ * Select a state-reactive frame based on game context.
+ * Returns null if no reactive condition is met or context unavailable.
+ */
+function getStateReactiveFrame(context, seed) {
+  if (!context || context.teamSize === 0) return null;
+  const s = Math.abs(seed);
+
+  let key = null;
+  if (context.teamSize === 1) key = 'soloHero';
+  else if (context.fallenThisRun?.length > 0) key = 'fallen';
+  else if (context.avgHpPct < 0.3) key = 'critical';
+  else if (context.avgLevel >= 200 || context.bossesDefeated >= 100) key = 'legendary';
+  else if (context.bossesDefeated >= 20 || context.dungeonsCleared >= 30) key = 'veteran';
+
+  if (!key) return null;
+  const pool = STATE_REACTIVE_FRAMES[key];
+  return pool[s % pool.length];
+}
+
 /**
  * Generate a procedural cutscene from combinatorial templates.
  * Uses the seed to deterministically select: scene style, dialogue lines,
@@ -883,31 +979,37 @@ const HERO_NAMES = [
  * @param {string} type - 'intro'|'pre_miniboss'|'post_miniboss'|'pre_boss'|'post_boss'|'complete'|'encounter'
  * @param {string} biome - Biome id
  * @param {number} seed - Deterministic seed
+ * @param {object} [context] - Game context for team-aware generation
  * @returns {object[]} Array of cutscene frames
  */
-function generateProceduralCutscene(type, biome, seed) {
+function generateProceduralCutscene(type, biome, seed, context) {
   const s = Math.abs(seed);
 
-  // Select scene style based on type
+  // Context-aware tone weighting
+  const isGrim = context && (context.avgHpPct < 0.3 || context.fallenThisRun?.length > 0);
+  const isEpic = context && (context.avgLevel >= 50 || context.bossesDefeated >= 20);
+
+  // Select scene style based on type + context
   let scenePool;
   let colorOverride;
   switch (type) {
     case 'intro':
     case 'encounter':
-      // Mix of atmosphere and comedic for exploration
-      scenePool = s % 3 === 0 ? COMEDIC_SCENES : (s % 3 === 1 ? ATMOSPHERE_SCENES : DRAMATIC_SCENES);
+      if (isGrim) scenePool = s % 2 === 0 ? DRAMATIC_SCENES : ATMOSPHERE_SCENES;
+      else if (isEpic) scenePool = s % 3 === 0 ? ACTION_SCENES : (s % 3 === 1 ? DRAMATIC_SCENES : ATMOSPHERE_SCENES);
+      else scenePool = s % 3 === 0 ? COMEDIC_SCENES : (s % 3 === 1 ? ATMOSPHERE_SCENES : DRAMATIC_SCENES);
       break;
     case 'pre_miniboss':
     case 'pre_boss':
-      // Dramatic and action for pre-combat
+      // Dramatic and action for pre-combat (always intense)
       scenePool = s % 2 === 0 ? DRAMATIC_SCENES : ACTION_SCENES;
       colorOverride = 'red';
       break;
     case 'post_miniboss':
     case 'post_boss':
     case 'complete':
-      // Victory and comedic for post-combat
-      scenePool = s % 3 === 0 ? COMEDIC_SCENES : (s % 3 === 1 ? VICTORY_SCENES : ATMOSPHERE_SCENES);
+      if (isGrim) scenePool = s % 2 === 0 ? ATMOSPHERE_SCENES : DRAMATIC_SCENES;
+      else scenePool = s % 3 === 0 ? COMEDIC_SCENES : (s % 3 === 1 ? VICTORY_SCENES : ATMOSPHERE_SCENES);
       break;
     default:
       scenePool = ATMOSPHERE_SCENES;
@@ -919,15 +1021,16 @@ function generateProceduralCutscene(type, biome, seed) {
   const scene2Pool = scene2Pools[(s >> 4) % scene2Pools.length];
   const scene2 = scene2Pool[(s >> 2) % scene2Pool.length];
 
-  // Pick hero name
-  const hero = HERO_NAMES[s % HERO_NAMES.length];
+  // Pick hero name — use actual team member when context available
+  const member = getContextHero(context, s);
+  const hero = member ? member.name : HERO_NAMES[s % HERO_NAMES.length];
 
   // Pick biome flavor
   const flavors = BIOME_FLAVOR[biome] || BIOME_FLAVOR.cave;
   const flavor = flavors[(s >> 3) % flavors.length];
 
-  // Generate character art
-  const charArt = buildDualArt(s);
+  // Generate character art — use real race/class when context available
+  const charArt = member ? buildContextDualArt(member, s) : buildDualArt(s);
 
   // Substitute {hero} in lines
   const sub = (lines) => lines.map(l => l.replace(/\{hero\}/g, hero));
@@ -951,13 +1054,27 @@ function generateProceduralCutscene(type, biome, seed) {
   });
 
   // Frame 3: Second scene with different art pose
-  const charArt2 = buildCharArt((s >> 1) + 2, (s >> 3) + 1, (s >> 5) + 4);
+  const member2 = getContextSecondHero(context, s);
+  const charArt2 = member2
+    ? buildMemberArt(member2, ((s >> 5) + 4) % POSE_NAMES.length)
+    : buildCharArt((s >> 1) + 2, (s >> 3) + 1, (s >> 5) + 4);
   frames.push({
     art: charArt2,
     lines: sub(scene2.lines),
     color: scene2.color,
     duration: 1500,
   });
+
+  // Optional state-reactive bonus frame (~30% of procedural cutscenes)
+  if (context && (s % 10) < 3) {
+    const reactiveFrame = getStateReactiveFrame(context, s);
+    if (reactiveFrame) {
+      frames.push({
+        ...reactiveFrame,
+        lines: sub(reactiveFrame.lines),
+      });
+    }
+  }
 
   return frames;
 }
@@ -992,75 +1109,76 @@ function pickFromPool(pool, seed) {
  * Hand-crafted scenes are used when seed lands on them; otherwise procedural.
  * This gives ~40% hand-crafted, ~60% procedural for massive variety.
  */
-function pickOrGenerate(pool, type, biome, seed) {
+function pickOrGenerate(pool, type, biome, seed, context) {
   const s = Math.abs(seed);
   // Use hand-crafted pool roughly 40% of the time
   if (pool && pool.length > 0 && (s % 5) < 2) {
     return pickFromPool(pool, seed);
   }
-  return applyDuration(generateProceduralCutscene(type, biome, seed));
+  return applyDuration(generateProceduralCutscene(type, biome, seed, context));
 }
 
 /**
  * Get a dungeon intro cutscene.
  * @param {string} biome
  * @param {number} seed
+ * @param {object} [context] - Game context for team-aware generation
  * @returns {object[]} frames
  */
-export function getDungeonIntroCutscene(biome, seed) {
+export function getDungeonIntroCutscene(biome, seed, context) {
   const pool = DUNGEON_INTROS[biome] || DUNGEON_INTROS.cave;
-  return pickOrGenerate(pool, 'intro', biome, seed);
+  return pickOrGenerate(pool, 'intro', biome, seed, context);
 }
 
 /**
  * Get a pre-miniboss cutscene.
  */
-export function getPreMinibossCutscene(biome, seed) {
+export function getPreMinibossCutscene(biome, seed, context) {
   const pool = PRE_MINIBOSS[biome] || PRE_MINIBOSS.cave;
-  return pickOrGenerate(pool, 'pre_miniboss', biome, seed);
+  return pickOrGenerate(pool, 'pre_miniboss', biome, seed, context);
 }
 
 /**
  * Get a post-miniboss cutscene.
  */
-export function getPostMinibossCutscene(biome, seed) {
+export function getPostMinibossCutscene(biome, seed, context) {
   const pool = POST_MINIBOSS[biome] || POST_MINIBOSS.cave;
-  return pickOrGenerate(pool, 'post_miniboss', biome, seed);
+  return pickOrGenerate(pool, 'post_miniboss', biome, seed, context);
 }
 
 /**
  * Get a pre-boss cutscene.
  */
-export function getPreBossCutscene(biome, seed) {
+export function getPreBossCutscene(biome, seed, context) {
   const pool = PRE_BOSS[biome] || PRE_BOSS.cave;
-  return pickOrGenerate(pool, 'pre_boss', biome, seed);
+  return pickOrGenerate(pool, 'pre_boss', biome, seed, context);
 }
 
 /**
  * Get a post-boss cutscene.
  */
-export function getPostBossCutscene(biome, seed) {
+export function getPostBossCutscene(biome, seed, context) {
   const pool = POST_BOSS[biome] || POST_BOSS.cave;
-  return pickOrGenerate(pool, 'post_boss', biome, seed);
+  return pickOrGenerate(pool, 'post_boss', biome, seed, context);
 }
 
 /**
  * Get a dungeon complete cutscene.
  */
-export function getDungeonCompleteCutscene(biome, seed) {
+export function getDungeonCompleteCutscene(biome, seed, context) {
   const pool = DUNGEON_COMPLETE[biome] || DUNGEON_COMPLETE.cave;
-  return pickOrGenerate(pool, 'complete', biome, seed);
+  return pickOrGenerate(pool, 'complete', biome, seed, context);
 }
 
 /**
  * Get a random encounter cutscene (not biome-specific).
  */
-export function getRandomEncounterCutscene(seed) {
+export function getRandomEncounterCutscene(seed, context) {
   const s = Math.abs(seed);
   if (RANDOM_ENCOUNTERS.length > 0 && (s % 5) < 2) {
     return pickFromPool(RANDOM_ENCOUNTERS, seed);
   }
-  return applyDuration(generateProceduralCutscene('encounter', 'cave', seed));
+  return applyDuration(generateProceduralCutscene('encounter', 'cave', seed, context));
 }
 
 /**
@@ -1078,7 +1196,7 @@ export function getTrophyCutscene(trophyId, trophyName) {
 /**
  * Get a comedic victory ending cutscene (plays after dungeon completion).
  */
-export function getVictoryEndingCutscene(biome, seed) {
+export function getVictoryEndingCutscene(biome, seed, _context) {
   const pool = VICTORY_ENDINGS[biome] || VICTORY_ENDINGS.cave;
   return pickFromPool(pool, seed);
 }
@@ -1086,7 +1204,7 @@ export function getVictoryEndingCutscene(biome, seed) {
 /**
  * Get a comedic defeat ending cutscene (plays after team wipe).
  */
-export function getDefeatEndingCutscene(biome, seed) {
+export function getDefeatEndingCutscene(biome, seed, _context) {
   const pool = DEFEAT_ENDINGS[biome] || DEFEAT_ENDINGS.cave;
   return pickFromPool(pool, seed);
 }
